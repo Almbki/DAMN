@@ -1,4 +1,4 @@
-# DAMN — AI Adaptive Task Planner (Backend)
+# DAMN — Dynamic Agentic Modified No-more-delay todolist (Backend)
 
 A **feedback-driven adaptive task planning system** — not a todo list. It turns
 goals into a plan, watches how the user actually executes it, learns a per-user
