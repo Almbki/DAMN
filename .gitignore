@@ -25,3 +25,6 @@ build/
 .vscode/
 .DS_Store
 Thumbs.db
+
+# Research raw retrieval data (regenerable via docs/research/*/fetch_*.ps1)
+docs/research/**/api/
