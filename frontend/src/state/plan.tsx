@@ -66,10 +66,19 @@ export function PlanProvider({ children }: { children: React.ReactNode }) {
   const [state, setState] = useState<ops.StoreState>(initialStore);
   const [energy] = useState<EnergyLevel>('medium');
 
-  const ordered = useMemo(
-    () => [...state.tasks].sort((a, b) => a.order - b.order),
-    [state.tasks],
-  );
+  // De-duplicate by id as a safety net: a drifted id can leave two tasks sharing
+  // one id, which would render duplicate React keys. New ids are derived from the
+  // data (`nextId`), so this only ever drops already-corrupted entries.
+  const ordered = useMemo(() => {
+    const seen = new Set<number>();
+    return [...state.tasks]
+      .sort((a, b) => a.order - b.order)
+      .filter((task) => {
+        if (seen.has(task.id)) return false;
+        seen.add(task.id);
+        return true;
+      });
+  }, [state.tasks]);
 
   const today = todayISO();
 

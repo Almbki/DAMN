@@ -2,11 +2,11 @@ import { useCallback, useMemo, useState } from 'react';
 import { StyleSheet, Text, TextInput, View, useWindowDimensions } from 'react-native';
 
 import { BatchBar } from '@/components/batch-bar';
+import { CircularChart } from '@/components/circular-chart';
 import { NowCard } from '@/components/now-card';
 import { SmartListTabs } from '@/components/smart-list-tabs';
 import { TaskEditor } from '@/components/task-editor';
 import { TaskRow } from '@/components/task-row';
-import { Timeline } from '@/components/timeline';
 import { Button } from '@/components/ui/button';
 import { Segmented } from '@/components/ui/segmented';
 import { EmptyState } from '@/components/ui/states';
@@ -18,7 +18,7 @@ import { useListKeys } from '@/hooks/use-list-keys';
 import { usePlan, type SmartListKey } from '@/state/plan';
 import { useTheme } from '@/state/theme';
 
-const VIEWS = ['列表', '时间线'];
+const VIEWS = ['列表', '概览'];
 
 const BLANK_TASK: Task = {
   id: -1,
@@ -225,7 +225,7 @@ export default function TodoScreen() {
         ) : null}
 
         {view === 1 ? (
-          <Timeline tasks={visible} />
+          <CircularChart tasks={visible} />
         ) : (
           <View style={[styles.list, { borderTopColor: colors.line }]}>
             {visible.length === 0 ? (

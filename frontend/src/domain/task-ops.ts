@@ -1,7 +1,7 @@
-import { addDays, diffDays, todayISO } from '@/domain/date';
+import { todayISO } from '@/domain/date';
 import { parseQuickAdd } from '@/domain/quick-add';
 import type { Completion } from '@/domain/stats';
-import { nextOccurrence, NO_REPEAT, type Repeat, type Task } from '@/domain/task';
+import { NO_REPEAT, type Repeat, type Task } from '@/domain/task';
 
 /**
  * Pure state transitions for the local task store. No React, no side effects —
@@ -104,29 +104,10 @@ function completeTask(state: StoreState, id: number): StoreState {
     date: today,
     minutes: task.actualMinutes ?? task.estimatedMinutes ?? 0,
   };
-  const nextDate = task.dueDate ? nextOccurrence(task) : null;
 
-  if (nextDate) {
-    const repeat: Repeat =
-      task.repeat.end === 'count'
-        ? { ...task.repeat, count: Math.max(0, (task.repeat.count ?? 1) - 1) }
-        : task.repeat;
-    const startShift = task.startDate && task.dueDate ? diffDays(task.dueDate, nextDate) : 0;
-    const tasks = state.tasks.map((item) =>
-      item.id === id
-        ? {
-            ...item,
-            done: false,
-            dueDate: nextDate,
-            startDate: item.startDate ? addDays(item.startDate, startShift) : null,
-            repeat,
-            completedAt: today,
-          }
-        : item,
-    );
-    return { ...state, tasks, completions: [...state.completions, completion] };
-  }
-
+  // Completing always marks the task done. A repeating task keeps its rule as
+  // metadata but is NOT rescheduled here — rescheduling on tap made the
+  // checkbox look broken (the date moved instead of the box checking).
   const tasks = state.tasks.map((item) =>
     item.id === id ? { ...item, done: true, skipped: false, completedAt: today } : item,
   );
