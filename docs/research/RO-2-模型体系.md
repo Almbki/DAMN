@@ -196,6 +196,54 @@
 | 近 3 天负荷 | `log_recent_load_3d` | float（分钟） | ≥0 | 日志聚合 | 每日 | `0` |
 | 当日任务序位 | `log_session_position` | int（第几个） | ≥1 | 当日执行日志 | 每任务 | `1` |
 
+#### 4.1.2b 参数计算方式
+
+> **符号约定**：`i` = 历史任务/事件下标；`N` = 窗口大小；`median(·)` = 中位数；`quantile(·,p)` = p 分位数；`clamp(x,a,b)` = 截断到 [a,b]。**原始输入**=直接来自问卷/日志，不做计算；**派生参数**=必须按公式计算。
+
+| 参数 | 类别 | 计算方式 | 来源 |
+|---|---|---|---|
+| `task_type` | 原始 | 任务生成时由 LLM/模板写死，不做计算 | 【工程】字段 |
+| `task_difficulty_prior` | 原始 | LLM 打分（1–5）+ 人工规则校验，不做计算 | 【工程】 |
+| `task_clarity` | 原始 | LLM 对任务描述打分（0–1）；LLM 不可用时用规则 `1 − 命中含糊动词数/3` | 【工程】 |
+| `task_theoretical_min` | 派生 | KLM 加和：`(Σ_op t_op)/60`，操作常数见下式 | 方向4 [10][11] |
+| `state_skill_mastery` | 派生（跨模型） | 由 M4a 输出，公式见 §4.4.1 | 方向11 [9][11] |
+| `log_practice_count` | 派生 | `|{已完成任务 t : skill(t)=skill_id}|`（全历史累计） | 方向4 [15] |
+| `user_duration_factor` | 派生 | 见下式：按 `task_type` 分桶的 `median(actual/theoretical)`，窗口 N=30 | 方向4 [20][21]；N 为【工程】 |
+| `state_fatigue` / `state_energy` | 派生（跨模型） | 由 M4b 输出，公式见 §4.4.2 | 方向1 [3][6][7] |
+| `sched_hour` | 原始 | 排程上下文直接给出（0–23），不做计算 | 【工程】 |
+| `user_chronotype_tier` | 原始 | 注册问卷 Q2 直接映射 `early/mid/late`，不做计算 | 方向7 [3] |
+| `log_recent_load_3d` | 派生 | `Σ_{t∈今天与前2天} alloc_min(t)`（alloc 为该任务分配给用户的时长） | 【工程】 |
+| `log_session_position` | 派生 | `1 + |{今天已开始的任务}|` | 【工程】 |
+| `pred_duration_q50/q80/q90` | 派生（模型输出） | 见下式 S0/S1；S2 由 GBDT 直接输出 | 方向4 [10][11][32][39] |
+
+**主公式**：
+
+```text
+# 1) 理论最少耗时（KLM；方向4 [10] 的操作常数）
+task_theoretical_min = (Σ_op t_op) / 60        # 秒 → 分钟
+    t_K=0.2s 键盘, t_P=1.1s 指向, t_H=0.4s 归位, t_M=1.35s 心理准备, t_R=1.1s 系统响应
+
+# 2) 用户耗时倍率（按 task_type 分桶；只取已完成且 theoretical_min>0 的任务）
+ratio_i = actual_min_i / theoretical_min_i
+user_duration_factor(type) = median(ratio_i),  i ∈ 该用户该 type 桶内最近 N=30 条   # N【工程】
+    若桶内有效条数 < 3 → 1.3（群体保守倍率，【工程】）
+    若 theoretical_min 缺失 → 分母改用该 type 历史 actual 的中位数
+
+# 3) 单任务点估计（S0/S1）
+base            = theoretical_min × type_multiplier
+    type_multiplier【工程】：concept 1.2 / example 1.1 / practice 1.3 / review 0.6 / project 1.8
+fatigue_factor  = 1 + 0.30 × (state_fatigue − 0.5)      # 系数 0.30【工程】
+energy_factor   = 1 − 0.20 × (state_energy  − 0.5)      # 系数 0.20【工程】
+hour_factor     = 1.15 当 task_type∈{concept,practice,project} 且 sched_hour 不在个人峰值窗口，否则 1.00   # 【工程】
+pred_duration_q50 = base × user_duration_factor × fatigue_factor × energy_factor × hour_factor
+
+# 4) 分位数（S1）
+pred_duration_q80 = theoretical_min × quantile(ratio_i, 0.80) × 调整项
+pred_duration_q90 = theoretical_min × quantile(ratio_i, 0.90) × 调整项
+    若有效条数 < 20 → 退化用展宽系数：q80 = q50 × 1.25，q90 = q50 × 1.50   # 20 与系数均【工程】
+    排程默认用 q80（RO-4 §4.8；方向4 [39]）
+```
+
 #### 4.1.3 冷启动 / 升级 / 降级（本模型内）
 
 | 阶段 | 形态 | 做法 |
@@ -218,6 +266,52 @@
 **验收指标建议**（离线/线上）：MAE、区间覆盖率（实际落在预测区间内的比例）、`%over/%under/%within`（参照方向4 [33] 的度量），以及**预测误差对情绪的影响**监控（方向4 [39]）。
 
 **局限与风险**：疲劳项只作温和调整（方向4 [37] 为间接证据）；不要内置固定乐观系数（方向4 [3] 偏差方向因领域而异）。
+
+#### 4.1.5 端到端算例：从原始日志到 q50/q80（手算）
+
+> 虚构用户 U001（晚型，峰值窗口 16:00–22:00），`task_type=practice` 的 5 条历史已完成任务：
+
+| i | `task_theoretical_min`（KLM） | `actual_min`（日志） | `ratio_i = actual/theoretical` |
+|---|---|---|---|
+| 1 | 20 | 34 | 1.70 |
+| 2 | 25 | 41 | 1.64 |
+| 3 | 15 | 28 | 1.87 |
+| 4 | 30 | 48 | 1.60 |
+| 5 | 25 | 43 | 1.72 |
+
+**步骤 1：`log_practice_count`** = 5（全历史累计，本例同桶 5 条）。
+
+**步骤 2：`user_duration_factor(practice)`**（窗口 N=30）：
+```
+ratio 排序 = {1.60, 1.64, 1.70, 1.72, 1.87}
+有效条数 = 5 ≥ 3 → 取中位数
+user_duration_factor = median = 1.70
+```
+
+**步骤 3：新任务估时**。新任务：`task_type=practice`，`task_theoretical_min=25`，`state_fatigue=0.6`，`state_energy=0.4`，`sched_hour=10`（10:00 不在晚型峰值窗口）：
+```
+base           = 25 × 1.3( practice ) = 32.5
+fatigue_factor = 1 + 0.30×(0.6−0.5)   = 1.03
+energy_factor  = 1 − 0.20×(0.4−0.5)   = 1.02
+hour_factor    = 1.15（高认知类型 + 非峰值时段）
+pred_duration_q50 = 32.5 × 1.70 × 1.03 × 1.02 × 1.15
+                  = 32.5 × 1.70 = 55.25
+                  → 55.25 × 1.03 = 56.9075
+                  → 56.9075 × 1.02 = 58.0457
+                  → 58.0457 × 1.15 = 66.75 ≈ 66.8 分钟
+```
+
+**步骤 4：分位数**。有效条数 5 < 20 → 用展宽系数退化：
+```
+pred_duration_q80 = 66.8 × 1.25 = 83.5 分钟
+pred_duration_q90 = 66.8 × 1.50 = 100.2 分钟
+（若改用 5 点直接分位：quantile(ratio,0.80)=1.786 → q80≈32.5×1.786×1.03×1.02×1.15≈70.2 分钟；
+  样本不足 20 时按【工程】规则一律用展宽系数，避免小样本分位不稳）
+```
+
+**步骤 5：排程使用**。RO-4 Scheduler 取 `pred_duration_q80 = 83.5` 分钟做当日容量校验（不用 q50），把"不确定性"翻译成时间缓冲（方向4 [39]）。
+
+> 全部自定数值：N=30、最小 3 条、保守倍率 1.3、type_multiplier、疲劳 0.30 / 精力 0.20、hour_factor 1.15、展宽 1.25/1.50、样本阈值 20 —— 均为 **【工程】**，需上线校准。
 
 ---
 
@@ -250,6 +344,43 @@
 | 连续完成天数 | `log_streak` | int（天） | ≥0 | 日志 | 每日 | `0` |
 | 主动拖延标记 | `user_active_procrastination` | bool | true/false | 注册问卷（RO-3 Q8） | 注册时 | `false` |
 | 今日计划总量 | `sched_today_load_planned` | float（分钟） | ≥0 | 排程 | 每日 | `0` |
+
+#### 4.2.2b 参数计算方式
+
+| 参数 | 类别 | 计算方式 | 来源 |
+|---|---|---|---|
+| `task_aversiveness` | 原始 | LLM 评分（1–5）+ 用户可选反馈，不做计算 | 方向3 [34]；方向2 [20] |
+| `task_clarity` | 原始 | LLM 打分 0–1（同 §4.1.2b） | 【工程】 |
+| `task_difficulty_prior` | 原始 | LLM 打分 1–5 | 【工程】 |
+| `state_skill_mastery` | 派生（跨模型） | 见 §4.4.1 | 方向11 [9] |
+| `sched_deadline_distance_d` | 派生 | `(goal_deadline − today).days`；无 deadline → 999 | 【工程】 |
+| `log_onset_delay_prev` | 派生 | `actual_start_prev − planned_start_prev`（分钟）；无上一条 → 0 | 方向2 [18] |
+| `log_completion_rate_7d` | 派生 | `completed_7d / planned_7d`；`planned_7d=0` → 0.7 | 方向11 [19] |
+| `state_self_efficacy` | 派生（跨模型） | 见 §4.4.3 | 方向2 [5][23]；方向11 [19] |
+| `state_fatigue` | 派生（跨模型） | 见 §4.4.2 | 方向1 [3] |
+| `sched_hour` | 原始 | 排程上下文 | 【工程】 |
+| `log_streak` | 派生 | 结尾连续满足"当日 `completion_rate_day ≥ 0.8`"的天数；中断即 0 | 【工程】 |
+| `user_active_procrastination` | 原始 | 注册问卷 Q8 直接映射 bool | 方向2 [21] |
+| `sched_today_load_planned` | 派生 | `Σ alloc_min(今天全部计划任务)` | 【工程】 |
+| `pred_completion_prob` | 派生（模型输出） | S0 规则分 / S1 逻辑回归，见下式 | 方向2 小结；方向11 [19] |
+
+**主公式**：
+
+```text
+# S0 规则分（全部输入先归一化到 0–1）
+d = (task_difficulty_prior − 1)/4 ;  a = (task_aversiveness − 1)/4 ;  c = task_clarity
+p0 = clamp(0.90 − 0.10×d − 0.15×a + 0.10×c, 0.05, 0.95)     # 系数【工程】
+
+# S1 个体逻辑回归（特征 ≤ 8）
+x = [d, a, c, state_skill_mastery, min(sched_deadline_distance_d,90)/90,
+     log_onset_delay_prev/60, log_completion_rate_7d, state_self_efficacy]
+z = w0 + Σ w_k x_k ;  p = 1 / (1 + e^(−z))
+    权重 w 由该用户"完成/失败"事件拟合（L2 正则 λ=1.0【工程】）
+    校准：可选 Platt / isotonic，使预测概率与真实频率一致（【工程】）
+
+# 输出
+pred_completion_prob = p（分类），CI80 = Wilson 区间（【工程】方法）
+```
 
 #### 4.2.3 冷启动 / 升级 / 降级
 
@@ -303,6 +434,50 @@
 | 复习积压数 | `log_review_backlog` | int（待复习条数） | ≥0 | 复习队列 | 每日 | `0` |
 | 排程时刻 | `sched_hour` | int（小时） | 0–23 | 排程 | 排程时 | 当前小时 |
 
+#### 4.3.2b 参数计算方式
+
+| 参数 | 类别 | 计算方式 | 来源 |
+|---|---|---|---|
+| `item_id` | 原始 | 复习库主键 | 【工程】 |
+| `item_difficulty` | 原始 | 任务侧标注 1–5，不做计算 | 方向8 [20] |
+| `log_review_count` | 派生 | `|{复习事件 e : item(e)=item_id}|`（含本次前） | 【工程】 |
+| `log_last_review_ts` | 原始 | 复习日志时间戳 | 【工程】 |
+| `log_last_recall_ok` | 原始 | 上次作答对/错（bool） | 方向8 [6] |
+| `log_recall_streak` | 派生 | 截至上次复习、结尾连续 `recall_ok=true` 的次数 | 【工程】 |
+| `log_response_time_sec` | 原始 | 作答反应时（秒） | 方向8 [20] |
+| `state_skill_mastery` | 派生（跨模型） | 见 §4.4.1 | 方向11 [9] |
+| `user_forgetting_rate` | 派生 | `1 / half_life_days`（HLR 拟合，见下式） | 方向8 [16][17][20][23] |
+| `goal_retention_interval_d` | 原始 | 目标设定（距考试/目标的期望保持期），不做计算 | 方向8 [5] |
+| `log_review_backlog` | 派生 | `|{item : next_review_at(item) ≤ today}|` | 方向8 [26] |
+| `sched_hour` | 原始 | 排程上下文 | 【工程】 |
+| `pred_recall_prob` / `next_review_at` | 派生（模型输出） | 见下式 | 方向8 [20][22] |
+
+**主公式**：
+
+```text
+# S0 固定扩展间隔（规则）
+interval_1 = 1 天 ;  interval_n = interval_{n−1} × 1.8                  # 倍率【外推】
+interval_n ← interval_n × clamp(goal_retention_interval_d / 30, 0.5, 4.0)   # 保持期缩放【外推】
+
+# S1 半衰期回归 HLR（Settles & Meeder 2016；方向8 [20]）
+half_life_days = 2 ^ ( a + b1·ln(1+log_review_count) + b2·last_recall_ok
+                         + b3·difficulty_norm + b4·log_recall_streak )
+    初始系数 a=0, b1=0.5, b2=0.6, b3=−0.3, b4=0.2        # 【工程】初始值，随事件拟合
+    difficulty_norm = (item_difficulty − 3)/2 ;  last_recall_ok ∈ {0,1}
+P(recall) = 2 ^ ( −Δt_days / half_life_days )
+    Δt_days = (now − log_last_review_ts) 的天数（首次复习 → Δt=0，P=1）
+
+# 下次复习时间（解 P(recall)=θ_target）
+θ_target = 0.7                                       # 【工程】
+Δt* = −half_life_days × log2(θ_target) = 0.515 × half_life_days
+next_review_at = log_last_review_ts + Δt* 天
+pred_recall_prob = P(recall) 在当前 Δt 处的值
+user_forgetting_rate = 1 / half_life_days            # 越大越快忘
+
+# 毕业（方向8 [13]）
+mastered = (log_recall_streak ≥ 3) 且 (half_life_days ≥ 30)   # 阈值【工程】
+```
+
 #### 4.3.3 冷启动 / 升级 / 降级
 
 | 阶段 | 形态 | 做法 |
@@ -347,6 +522,33 @@
 | 练习机会次数 | `item_opportunity_count` | int（次） | ≥0 | 日志 | 每次作答 +1 | `0` |
 | 用户学习率 | `user_learn_rate` | float（0–1 转移概率） | 0–1 | M4a 个体（分层贝叶斯） | 每次作答 | `0.15`（BKT 默认学习率） |
 
+**(2b) 参数计算方式**
+
+| 参数 | 类别 | 计算方式 | 来源 |
+|---|---|---|---|
+| `skill_id` | 原始 | 任务标签主键，不做计算 | 【工程】 |
+| `item_correct` | 原始 | 本次答对/完成质量（bool），直接来自日志 | 方向11 [9] |
+| `item_opportunity_count` | 派生 | 该 skill 的累计作答次数（每次 +1） | 【工程】 |
+| `user_learn_rate` | 派生 | 分层贝叶斯估计的个体学习率 `T_j`（见下式） | 方向11 [11] |
+| `state_skill_mastery` | 派生（模型输出） | BKT 的后验掌握概率 `P(L_t)`（见下式） | 方向11 [9] |
+
+**主公式（BKT 四参数；方向11 [9]，参数值为【工程】）**：
+
+```text
+# 参数：T=学习转移率(0.15)、S=失误率(0.1)、G=猜测率(0.2)、P(L_1)=先验掌握(0.3)
+# 每次作答后（先学习转移，再观测更新）
+P(L_t^-) = P(L_{t−1}) + (1 − P(L_{t−1})) · T                  # 学习
+若 item_correct = true :
+    P(L_t) = P(L_t^-)(1−S) / [ P(L_t^-)(1−S) + (1−P(L_t^-))·G ]
+若 item_correct = false :
+    P(L_t) = P(L_t^-)·S / [ P(L_t^-)·S + (1−P(L_t^-))(1−G) ]
+state_skill_mastery = P(L_t)
+
+# 个体学习率（S2 分层贝叶斯）
+T_j ~ Beta(α, β)，群体超先验 α=1.5, β=8.5（均值 ≈ 0.15）      # 【工程】
+T_j 的后验 = 用该用户该技能的作答序列以 EM / 吉布斯采样更新    # 方向11 [11]
+```
+
 **(3) 冷启动 / 升级 / 降级**
 
 | 阶段 | 形态 | 做法 |
@@ -389,6 +591,43 @@
 | 排程时刻 | `sched_hour` | int（小时） | 0–23 | 排程 | 排程时 | 当前小时 |
 | 连续会话时长 | `log_session_minutes` | float（分钟） | ≥0 | 执行日志 | 每次会话 | `0` |
 
+**(2b) 参数计算方式**
+
+| 参数 | 类别 | 计算方式 | 来源 |
+|---|---|---|---|
+| `self_energy_vas` / `self_fatigue_vas` | 原始 | 每日打卡 D1 / 任务后自评（1–5），不做计算 | 方向1 [3][21][22] |
+| `log_rt_cv` | 派生 | 会话/窗口内 `sd(RT)/mean(RT)`（窗口 m=20 次作答） | 方向1 [6] |
+| `log_typing_wpm` / `log_typing_error_rate` | 原始 | 客户端行为聚合值（词/分、错误率） | 方向1 [9]；方向5 [24] |
+| `log_consecutive_high_cog` | 派生 | 自最近一个非高认知任务起的高认知任务计数 | 方向5 [13] |
+| `log_sleep_hours` | 原始 | 打卡 D4（每周约 3 次） | 方向7 [14] |
+| `sched_hour` | 原始 | 排程上下文 | 【工程】 |
+| `log_session_minutes` | 原始 | 连续会话时长（执行日志） | 【工程】 |
+| `state_energy` / `state_fatigue` | 派生（模型输出） | S1 自评 EWMA；S2 自评+行为融合（见下式） | 方向1 [3][6][7][9]；方向5 [24] |
+
+**主公式**：
+
+```text
+# 1) 归一化
+vas_norm(v) = (v − 1) / 4                     # 1–5 → 0–1
+# 2) 行为疲劳信号（0=不疲劳, 1=最疲劳）；base 取个人 30 天中位数
+b_rt    = clamp( (log_rt_cv − cv_base) / (2·cv_base), 0, 1 )
+b_type  = clamp( 1 − log_typing_wpm / wpm_base, 0, 1 )
+b_err   = clamp( log_typing_error_rate / err_base, 0, 1 )
+b_sleep = clamp( 1 − log_sleep_hours / 7.5, 0, 1 )          # 7.5h 参考【工程】
+
+# 3) S1：自评 EWMA（指数加权移动平均）
+E_t = 0.30·vas_norm(self_energy_vas_t) + 0.70·E_{t−1}       # α=0.30【工程】
+F_t = 0.30·vas_norm(self_fatigue_vas_t) + 0.70·F_{t−1}
+
+# 4) S2：自评+行为加权融合（权重和为 1）
+state_energy  = 0.50·E_t + 0.20·(1−b_rt) + 0.20·(1−b_type) + 0.10·(1−b_sleep)   # 【工程】
+state_fatigue = 1 − state_energy
+    （可选时段先验 E0(hour)：下午/晚低谷乘性下调，【工程】）
+
+# 5) S2 状态空间（卡尔曼类，方向1 [7] 的隐状态思路）
+x_t = x_{t−1} + w_t ,  y_t = x_t + v_t   （x=隐疲劳，y=上式的观测融合值；w,v 为过程/观测噪声）
+```
+
 **(3) 冷启动 / 升级 / 降级**
 
 | 阶段 | 形态 | 做法 |
@@ -423,6 +662,35 @@
 | 近期失败强度 | `log_recent_failure` | float（0–1 加权） | 0–1 | 任务结果日志 | 每次成败后 | `0` |
 | 努力投入比 | `log_effort_ratio` | float（实际/计划） | >0 | 日志 | 每任务 | `1.0` |
 
+**(2b) 参数计算方式**
+
+| 参数 | 类别 | 计算方式 | 来源 |
+|---|---|---|---|
+| `self_efficacy_1item` | 原始 | 注册问卷 / 每周 1 题自评（1–5），不做计算 | 方向11 [19] |
+| `log_recent_success` | 派生 | 近期任务成功率分的指数衰减加权（见下式） | 方向2 [23] |
+| `log_recent_failure` | 派生 | 近期任务失败分的指数衰减加权（见下式） | 方向2 [5][23] |
+| `log_effort_ratio` | 派生 | `actual_min / alloc_min`（alloc=分配的 q80 时长） | 【工程】 |
+| `state_self_efficacy` | 派生（模型输出） | 事件 EWMA + 每周自评回锚（见下式） | 方向2 [5][23]；方向11 [19] |
+
+**主公式**：
+
+```text
+# 1) 事件成功分 s_i：完成=1；部分完成=log_partial_pct（0–1）；没做=0
+# 2) 近期成功/失败（指数衰减，越近权重越大）
+w_i = γ^{age_i} ,  γ=0.80【工程】 ,  age=距今天数
+log_recent_success = Σ_{i=1..k} w_i·s_i / Σ_{i=1..k} w_i        # k=10【工程】
+log_recent_failure = Σ_{i=1..k} w_i·(1−s_i) / Σ_{i=1..k} w_i
+
+# 3) 时变更新（每次任务成败后；失败权重更大，体现恶性循环）
+SE_0 = (self_efficacy_1item − 1)/4
+SE_t = SE_{t−1} + 0.15·s_t·(1 − SE_{t−1}) − 0.25·(1−s_t)·SE_{t−1}     # η_s=0.15, η_f=0.25【工程】
+clamp(SE_t, 0, 1)
+
+# 4) 每周自评回锚（防止只由行为漂移）
+SE ← 0.70·SE_behavior + 0.30·vas_norm(self_efficacy_1item)            # λ=0.30【工程】
+state_self_efficacy = SE
+```
+
 **(3) 冷启动 / 升级 / 降级**
 - **S0**：单题自评直接映射。
 - **S1**：每次成功/失败后 EWMA；成功提升、失败下降（恶性/良性循环）。
@@ -450,6 +718,33 @@
 | 压力来源画像 | `self_stress_source` | enum[] 多选 | `学业应对失败/时间不够/人际/经济/健康/对未来不确定` | 双周问卷（RO-3 Q10） | 每两周 | 空数组 |
 | 深夜活动标记 | `log_night_activity` | bool | true/false | 日志（23:00 后活动） | 每日 | `false` |
 | 连续未执行天数 | `log_skip_days` | int（天） | ≥0 | 日志 | 每日 | `0` |
+
+**(2b) 参数计算方式**
+
+| 参数 | 类别 | 计算方式 | 来源 |
+|---|---|---|---|
+| `self_stress_1` / `self_stress_2` | 原始 | 双周问卷两题（各 0–4），不做计算 | 方向6 [18][19] |
+| `self_stress_source` | 原始 | 双周问卷多选直接落库 | 方向6 [19] |
+| `log_night_activity` | 原始 | 当日 23:00 后是否有活动（bool） | 方向6 [23] |
+| `log_skip_days` | 派生 | 结尾连续"当日 `completion_rate_day < 0.5`"的天数 | 【工程】阈值 |
+| `state_perceived_stress` | 派生（模型输出） | 问卷标准化 + 行为代偿融合（见下式） | 方向6 [18][19] |
+
+**主公式**：
+
+```text
+# 1) 问卷标准化
+stress_raw = self_stress_1 + self_stress_2                 # 0–8
+z_stress   = clamp((stress_raw − 4) / 2, −2, 2)            # μ=4, σ=2【工程】
+
+# 2) 行为代偿指数（0–1）
+b_night = 1 若过去 7 天 log_night_activity 次数 ≥ 3，否则 0        # 阈值【工程】
+b_skip  = clamp(log_skip_days / 5, 0, 1)                          # 5 天【工程】
+behavior_index = 0.5·b_night + 0.5·b_skip                         # 【工程】
+
+# 3) 融合（行为只作辅助，问卷为主；方向6：来源比总分更有预测力）
+state_perceived_stress = 0.70·z_stress + 0.30·(2·behavior_index − 1)   # λ=0.70【工程】
+    （慢变量：不参与单点硬决策；缺失 → 沿用上期并标 stale=true）
+```
 
 **(3) 冷启动 / 升级 / 降级**
 - **S0**：问卷分数标准化。
@@ -490,6 +785,34 @@
 | 距截止天数 | `sched_days_to_deadline` | int（天） | ≥0 | 排程 | 每日 | 无 → 置大值 |
 | 完成概率预测 | `pred_completion_prob` | float（0–1） | 0–1 | M2 | 每任务 | `0.7` |
 | 放弃模式 | `log_abandon_pattern` | enum | `onset_delay/mid_quit/whole_day_skip` | 日志 | 每任务/每日 | `none` |
+
+#### 4.5.2b 参数计算方式
+
+| 参数 | 类别 | 计算方式 | 来源 |
+|---|---|---|---|
+| `log_completion_rate_3d` | 派生 | `completed_3d / planned_3d`；`planned_3d=0` → 近 7 天值 | 方向9 [24] |
+| `log_duration_deviation` | 派生 | `mean_i( (actual_i − pred_i)/pred_i )`，i=最近 k=10 个已完成任务 | 方向10 [24]；k【工程】 |
+| `log_replan_count_7d` | 派生 | 过去 7 天重规划事件计数 | 方向9 [24] |
+| `log_schedule_stability` | 派生 | `1 − changed_tasks / total_tasks`（上次重规划） | 方向9 [24]；公式【工程】 |
+| `log_consecutive_fail_days` | 派生 | 结尾连续"当日 `completion_rate_day < 0.6`"的天数 | 方向9 [24]；阈值【工程】 |
+| `state_fatigue` | 派生（跨模型） | 见 §4.4.2 | 方向1 [3] |
+| `state_perceived_stress` | 派生（跨模型） | 见 §4.4.4；缺失即跳过 | 方向6 [18] |
+| `log_review_backlog` | 派生（跨模型） | 见 §4.3.2b | 方向8 [26] |
+| `sched_days_to_deadline` | 派生 | `(deadline − today).days` | 【工程】 |
+| `pred_completion_prob` | 派生（跨模型） | 见 §4.2.2b | 方向11 [19] |
+| `log_abandon_pattern` | 派生 | 规则分类：启动延迟 / 中途放弃 / 整日跳过 | 【工程】 |
+| `replan_decision` | 派生（模型输出） | 确定性树，见下式 | 方向9 [24][25][28] |
+
+**主公式（确定性决策树，阈值【工程】）**：
+
+```text
+C3 = log_completion_rate_3d ;  D = log_duration_deviation
+若 C3 ≥ 0.70 且 |D| ≤ 0.30                         → none
+否则若 (连续 2 天 C3 < 0.60) 或 (D > 0.50)          → local_repair
+否则若 (连续 5 天 C3 < 0.40) 或 deadline_infeasible  → full_replan
+若距上次 full_replan < 48h                            → 强制降级为 local_repair
+    deadline_infeasible = (剩余任务 q80 总时长) > (距 deadline 可用时长)
+```
 
 #### 4.5.3 冷启动 / 升级 / 降级
 
@@ -541,6 +864,45 @@ cooldown       : 同一用户 48h 内已有 full_replan → 强制降级为 loca
 | 剩余预算 | `budget_remaining` | float（元/额度） | ≥0 | 系统 | 每次调用 | 无 → 0（强制 L0） |
 | 用户档位 | `user_tier` | enum | `free/paid` | 系统 | 注册/变更 | `free` |
 
+#### 4.6.2b 参数计算方式
+
+| 参数 | 类别 | 计算方式 | 来源 |
+|---|---|---|---|
+| `goal_ambiguity_score` | 派生 | 三因子加权（见下式） | 方向10 [1][2]；权重【工程】 |
+| `rule_coverage_flag` | 原始 | RuleEngine 直接给出 bool | 方向10 [1][2][3] |
+| `validator_pass` | 原始 | RuleEngine 直接给出 bool | 方向10 [11][20] |
+| `plan_consistency_divergence` | 派生 | `1 − k 次采样的平均两两余弦相似度`（见下式） | 方向10 [27] |
+| `log_similar_solved` | 派生 | 历史成功计划中与当前目标相似度 ≥ 0.85 的条数 | 方向10 [13][14]；阈值【工程】 |
+| `budget_remaining` | 原始 | 系统预算余额 | 【工程】 |
+| `user_tier` | 原始 | 用户档位 | 【工程】 |
+| `route` | 派生（模型输出） | 规则树（见下式） | 方向10 [1][2][5][6] |
+
+**主公式**：
+
+```text
+# 1) 目标模糊度（0–1）
+goal_ambiguity_score = clamp(0.40·m1 + 0.30·m2 + 0.30·s_llm, 0, 1)
+    m1 = 1 若缺少"可验证完成判据"，否则 0
+    m2 = 1 若缺少明确 deadline，否则 0
+    s_llm = 小模型对目标模糊度的评分（0–1）
+    权重 0.40/0.30/0.30【工程】
+
+# 2) 计划一致性分歧度（k=3 次采样）
+plan_consistency_divergence = 1 − ( 2 / (k(k−1)) ) · Σ_{i<j} cos(emb_i, emb_j)
+    emb = 计划文本的嵌入向量；cos ∈ [−1,1] 截断到 [0,1] 后计算     【工程】
+
+# 3) 相似成功方案
+log_similar_solved = |{ h ∈ 历史计划 : cos(emb_h, emb_goal) ≥ 0.85 ∧ outcome_h = success }|  # 【工程】
+
+# 4) 路由规则（阈值【工程】；validator_pass=0 时升级一级）
+若 rule_coverage_flag = true                                   → deterministic
+否则若 budget_remaining ≤ 0                                     → abstain
+否则若 goal_ambiguity_score ≥ 0.60 或 divergence ≥ 0.50        → frontier_llm
+否则若 goal_ambiguity_score ≥ 0.30                              → small_llm
+否则                                                            → deterministic
+若 validator_pass = false 且 route ≠ abstain → route 升级一级（small_llm→frontier_llm；frontier_llm→abstain）
+```
+
 #### 4.6.3 冷启动 / 升级 / 降级
 
 | 阶段 | 形态 | 做法 |
@@ -582,6 +944,34 @@ cooldown       : 同一用户 48h 内已有 full_replan → 强制降级为 loca
 | 前置技能掌握度 | `item_prereq_mastery` | float（0–1） | 0–1 | M4a（前置 skill） | 每次作答 | `0.3` |
 | 反应时标准化 | `log_response_time_z` | float（z 分数） | 典型 −3~+3 | 日志标准化 | 每次作答 | `0` |
 
+#### 4.7.2b 参数计算方式
+
+| 参数 | 类别 | 计算方式 | 来源 |
+|---|---|---|---|
+| `task_difficulty_llm` | 原始 | LLM 难度标签 1–5，不做计算 | 方向3 [6] |
+| `item_historical_success` | 派生 | 同 skill 窗口内 `correct / attempts`（窗口 30） | 方向4 结论 4；窗口【工程】 |
+| `state_skill_mastery` | 派生（跨模型） | 见 §4.4.1 | 方向11 [9] |
+| `item_prereq_mastery` | 派生 | `min_{p∈prereq}(state_skill_mastery_p)`（取最弱前置） | 方向3 [6]；聚合方式【工程】 |
+| `log_response_time_z` | 派生 | `(RT − μ_item) / σ_item`（item 与个人层面的均值/标准差） | 方向4 结论 4 |
+| 难度 `θ` / `P(success)` | 派生（模型输出） | IRT/Elo 式（见下式） | 方向4 结论 4；方向11 [22] |
+
+**主公式**：
+
+```text
+# 1) 难度参数 b（由 LLM 标签映射；S0/S1）
+b_item = 0.5 × (task_difficulty_llm − 3)          # 标签 1–5 → b ∈ [−1,1]【工程】
+
+# 2) 答对概率（1PL / Rasch 形式；能力 θ、难度 b）
+P(success) = 1 / (1 + e^( −(θ_ability − b_item) ))
+
+# 3) 能力 θ 在线更新（Elo 式，S2）
+θ ← θ + K·(outcome − P(success)) ,  K=0.10【工程】 ,  outcome ∈ {0,1}
+    θ 初值 0；同一用户跨 skill 共享时改按 skill 分别维护
+
+# 4) 输出
+θ + 置信区间（由答题次数近似）；item_historical_success 作独立行为校核
+```
+
 #### 4.7.3 冷启动 / 升级 / 降级
 
 | 阶段 | 形态 | 做法 |
@@ -622,6 +1012,43 @@ cooldown       : 同一用户 48h 内已有 full_replan → 强制降级为 loca
 | 是否专注块内 | `log_current_focus_block` | bool | true/false | 系统 | 实时 | `false` |
 | 执行势头 | `log_momentum` | float（连续执行强度） | ≥0 | 日志（`log_streak` 等） | 每日 | `0` |
 | 打扰成本 | `pred_interruption_cost` | float（估计值） | ≥0 | 估计/规则 | 每次决策点 | 默认中值 |
+
+#### 4.8.2b 参数计算方式
+
+| 参数 | 类别 | 计算方式 | 来源 |
+|---|---|---|---|
+| `log_prompt_count_24h` | 派生 | 过去 24 小时已发送提示/追问计数 | 方向9 [9][10] |
+| `log_prompt_ignore_rate` | 派生 | `ignored / sent`（滚动 14 天） | 方向9 [6][30] |
+| `state_receptivity` | 派生 | 四因子加权（见下式） | 方向9 [12]；权重【工程】 |
+| `log_current_focus_block` | 原始 | 系统直接给出 bool | 【工程】 |
+| `log_momentum` | 派生 | `0.6·min(log_streak/7,1) + 0.4·log_completion_rate_7d` | 方向3 [18]；权重【工程】 |
+| `pred_interruption_cost` | 派生 | 三因子加权（见下式） | 方向9 [30]；权重【工程】 |
+| `send / defer` | 派生（模型输出） | 效用比较（见下式） | 方向9 [30] |
+
+**主公式**：
+
+```text
+# 1) 执行势头（0–1）
+log_momentum = 0.60·min(log_streak/7, 1) + 0.40·log_completion_rate_7d      # 【工程】
+
+# 2) 可接受提醒状态（0–1）
+state_receptivity = clamp(
+      0.35·(1 − focus) + 0.25·(1 − log_prompt_ignore_rate)
+    + 0.20·log_momentum + 0.20·(1 − state_fatigue), 0, 1)                    # 权重【工程】
+
+# 3) 打扰成本（0–1）
+pred_interruption_cost = 0.50·focus + 0.30·log_prompt_ignore_rate + 0.20·(1 − state_receptivity)  # 【工程】
+
+# 4) 期望效用决策
+expected_gain = Δp × V
+    Δp = pred_completion_prob(有提示) − pred_completion_prob(无提示)（用同状态历史估计）
+    V  = 任务价值（0–1，来自 RO-4 value 因子）
+send 当且仅当：
+    expected_gain − pred_interruption_cost > 0
+    且 log_prompt_count_24h < 3
+    且 log_current_focus_block = false
+否则 → defer
+```
 
 #### 4.8.3 冷启动 / 升级 / 降级
 
@@ -741,6 +1168,7 @@ cooldown       : 同一用户 48h 内已有 full_replan → 强制降级为 loca
 | **D13** | 统一冷启动三阶段（S0 群体先验 → S1 个体校准 → S2 数据驱动）与统一回退规则 | 方向4 [29][32]；方向11 [9][10] | 已决定 |
 | **D14** | 所有模型输出带 `degraded` 标记，Scheduler 见标记自动加缓冲 | 方向4 [32][39] | 已决定 |
 | **D2-1** | 上线前离线回测 + shadow ≥14 天；降级/升级写 `model_version`/`reason_code` 审计日志 | 方向10 [4]（14 天为【工程】） | 已决定 |
+| **D28** | 每个模型的每个**派生参数**必须给出显式计算方式（公式/符号/窗口/权重/更新时机）；原始输入须标明"不做计算"；所有自定数值逐条标【工程】/【外推】 | 用户反馈；本项目可审计性要求 | 已决定 |
 
 > 门槛数值（n≥300、MAE↓15%、AUC↑5%、Brier↓10%、滚动 90 天 ≥50%）为 **【工程】待验证**，逐条认领见 §8.2。
 
@@ -755,6 +1183,7 @@ cooldown       : 同一用户 48h 内已有 full_replan → 强制降级为 loca
 | T-3 | M7 难度的 IRT 化是否有必要（当前 LLM 标签+校准是否够） | 待 item 交互量足够后评估 |
 | T-4 | M4b 疲劳状态空间模型（S2）在仅打卡数据下是否稳定 | 需 n_days≥30 后的离线验证 |
 | T-5 | M3 的"目标保持期"默认 30 天是否合理 | 需按真实考试/目标分布校准 |
+| T7 | §4.x.2b 引入的全部计算常数（M1 的 N=30/1.3/0.30/0.20/1.15/1.25/1.50；M4b 的 α=0.30 与融合权重；M4c 的 γ=0.80/η=0.15/0.25/λ=0.30；M4d 的 λ=0.70；M6 的分歧度与路由阈值；M7 的 K=0.10 等）均无数据支撑 | 上线后以 MAE/Brier/AUC 与 A/B 逐项校准，回填本文 §8.2 |
 
 ---
 
@@ -813,6 +1242,17 @@ cooldown       : 同一用户 48h 内已有 full_replan → 强制降级为 loca
 | 模型间依赖方向与三层划分 | §4.0.1 | 【工程】 | 项目架构 |
 | 特征命名前缀与类型约定 | §4.0.2 | 【工程】 | 纯软件设计 |
 | shadow 14 天、审计日志字段 | §4.11.2 / §4.11.3 | 【工程】 | 工程纪律 |
+| M1 计算：窗口 N=30、最小 3 条、type_multiplier、疲劳 0.30/精力 0.20、hour_factor 1.15、分位展宽 1.25/1.50、样本阈值 20、KLM 常数 | §4.1.2b / §4.1.5 | 【工程】（KLM 常数为【文献】方向4 [10]） | 参数计算方式 |
+| M2 计算：S0 系数、L2 正则 λ=1.0、Wilson 区间、`log_streak` 阈值 0.8、deadline 无值置 999 | §4.2.2b | 【工程】 | 参数计算方式 |
+| M3 计算：S0 间隔、HLR 初始系数 a/b1..b4、θ_target=0.7、毕业阈值（streak≥3、half_life≥30） | §4.3.2b | 【外推】/【工程】（HLR 形式为【文献】方向8 [20]） | 参数计算方式 |
+| M4a 计算：BKT 四参数值、分层贝叶斯超先验 α=1.5/β=8.5 | §4.4.1 (2b) | 【工程】 | 参数计算方式 |
+| M4b 计算：EWMA α=0.30、融合权重 0.50/0.20/0.20/0.10、行为归一化公式、参考睡眠 7.5h、RT 窗口 20 | §4.4.2 (2b) | 【工程】（EWMA/状态空间方向为【文献】方向1 [7]） | 参数计算方式 |
+| M4c 计算：衰减 γ=0.80、k=10、η_s=0.15、η_f=0.25、回锚 λ=0.30 | §4.4.3 (2b) | 【工程】/【外推】（效能-拖延循环为【文献】方向2 [23]） | 参数计算方式 |
+| M4d 计算：μ=4/σ=2、深夜阈值 3/7 天、skip 归一 5 天、融合 λ=0.70 | §4.4.4 (2b) | 【工程】 | 参数计算方式 |
+| M5 计算：偏差窗口 k=10、完成率阈值 0.6、决策树阈值、deadline_infeasible 定义 | §4.5.2b | 【工程】（局部修复方向为【文献】方向9 [25][28]） | 参数计算方式 |
+| M6 计算：模糊度权重 0.40/0.30/0.30、分歧度公式、相似阈值 0.85、路由阈值 0.60/0.50/0.30 | §4.6.2b | 【工程】/【外推】（路由/分歧度方向为【文献】方向10 [27]） | 参数计算方式 |
+| M7 计算：难度映射斜率 0.5、Elo K=0.10、窗口 30、前置取 min | §4.7.2b | 【工程】/【外推】（IRT 思路为【文献】方向4 结论 4） | 参数计算方式 |
+| M8 计算：momentum 权重 0.6/0.4、receptivity 权重 0.35/0.25/0.20/0.20、cost 权重 0.50/0.30/0.20 | §4.8.2b | 【工程】/【外推】（效用决策为【文献】方向9 [30]） | 参数计算方式 |
 
 ### 8.3 降级条目提醒
 
@@ -828,3 +1268,4 @@ cooldown       : 同一用户 48h 内已有 full_replan → 强制降级为 loca
 |---|---|---|
 | 2026-09-20 | 从 `0-开发指导.md` §2 抽取模型设计，形成本 RO | 用户要求按 RO 拆分 |
 | 2026-09-20 | **本文件生成**：8 个模型各自成节（依据/参数/冷启动·升级·降级/输出消费方），补齐全称中文名与缺失兜底；新增 §8.2 工程值逐条认领 | 用户判定 RO-2 不满意，要求重点重写 |
+| 2026-09-20 | **补充参数计算方式**：M1–M8（含 M4a–M4d）各新增 `(2b) 参数计算方式`（原始/派生分类 + 公式/窗口/权重/更新时机）；M1 新增 §4.1.5 端到端手算算例；§8.2 补登新工程常数；新增 D28、T7 | 用户反馈：参数表缺"具体怎么算出来" |
