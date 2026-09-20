@@ -1,24 +1,44 @@
-# Python
-__pycache__/
-*.py[cod]
-*.egg-info/
+# Dependencies
+node_modules/
+
+# Tooling caches
+.npm-cache/
+.home/
+.expo/
 .pytest_cache/
 .ruff_cache/
 .mypy_cache/
+*.egg-info/
 
-# Virtual envs
+# Python
+__pycache__/
+*.py[cod]
 .venv/
 venv/
 
-# Local env / databases
+# Build output
+dist/
+build/
+web-build/
+
+# Environment / secrets (keep the committed examples)
 .env
+.env.*
+!.env.example
+
+# Local databases
 *.db
 *.sqlite
 *.sqlite3
 
-# Build
-dist/
-build/
+# Signing / credentials
+*.jks
+*.keystore
+*.p8
+*.p12
+*.key
+*.pem
+*.mobileprovision
 
 # IDE / OS
 .idea/
@@ -28,3 +48,10 @@ Thumbs.db
 
 # Research raw retrieval data (regenerable via docs/research/*/fetch_*.ps1)
 docs/research/**/api/
+
+# Verification artifacts: heavy headless-browser profiles + generated shots.
+# The probe scripts (.js/.ps1) stay tracked.
+.shots/cdp-*/
+.shots/preview/
+.shots/reports/
+.shots/*.png
