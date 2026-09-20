@@ -1,0 +1,32 @@
+:root {
+  --font-sans:
+    -apple-system, BlinkMacSystemFont, 'Segoe UI', 'PingFang SC', 'Hiragino Sans GB',
+    'Microsoft YaHei', 'Noto Sans SC', Roboto, Helvetica, Arial, sans-serif;
+  --font-mono:
+    'IBMPlexMono_400Regular', ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas,
+    'Liberation Mono', 'Courier New', monospace;
+}
+
+html,
+body,
+#root {
+  height: 100%;
+}
+
+body {
+  margin: 0;
+  background: #ffffff;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  text-rendering: optimizeLegibility;
+}
+
+/*
+ * react-native-web renders every <Text> with `white-space: pre-wrap`, and CJK does
+ * not break per character under pre-wrap, so long Chinese lines overflow their
+ * container. `!important` is required because RNW writes the value inline.
+ */
+#root,
+#root * {
+  white-space: normal !important;
+}

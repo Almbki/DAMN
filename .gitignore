@@ -1,0 +1,46 @@
+# Dependencies
+node_modules/
+
+# Tooling caches
+.npm-cache/
+.home/
+.expo/
+
+# Build output
+dist/
+web-build/
+
+# Environment / secrets (keep the committed examples)
+.env
+.env.*
+!.env.example
+
+# Python (backend)
+.venv/
+__pycache__/
+*.py[cod]
+
+# Local databases
+*.db
+*.sqlite
+*.sqlite3
+
+# Signing / credentials
+*.jks
+*.keystore
+*.p8
+*.p12
+*.key
+*.pem
+*.mobileprovision
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Verification artifacts: heavy headless-browser profiles + generated shots.
+# The probe scripts (.js/.ps1) stay tracked.
+.shots/cdp-*/
+.shots/preview/
+.shots/reports/
+.shots/*.png
