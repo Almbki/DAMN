@@ -18,6 +18,10 @@ export function useInteraction() {
   return {
     focused,
     hovered,
+    onFocus,
+    onBlur,
+    onHoverIn,
+    onHoverOut,
     handlers: { onFocus, onBlur, onHoverIn, onHoverOut },
   };
 }

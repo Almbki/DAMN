@@ -12,7 +12,7 @@ const STRESS = ['很低', '中等', '偏高', '很高'];
 
 export default function ProfileScreen() {
   const { colors } = useTheme();
-  const { user, completedCount, totalCount } = usePlan();
+  const { user, stats } = usePlan();
   const [energy, setEnergy] = useState(1);
   const [mood, setMood] = useState(2);
   const [stress, setStress] = useState(1);
@@ -34,7 +34,8 @@ export default function ProfileScreen() {
         <View style={[styles.facts, { borderTopColor: colors.line }]}>
           <Fact label="账号" value={user.display_name ?? user.email} />
           <Fact label="执行权重" value={user.execution_weight.toFixed(2)} mono />
-          <Fact label="本周完成" value={`${completedCount}/${totalCount}`} mono />
+          <Fact label="已完成 / 未完成" value={`${stats.doneCount} / ${stats.openCount}`} mono />
+          <Fact label="连续完成" value={`${stats.streak} 天`} mono />
         </View>
       </View>
 

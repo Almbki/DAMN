@@ -1,143 +1,222 @@
 import { createContext, useCallback, useContext, useMemo, useState } from 'react';
 
-import type { TaskRead } from '@/api/types';
-import { energyLabel, mockPlan, mockTasks, mockUser, type EnergyLevel } from '@/data/mock';
+import { addDays, todayISO } from '@/domain/date';
+import {
+  completionRate,
+  completedToday,
+  currentStreak,
+  dailyBuckets,
+  longestStreak,
+  monthlyBuckets,
+  type Completion,
+} from '@/domain/stats';
+import { isClosed, type Task } from '@/domain/task';
+import * as ops from '@/domain/task-ops';
+import type { NewTaskInput } from '@/domain/task-ops';
+import { energyLabel, mockCompletions, mockTasks, mockUser, type EnergyLevel } from '@/data/mock';
 
-export type RulerState = 'done' | 'now' | 'todo';
+export type SmartListKey = 'all' | 'today' | 'tomorrow' | 'upcoming' | 'overdue' | 'noDate';
+
+const initialStore: ops.StoreState = {
+  tasks: mockTasks,
+  completions: mockCompletions,
+  focusSessions: [],
+};
 
 type PlanContextValue = {
   user: typeof mockUser;
-  plan: typeof mockPlan;
-  tasks: TaskRead[];
-  currentTask: TaskRead | null;
+  tasks: Task[];
   energy: EnergyLevel;
-  completedCount: number;
-  totalCount: number;
-  remainingMinutes: number;
-  addGoal: (title: string) => void;
-  toggleTask: (id: number) => void;
-  skipTask: (id: number) => void;
-  startTask: (id: number) => void;
-  ruler: { key: string; state: RulerState }[];
+  energyLabelText: string;
+  lists: Record<SmartListKey, Task[]>;
+  listCounts: Record<SmartListKey, number>;
+  currentTask: Task | null;
+  ruler: { key: string; state: 'done' | 'now' | 'todo' }[];
+  stats: {
+    completedToday: number;
+    openCount: number;
+    doneCount: number;
+    rate: number;
+    streak: number;
+    longest: number;
+    weekly: { date: string; count: number; minutes: number }[];
+    monthly: { date: string; count: number; minutes: number }[];
+    focusToday: number;
+    focusWeek: number;
+  };
+  completions: Completion[];
+  addTask: (text: string, defaults?: Partial<NewTaskInput>) => void;
+  createTask: (input: NewTaskInput) => void;
+  updateTask: (id: number, patch: Partial<Task>) => void;
+  deleteTask: (id: number) => void;
+  setDone: (id: number, done: boolean) => void;
+  toggleDone: (id: number) => void;
+  setSkipped: (id: number, skipped: boolean) => void;
+  reorder: (draggedId: number, targetId: number) => void;
+  moveBy: (id: number, delta: number) => void;
+  batchSetDone: (ids: number[], done: boolean) => void;
+  batchDelete: (ids: number[]) => void;
+  batchReschedule: (ids: number[], date: string | null) => void;
+  logFocus: (taskId: number, minutes: number) => void;
 };
 
 const PlanContext = createContext<PlanContextValue | null>(null);
 
-function isDone(task: TaskRead) {
-  return task.status === 'completed' || task.status === 'skipped';
-}
-
 export function PlanProvider({ children }: { children: React.ReactNode }) {
-  const [tasks, setTasks] = useState<TaskRead[]>(mockTasks);
+  const [state, setState] = useState<ops.StoreState>(initialStore);
   const [energy] = useState<EnergyLevel>('medium');
-  const [nextId, setNextId] = useState(mockTasks.length + 1);
+
+  const ordered = useMemo(
+    () => [...state.tasks].sort((a, b) => a.order - b.order),
+    [state.tasks],
+  );
+
+  const today = todayISO();
+
+  const lists = useMemo(() => {
+    const tomorrow = addDays(today, 1);
+    const open = (task: Task) => !isClosed(task);
+    return {
+      all: ordered,
+      today: ordered.filter((task) => task.dueDate === today),
+      tomorrow: ordered.filter((task) => task.dueDate === tomorrow && open(task)),
+      upcoming: ordered.filter((task) => task.dueDate && task.dueDate > tomorrow && open(task)),
+      overdue: ordered.filter((task) => task.dueDate && task.dueDate < today && open(task)),
+      noDate: ordered.filter((task) => !task.dueDate && open(task)),
+    } satisfies Record<SmartListKey, Task[]>;
+  }, [ordered, today]);
+
+  const listCounts = useMemo(() => {
+    const counts = {} as Record<SmartListKey, number>;
+    (Object.keys(lists) as SmartListKey[]).forEach((key) => {
+      counts[key] = lists[key].filter((task) => !isClosed(task)).length;
+    });
+    return counts;
+  }, [lists]);
 
   const currentTask = useMemo(() => {
-    const inProgress = tasks.find((task) => task.status === 'in_progress');
-    return inProgress ?? tasks.find((task) => !isDone(task)) ?? null;
-  }, [tasks]);
+    const todayOpen = ordered.filter((task) => task.dueDate === today && !isClosed(task));
+    return todayOpen[0] ?? ordered.find((task) => !isClosed(task)) ?? null;
+  }, [ordered, today]);
 
-  const addGoal = useCallback(
-    (title: string) => {
-      const trimmed = title.trim();
-      if (!trimmed) return;
-      setTasks((current) => {
-        const id = nextId;
-        const task: TaskRead = {
-          id,
-          plan_id: 1,
-          goal_id: null,
-          title: trimmed,
-          estimated_duration: 25,
-          predicted_duration: 25,
-          cognitive_load: 'medium',
-          priority: 3,
-          scheduled_date: '2026-09-20',
-          start_time: null,
-          end_time: null,
-          status: 'scheduled',
-          completion_probability: 0.7,
-          standards: [],
-        };
-        return [...current, task];
-      });
-      setNextId((id) => id + 1);
-    },
-    [nextId],
-  );
+  const ruler = useMemo(() => {
+    const todays = ordered.filter((task) => task.dueDate === today);
+    const base = todays.length > 0 ? todays : ordered.filter((task) => !isClosed(task));
+    return base.map((task) => ({
+      key: String(task.id),
+      state: isClosed(task) ? ('done' as const) : task.id === currentTask?.id ? ('now' as const) : ('todo' as const),
+    }));
+  }, [ordered, today, currentTask]);
 
-  const toggleTask = useCallback((id: number) => {
-    setTasks((current) =>
-      current.map((task) =>
-        task.id === id
-          ? {
-              ...task,
-              // Un-completing must go through status on the real backend:
-              // PATCH { completed: false } is a no-op there.
-              status: isDone(task) ? 'scheduled' : 'completed',
-            }
-          : task,
-      ),
-    );
+  const stats = useMemo(() => {
+    const weekStart = addDays(today, -6);
+    const focusSessions = state.focusSessions;
+    return {
+      completedToday: completedToday(state.tasks),
+      openCount: state.tasks.filter((task) => !isClosed(task)).length,
+      doneCount: state.tasks.filter((task) => task.done).length,
+      rate: completionRate(state.tasks),
+      streak: currentStreak(state.completions, today),
+      longest: longestStreak(state.completions),
+      weekly: dailyBuckets(state.completions, 7),
+      monthly: monthlyBuckets(state.completions, 6),
+      focusToday: focusSessions
+        .filter((session) => session.date === today)
+        .reduce((sum, session) => sum + session.minutes, 0),
+      focusWeek: focusSessions
+        .filter((session) => session.date >= weekStart)
+        .reduce((sum, session) => sum + session.minutes, 0),
+    };
+  }, [state.tasks, state.completions, state.focusSessions, today]);
+
+  const addTask = useCallback((text: string, defaults?: Partial<NewTaskInput>) => {
+    setState((prev) => ops.createTaskFromText(prev, text, defaults).state);
   }, []);
-
-  const skipTask = useCallback((id: number) => {
-    setTasks((current) =>
-      current.map((task) => (task.id === id ? { ...task, status: 'skipped' } : task)),
-    );
+  const createTask = useCallback((input: NewTaskInput) => {
+    setState((prev) => ops.makeTask(prev, input).state);
   }, []);
-
-  const startTask = useCallback((id: number) => {
-    setTasks((current) =>
-      current.map((task) => (task.id === id ? { ...task, status: 'in_progress' } : task)),
-    );
+  const updateTask = useCallback((id: number, patch: Partial<Task>) => {
+    setState((prev) => ops.updateTask(prev, id, patch));
   }, []);
-
-  const completedCount = tasks.filter(isDone).length;
-  const remainingMinutes = tasks
-    .filter((task) => !isDone(task))
-    .reduce((sum, task) => sum + (task.estimated_duration ?? 0), 0);
-
-  const ruler = useMemo(
-    () =>
-      tasks.map((task) => ({
-        key: String(task.id),
-        state: isDone(task)
-          ? ('done' as const)
-          : task.id === currentTask?.id
-            ? ('now' as const)
-            : ('todo' as const),
-      })),
-    [tasks, currentTask],
-  );
+  const deleteTask = useCallback((id: number) => {
+    setState((prev) => ops.deleteTask(prev, id));
+  }, []);
+  const setDone = useCallback((id: number, done: boolean) => {
+    setState((prev) => ops.setDone(prev, id, done));
+  }, []);
+  const toggleDone = useCallback((id: number) => {
+    setState((prev) => ops.toggleDone(prev, id));
+  }, []);
+  const setSkipped = useCallback((id: number, skipped: boolean) => {
+    setState((prev) => ops.setSkipped(prev, id, skipped));
+  }, []);
+  const reorder = useCallback((draggedId: number, targetId: number) => {
+    setState((prev) => ops.reorder(prev, draggedId, targetId));
+  }, []);
+  const moveBy = useCallback((id: number, delta: number) => {
+    setState((prev) => ops.moveBy(prev, id, delta));
+  }, []);
+  const batchSetDone = useCallback((ids: number[], done: boolean) => {
+    setState((prev) => ops.batchSetDone(prev, ids, done));
+  }, []);
+  const batchDelete = useCallback((ids: number[]) => {
+    setState((prev) => ops.batchDelete(prev, ids));
+  }, []);
+  const batchReschedule = useCallback((ids: number[], date: string | null) => {
+    setState((prev) => ops.batchReschedule(prev, ids, date));
+  }, []);
+  const logFocus = useCallback((taskId: number, minutes: number) => {
+    setState((prev) => ops.logFocus(prev, taskId, minutes));
+  }, []);
 
   const value = useMemo<PlanContextValue>(
     () => ({
       user: mockUser,
-      plan: mockPlan,
-      tasks,
-      currentTask,
+      tasks: ordered,
       energy,
-      completedCount,
-      totalCount: tasks.length,
-      remainingMinutes,
-      addGoal,
-      toggleTask,
-      skipTask,
-      startTask,
+      energyLabelText: energyLabel[energy],
+      lists,
+      listCounts,
+      currentTask,
       ruler,
+      stats,
+      completions: state.completions,
+      addTask,
+      createTask,
+      updateTask,
+      deleteTask,
+      setDone,
+      toggleDone,
+      setSkipped,
+      reorder,
+      moveBy,
+      batchSetDone,
+      batchDelete,
+      batchReschedule,
+      logFocus,
     }),
     [
-      tasks,
-      currentTask,
+      ordered,
       energy,
-      completedCount,
-      remainingMinutes,
-      addGoal,
-      toggleTask,
-      skipTask,
-      startTask,
+      lists,
+      listCounts,
+      currentTask,
       ruler,
+      stats,
+      state.completions,
+      addTask,
+      createTask,
+      updateTask,
+      deleteTask,
+      setDone,
+      toggleDone,
+      setSkipped,
+      reorder,
+      moveBy,
+      batchSetDone,
+      batchDelete,
+      batchReschedule,
+      logFocus,
     ],
   );
 
