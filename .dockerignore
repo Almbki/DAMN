@@ -1,0 +1,37 @@
+# Dependencies / tooling
+.venv/
+venv/
+venv.bak/
+**/__pycache__/
+*.py[cod]
+*$py.class
+*.egg-info/
+.eggs/
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+.coverage
+coverage.xml
+htmlcov/
+
+# Env / secrets
+.env
+.env.*
+!.env.example
+
+# Git / CI
+.git/
+.gitignore
+
+# Local databases / artifacts
+*.db
+*.sqlite3
+*.dump
+models/
+artifacts/
+
+# OS noise
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/

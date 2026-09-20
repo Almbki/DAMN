@@ -1,0 +1,14 @@
+[
+  {"k": "goal_gradient_kivetz", "q": "goal gradient hypothesis customer loyalty reward"},
+  {"k": "endowed_progress", "q": "endowed progress effect goal"},
+  {"k": "small_wins", "q": "small wins large change social problems"},
+  {"k": "task_segmentation", "q": "task segmentation goal subgoal motivation"},
+  {"k": "subgoal_academic", "q": "subgoal setting academic performance students"},
+  {"k": "microtask_crowdsourcing", "q": "microtask decomposition crowdsourcing complex work"},
+  {"k": "task_granularity_crowd", "q": "task granularity crowdsourcing human computation"},
+  {"k": "decomposition_coordination", "q": "decomposition coordination cost project tasks"},
+  {"k": "task_size_procrastination", "q": "task aversiveness task size procrastination"},
+  {"k": "goal_breakdown_behavior", "q": "breaking goals into steps behavior change"},
+  {"k": "planning_fallacy_tasks", "q": "planning fallacy task completion time"},
+  {"k": "chunking_expertise", "q": "chunking expertise skill acquisition"}
+]

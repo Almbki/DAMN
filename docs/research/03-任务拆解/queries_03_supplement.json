@@ -1,0 +1,6 @@
+[
+  {"k": "chinese_goal_breakdown", "q": "目标拆解"},
+  {"k": "chinese_subgoal", "q": "子目标"},
+  {"k": "hierarchical_task_network_supp", "q": "hierarchical task network planning"},
+  {"k": "subgoal_learning_supp", "q": "subgoal learning"}
+]

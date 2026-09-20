@@ -5,20 +5,26 @@ node_modules/
 .npm-cache/
 .home/
 .expo/
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+*.egg-info/
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
 
 # Build output
 dist/
+build/
 web-build/
 
 # Environment / secrets (keep the committed examples)
 .env
 .env.*
 !.env.example
-
-# Python (backend)
-.venv/
-__pycache__/
-*.py[cod]
 
 # Local databases
 *.db
@@ -34,9 +40,14 @@ __pycache__/
 *.pem
 *.mobileprovision
 
-# OS
+# IDE / OS
+.idea/
+.vscode/
 .DS_Store
 Thumbs.db
+
+# Research raw retrieval data (regenerable via docs/research/*/fetch_*.ps1)
+docs/research/**/api/
 
 # Verification artifacts: heavy headless-browser profiles + generated shots.
 # The probe scripts (.js/.ps1) stay tracked.
