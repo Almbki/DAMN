@@ -50,7 +50,7 @@ export function TextField({
           multiline ? styles.multiline : null,
           {
             color: colors.ink,
-            borderColor: error ? colors.ink : focused ? colors.lineStrong : colors.line,
+            borderColor: error ? colors.ink : focused ? colors.accent : colors.line,
             backgroundColor: colors.paper,
           },
         ]}
@@ -69,7 +69,7 @@ const styles = StyleSheet.create({
   },
   input: {
     minHeight: 44,
-    borderWidth: 1,
+    borderWidth: 2,
     borderRadius: Radius.sm,
     paddingHorizontal: Space.md,
     fontSize: Type.body,

@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 
-import { Radius, Space, Type } from '@/constants/tokens';
+import { Fonts, Radius, Space, Type } from '@/constants/tokens';
 import { addDays, formatShort, parseISO, toISO, todayISO } from '@/domain/date';
 import { useTheme } from '@/state/theme';
 
@@ -81,7 +81,7 @@ export function DateTimeField({
         accessibilityRole="button"
         accessibilityLabel={`${label}：${summary}`}
         onPress={() => setOpen((value) => !value)}
-        style={[styles.summary, { borderColor: open ? colors.lineStrong : colors.line, backgroundColor: colors.paper }]}>
+        style={[styles.summary, { borderColor: open ? colors.accent : colors.line, backgroundColor: colors.paper }]}>
         <Text
           style={[styles.summaryText, { color: date ? colors.ink : colors.inkFaint }]}
           numberOfLines={1}>
@@ -95,6 +95,8 @@ export function DateTimeField({
           <View style={styles.quickRow}>
             <Quick label="今天" onPress={() => pickDay(today)} />
             <Quick label="明天" onPress={() => pickDay(addDays(today, 1))} />
+          </View>
+          <View style={styles.quickRow}>
             <Quick label="后天" onPress={() => pickDay(addDays(today, 2))} />
             <Quick
               label="清除"
@@ -153,7 +155,7 @@ export function DateTimeField({
                         backgroundColor: selected ? colors.ink : 'transparent',
                       },
                     ]}>
-                    <Text style={[styles.dayText, { color: selected ? colors.onInk : colors.ink }]}>
+                    <Text style={[styles.dayText, { color: selected ? colors.onAccent : colors.ink }]}>
                       {Number(cell.slice(8, 10))}
                     </Text>
                   </Pressable>
@@ -269,14 +271,15 @@ const styles = StyleSheet.create({
   },
   quickRow: {
     flexDirection: 'row',
-    flexWrap: 'wrap',
     gap: Space.sm,
   },
   quick: {
+    flex: 1,
     borderWidth: 1,
     borderRadius: Radius.sm,
     paddingHorizontal: Space.md,
-    minHeight: 32,
+    minHeight: 44,
+    alignItems: 'center',
     justifyContent: 'center',
   },
   quickText: {
@@ -300,7 +303,7 @@ const styles = StyleSheet.create({
   },
   monthLabel: {
     fontSize: Type.body,
-    fontFamily: 'IBMPlexMono_500Medium',
+    fontFamily: Fonts.mono,
   },
   weekHeader: {
     flexDirection: 'row',
@@ -329,14 +332,13 @@ const styles = StyleSheet.create({
   },
   dayText: {
     fontSize: Type.small,
-    fontFamily: 'IBMPlexMono_400Regular',
+    fontFamily: Fonts.monoRegular,
   },
   timeRow: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: Space.sm,
     paddingTop: Space.xs,
-    flexWrap: 'wrap',
   },
   timeLabel: {
     fontSize: Type.small,
@@ -365,7 +367,7 @@ const styles = StyleSheet.create({
     minWidth: 30,
     textAlign: 'center',
     fontSize: Type.body,
-    fontFamily: 'IBMPlexMono_500Medium',
+    fontFamily: Fonts.mono,
   },
   clearTime: {
     paddingHorizontal: Space.sm,

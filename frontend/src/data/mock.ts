@@ -185,3 +185,74 @@ export const mockCompletions: Completion[] = [
 ];
 
 export const mockWhyNow = '昨天你只完成了 3/5，所以今天先排轻一点。这件事在 15:00 前做完就好。';
+
+/** GOAL page fixtures. Progress is a time-weighted mock value (0..1). */
+export type GoalStatus = 'active' | 'draft';
+
+export interface Goal {
+  id: number;
+  title: string;
+  progress: number;
+  dueLabel: string;
+  status: GoalStatus;
+}
+
+export const mockGoals: Goal[] = [
+  { id: 1, title: '完成半程马拉松', progress: 0.62, dueLabel: '11 月 8 日', status: 'active' },
+  { id: 2, title: '通过高等数学期末', progress: 0.35, dueLabel: '1 月 12 日', status: 'active' },
+  { id: 3, title: '整理个人作品集', progress: 0, dueLabel: '未定', status: 'draft' },
+];
+
+/** What the system changed about the future, shown on the TODO page. */
+export interface PlanChange {
+  id: number;
+  date: string;
+  text: string;
+}
+
+export const mockPlanChanges: PlanChange[] = [
+  { id: 1, date: addDays(today, 1), text: '把「核心力量训练」挪到 18:00 之后' },
+  { id: 2, date: addDays(today, 2), text: '「提交项目汇报材料」的预算时间减半' },
+  { id: 3, date: addDays(today, 4), text: '新增「拉伸与放松」15 分钟' },
+];
+
+/** Profile page fixtures. */
+export const mockProfile = {
+  energy: { value: 72, level: '中等' },
+  stress: { value: 34, level: '偏低' },
+  performance: { value: 81, level: '不错' },
+  dataDays: 12,
+  attribution:
+    '你连续三天在傍晚完成力量训练，完成率比上午高 22%。所以系统把这类任务排在下午，并把今天的总量压到 4 件。',
+};
+
+/** Goal breakdown flow fixtures. */
+export const mockGoalDraft = {
+  title: '完成半程马拉松',
+  steps: [
+    { title: '慢跑 5 公里', minutes: 35 },
+    { title: '间歇跑 6×400 米', minutes: 40 },
+    { title: '长距离 12 公里', minutes: 75 },
+    { title: '赛前一周减量', minutes: 50 },
+  ],
+};
+
+export type ChatRole = 'ai' | 'me';
+
+export interface ChatMessage {
+  id: number;
+  role: ChatRole;
+  text: string;
+}
+
+export const mockGoalChat: ChatMessage[] = [
+  { id: 1, role: 'ai', text: '这个目标想什么时候完成？' },
+  { id: 2, role: 'me', text: '11 月 8 日比赛，之前要跑过 12 公里。' },
+  { id: 3, role: 'ai', text: '你现在每周能跑几次？我按每周三次、每次不超过 75 分钟来排。' },
+];
+
+export const mockAiReplies: string[] = [
+  '好，我把这条加进草案，并把当天的总量降下来。',
+  '记下了，这一段保持轻松配速，不追求速度。',
+  '如果这周太挤，就先只保留长距离那一次。',
+];

@@ -1,5 +1,8 @@
 import { Link, usePathname } from 'expo-router';
+import { useEffect, useState } from 'react';
 import {
+  Animated,
+  Easing as RNEasing,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -8,10 +11,28 @@ import {
   View,
 } from 'react-native';
 
+import { NAV_ICONS } from '@/components/icons';
+import { HeaderControlsContext, type HeaderControls } from '@/components/shell/header-controls';
+import { Surface } from '@/components/surface';
 import { useInteraction } from '@/components/ui/interaction';
+import { useRipple } from '@/components/ui/ripple';
 import { NAV, type NavItem } from '@/constants/nav';
-import { Layout, Line, Space, Type } from '@/constants/tokens';
+import {
+  Duration,
+  Layout,
+  Line,
+  Motion,
+  Radius,
+  RingWidth,
+  Space,
+  Type,
+} from '@/constants/tokens';
+import { useReducedMotion } from '@/hooks/use-reduced-motion';
 import { useTheme } from '@/state/theme';
+
+/** The bottom bar's active pill, in points. */
+const TAB_PILL_WIDTH = 56;
+const TAB_PILL_HEIGHT = 30;
 
 function useWide() {
   const { width } = useWindowDimensions();
@@ -23,48 +44,50 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   const { colors } = useTheme();
   const wide = useWide();
   const pathname = usePathname();
-  const active = NAV.find((item) => item.href === pathname) ?? NAV[0];
+  const [headerControls, setHeaderControls] = useState<HeaderControls>({});
 
   return (
-    <View
-      style={[
-        styles.root,
-        { backgroundColor: colors.paper, flexDirection: wide ? 'row' : 'column' },
-      ]}>
-      {wide ? <Sidebar pathname={pathname} /> : null}
+    <HeaderControlsContext.Provider value={setHeaderControls}>
+      <View
+        style={[
+          styles.root,
+          { backgroundColor: colors.paper, flexDirection: wide ? 'row' : 'column' },
+        ]}>
+        {wide ? <Sidebar pathname={pathname} /> : null}
 
-      <View style={styles.main}>
-        <View
-          style={[
-            styles.header,
-            {
-              height: Layout.headerHeight,
-              paddingHorizontal: wide ? Layout.padWide : Layout.padNarrow,
-              borderBottomColor: colors.line,
-              backgroundColor: colors.paper,
-            },
-          ]}>
-          <Text style={[styles.headerTitle, { color: colors.ink }]}>{active.title}</Text>
-          <ThemeToggle />
-        </View>
-
-        <ScrollView style={styles.scroll} contentContainerStyle={styles.scrollContent}>
+        <View style={styles.main}>
           <View
             style={[
-              styles.content,
+              styles.header,
               {
-                maxWidth: Layout.contentMax,
+                height: Layout.headerHeight,
                 paddingHorizontal: wide ? Layout.padWide : Layout.padNarrow,
-                paddingVertical: wide ? Space.xxl : Space.xl,
+                borderBottomColor: colors.line,
+                backgroundColor: colors.paper,
               },
             ]}>
-            {children}
+            <View style={styles.headerSide}>{headerControls.left}</View>
+            <View style={styles.headerSide}>{headerControls.right}</View>
           </View>
-        </ScrollView>
-      </View>
 
-      {wide ? null : <BottomNav pathname={pathname} />}
-    </View>
+          <ScrollView style={styles.scroll} contentContainerStyle={styles.scrollContent}>
+            <View
+              style={[
+                styles.content,
+                {
+                  maxWidth: Layout.contentMax,
+                  paddingHorizontal: wide ? Layout.padWide : Layout.padNarrow,
+                  paddingVertical: wide ? Space.xxl : Space.xl,
+                },
+              ]}>
+              {children}
+            </View>
+          </ScrollView>
+        </View>
+
+        {wide ? null : <BottomNav pathname={pathname} />}
+      </View>
+    </HeaderControlsContext.Provider>
   );
 }
 
@@ -96,14 +119,68 @@ function Sidebar({ pathname }: { pathname: string }) {
   );
 }
 
+/**
+ * Bottom bar with an MD pill that slides between the active tabs.
+ *
+ * The pill is a `translateX` on a single absolutely positioned node: position is
+ * `activeIndex × itemWidth`, and `itemWidth` comes from measuring the container,
+ * so there is no wrapping and no per-item layout math.
+ */
 function BottomNav({ pathname }: { pathname: string }) {
   const { colors } = useTheme();
+  const reduced = useReducedMotion();
+  const [width, setWidth] = useState(0);
+  const [slide] = useState(() => new Animated.Value(0));
+  const activeIndex = Math.max(
+    0,
+    NAV.findIndex((item) => item.href === pathname),
+  );
+  const itemWidth = width > 0 ? width / NAV.length : 0;
+
+  useEffect(() => {
+    const to = activeIndex * itemWidth;
+    if (reduced || itemWidth === 0) {
+      slide.setValue(to);
+      return;
+    }
+    const animation = Animated.timing(slide, {
+      toValue: to,
+      duration: Duration.medium,
+      easing: RNEasing.bezier(0.05, 0.7, 0.1, 1),
+      useNativeDriver: Motion.nativeDriver,
+    });
+    animation.start();
+    return () => animation.stop();
+  }, [activeIndex, itemWidth, reduced, slide]);
+
   return (
     <View
+      onLayout={(event) => setWidth(event.nativeEvent.layout.width)}
       style={[
         styles.bottomNav,
         { backgroundColor: colors.panel, borderTopColor: colors.line, height: Layout.navHeight },
       ]}>
+      {itemWidth > 0 ? (
+        <Animated.View
+          pointerEvents="none"
+          style={[
+            styles.sliderTrack,
+            {
+              width: TAB_PILL_WIDTH,
+              height: TAB_PILL_HEIGHT,
+              left: (itemWidth - TAB_PILL_WIDTH) / 2,
+              transform: [{ translateX: slide }],
+            },
+          ]}>
+          <Surface
+            elevation="raised"
+            radius={Radius.full}
+            background={colors.navPill}
+            style={styles.slider}
+          />
+        </Animated.View>
+      ) : null}
+
       {NAV.map((item) => (
         <NavLink key={item.href} item={item} active={item.href === pathname} variant="tab" />
       ))}
@@ -122,7 +199,10 @@ function NavLink({
 }) {
   const { colors } = useTheme();
   const { focused, hovered, handlers } = useInteraction();
+  const ripple = useRipple(colors.ripple);
   const isRail = variant === 'rail';
+  const Icon = NAV_ICONS[item.icon];
+  const tint = active ? colors.accent : colors.inkMuted;
 
   return (
     <Link href={item.href} asChild>
@@ -130,51 +210,37 @@ function NavLink({
         accessibilityRole="link"
         accessibilityState={{ selected: active }}
         {...handlers}
+        onLayout={ripple.onLayout}
+        onPressIn={ripple.onPressIn}
         style={StyleSheet.flatten([
           isRail ? styles.railItem : styles.tabItem,
           {
-            borderLeftColor: isRail ? (active ? colors.ink : 'transparent') : undefined,
-            borderTopColor: !isRail ? (active ? colors.ink : 'transparent') : undefined,
+            borderLeftColor: isRail ? (active ? colors.accent : 'transparent') : undefined,
             backgroundColor: hovered ? colors.hover : 'transparent',
-            boxShadow: focused ? `0 0 0 2px ${colors.lineStrong}` : undefined,
           },
         ])}>
-        <Text
-          style={[
-            isRail ? styles.railLabel : styles.tabLabel,
-            {
-              color: active ? colors.ink : colors.inkMuted,
-              fontWeight: active ? '700' : '500',
-            },
-          ]}>
-          {item.label}
-        </Text>
+        {ripple.node}
+        <View
+          style={
+            isRail ? styles.railContent : [styles.tabContent, active ? styles.tabContentActive : null]
+          }>
+          <Icon size={22} color={tint} />
+          <Text
+            style={[
+              isRail ? styles.railLabel : styles.tabLabel,
+              {
+                color: active ? colors.ink : colors.inkMuted,
+                fontWeight: active ? '700' : '400',
+              },
+            ]}>
+            {item.label}
+          </Text>
+        </View>
+        {focused ? (
+          <View pointerEvents="none" style={[styles.ring, { borderColor: colors.accent }]} />
+        ) : null}
       </Pressable>
     </Link>
-  );
-}
-
-function ThemeToggle() {
-  const { colors, mode, cycleMode } = useTheme();
-  const { focused, hovered, handlers } = useInteraction();
-  const label = mode === 'light' ? '浅色' : mode === 'dark' ? '深色' : '跟系统';
-
-  return (
-    <Pressable
-      accessibilityRole="button"
-      accessibilityLabel={`主题：${label}，点击切换`}
-      onPress={cycleMode}
-      {...handlers}
-      style={[
-        styles.themeToggle,
-        {
-          borderColor: colors.line,
-          backgroundColor: hovered ? colors.hover : 'transparent',
-          boxShadow: focused ? `0 0 0 2px ${colors.lineStrong}` : undefined,
-        },
-      ]}>
-      <Text style={[styles.themeLabel, { color: colors.inkMuted }]}>{label}</Text>
-    </Pressable>
   );
 }
 
@@ -192,9 +258,11 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     borderBottomWidth: 1,
   },
-  headerTitle: {
-    fontSize: Type.title,
-    fontWeight: '700',
+  headerSide: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Space.sm,
+    minWidth: 0,
   },
   scroll: {
     flex: 1,
@@ -222,10 +290,19 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   railItem: {
+    minHeight: 44,
+    flexDirection: 'row',
+    alignItems: 'center',
     paddingVertical: Space.md,
     paddingHorizontal: Space.xl,
     paddingLeft: Space.xl - 3,
     borderLeftWidth: 3,
+    overflow: 'hidden',
+  },
+  railContent: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Space.md,
   },
   railLabel: {
     fontSize: Type.body,
@@ -243,25 +320,37 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     borderTopWidth: 1,
   },
+  sliderTrack: {
+    position: 'absolute',
+    top: 4,
+  },
+  slider: {
+    flex: 1,
+  },
   tabItem: {
     flex: 1,
     alignItems: 'center',
-    justifyContent: 'center',
-    borderTopWidth: 2,
+    justifyContent: 'flex-start',
+    paddingTop: Space.sm,
+    overflow: 'hidden',
+  },
+  tabContent: {
+    alignItems: 'center',
+    gap: Space.xs,
+  },
+  tabContentActive: {
+    transform: [{ translateY: -2 }],
   },
   tabLabel: {
     fontSize: Type.small,
     lineHeight: Type.small * Line.tight,
   },
-  themeToggle: {
-    borderWidth: 1,
-    borderRadius: 999,
-    paddingHorizontal: Space.md,
-    paddingVertical: Space.xs,
-    minHeight: 30,
-    justifyContent: 'center',
-  },
-  themeLabel: {
-    fontSize: Type.small,
+  ring: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    borderWidth: RingWidth,
   },
 });

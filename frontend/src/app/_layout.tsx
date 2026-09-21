@@ -8,6 +8,7 @@ import { View } from 'react-native';
 
 import { AppShell } from '@/components/shell/app-shell';
 import { PlanProvider } from '@/state/plan';
+import { PreferencesProvider } from '@/state/preferences';
 import { ThemeProvider, useTheme } from '@/state/theme';
 
 export default function RootLayout() {
@@ -21,9 +22,11 @@ export default function RootLayout() {
 
   return (
     <ThemeProvider>
-      <PlanProvider>
-        <RootShell />
-      </PlanProvider>
+      <PreferencesProvider>
+        <PlanProvider>
+          <RootShell />
+        </PlanProvider>
+      </PreferencesProvider>
     </ThemeProvider>
   );
 }

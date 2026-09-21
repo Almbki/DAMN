@@ -1,124 +1,165 @@
-import { useState } from 'react';
 import { StyleSheet, Text, View } from 'react-native';
 
-import { Segmented } from '@/components/ui/segmented';
-import { Line, Radius, Space, Type } from '@/constants/tokens';
+import { Surface } from '@/components/surface';
+import { Fonts, Line, Radius, Space, Type } from '@/constants/tokens';
+import { mockProfile } from '@/data/mock';
+import { parseISO } from '@/domain/date';
 import { usePlan } from '@/state/plan';
 import { useTheme } from '@/state/theme';
 
-const LEVELS = ['偏低', '一般', '不错', '很好'];
-const MOODS = ['低落', '平静', '轻松', '愉快'];
-const STRESS = ['很低', '中等', '偏高', '很高'];
+const WEEKDAY = ['日', '一', '二', '三', '四', '五', '六'];
 
 export default function ProfileScreen() {
   const { colors } = useTheme();
-  const { user, stats } = usePlan();
-  const [energy, setEnergy] = useState(1);
-  const [mood, setMood] = useState(2);
-  const [stress, setStress] = useState(1);
+  const { stats } = usePlan();
+
+  const max = Math.max(1, ...stats.weekly.map((bucket) => bucket.count));
 
   return (
     <View style={styles.page}>
-      <View style={[styles.card, { borderColor: colors.line }]}>
-        <Text style={[styles.cardTitle, { color: colors.ink }]}>用户画像</Text>
-        <Text style={[styles.cardBody, { color: colors.inkMuted }]}>
-          基于历史执行数据生成的特征，用于估计任务耗时与每日安排量。
-        </Text>
-        <View style={styles.tags}>
-          {['全栈开发', '极简主义', '高执行力', '晨间型'].map((tag) => (
-            <View key={tag} style={[styles.tag, { borderColor: colors.line }]}>
-              <Text style={[styles.tagText, { color: colors.ink }]}>{tag}</Text>
-            </View>
-          ))}
-        </View>
-        <View style={[styles.facts, { borderTopColor: colors.line }]}>
-          <Fact label="账号" value={user.display_name ?? user.email} />
-          <Fact label="执行权重" value={user.execution_weight.toFixed(2)} mono />
-          <Fact label="已完成 / 未完成" value={`${stats.doneCount} / ${stats.openCount}`} mono />
-          <Fact label="连续完成" value={`${stats.streak} 天`} mono />
-        </View>
+      <View style={styles.cells}>
+        <StatCell label="精力" value={mockProfile.energy.value} level={mockProfile.energy.level} />
+        <StatCell label="压力" value={mockProfile.stress.value} level={mockProfile.stress.level} />
+        <StatCell
+          label="效能"
+          value={mockProfile.performance.value}
+          level={mockProfile.performance.level}
+        />
       </View>
 
-      <View style={[styles.card, { borderColor: colors.line }]}>
-        <Text style={[styles.cardTitle, { color: colors.ink }]}>现在的状态</Text>
-        <Segmented label="精力" options={LEVELS} value={energy} onChange={setEnergy} />
-        <Segmented label="心情" options={MOODS} value={mood} onChange={setMood} />
-        <Segmented label="压力" options={STRESS} value={stress} onChange={setStress} />
-        <Text style={[styles.helper, { color: colors.inkMuted }]}>
-          心情只影响今天的安排顺序，不会改变任务量。
+      <Surface elevation="raised" radius={Radius.lg} style={styles.card}>
+        <Text style={[styles.cardTitle, { color: colors.ink }]}>最近 7 天</Text>
+        <View style={styles.bars}>
+          {stats.weekly.map((bucket, index) => {
+            const ratio = bucket.count / max;
+            const isToday = index === stats.weekly.length - 1;
+            return (
+              <View key={bucket.date} style={styles.barCol}>
+                <Text style={[styles.barValue, { color: colors.inkMuted }]}>{bucket.count}</Text>
+                <View style={[styles.barTrack, { backgroundColor: colors.panel }]}>
+                  <View
+                    style={[
+                      styles.barFill,
+                      {
+                        height: `${Math.round(ratio * 100)}%`,
+                        backgroundColor: isToday ? colors.accent : colors.inkMuted,
+                      },
+                    ]}
+                  />
+                </View>
+                <Text style={[styles.barLabel, { color: colors.inkMuted }]}>
+                  周{WEEKDAY[parseISO(bucket.date).getDay()]}
+                </Text>
+              </View>
+            );
+          })}
+        </View>
+        <Text style={[styles.note, { color: colors.inkMuted }]}>
+          已有 {mockProfile.dataDays} 天数据，趋势可信。
         </Text>
+      </Surface>
+
+      <View style={styles.why}>
+        <View style={[styles.whyRule, { backgroundColor: colors.accent }]} />
+        <View style={styles.whyBody}>
+          <Text style={[styles.cardTitle, { color: colors.ink }]}>系统为什么这么判断</Text>
+          <Text style={[styles.whyText, { color: colors.inkMuted }]}>{mockProfile.attribution}</Text>
+        </View>
       </View>
     </View>
   );
 }
 
-function Fact({ label, value, mono }: { label: string; value: string; mono?: boolean }) {
+function StatCell({ label, value, level }: { label: string; value: number; level: string }) {
   const { colors } = useTheme();
   return (
-    <View style={styles.fact}>
-      <Text style={[styles.factLabel, { color: colors.inkMuted }]}>{label}</Text>
-      <Text
-        style={[
-          styles.factValue,
-          { color: colors.ink, fontFamily: mono ? 'IBMPlexMono_500Medium' : undefined },
-        ]}>
-        {value}
-      </Text>
-    </View>
+    <Surface elevation="raised" radius={Radius.lg} style={styles.cell}>
+      <Text style={[styles.cellLabel, { color: colors.inkMuted }]}>{label}</Text>
+      <Text style={[styles.cellValue, { color: colors.ink }]}>{value}</Text>
+      <Text style={[styles.cellLevel, { color: colors.inkMuted }]}>{level}</Text>
+    </Surface>
   );
 }
 
 const styles = StyleSheet.create({
   page: {
-    gap: Space.xxl,
+    gap: Space.xl,
+  },
+  cells: {
+    flexDirection: 'row',
+    gap: Space.sm,
+  },
+  cell: {
+    flex: 1,
+    padding: Space.lg,
+    gap: Space.xs,
+  },
+  cellLabel: {
+    fontSize: Type.small,
+  },
+  cellValue: {
+    fontSize: Type.displaySm,
+    lineHeight: Type.displaySm * 1.05,
+    fontFamily: Fonts.mono,
+  },
+  cellLevel: {
+    fontSize: Type.small,
   },
   card: {
-    borderWidth: 1,
-    borderRadius: Radius.md,
-    padding: Space.xl,
-    gap: Space.lg,
+    padding: Space.lg,
+    gap: Space.md,
   },
   cardTitle: {
     fontSize: Type.title,
     fontWeight: '700',
   },
-  cardBody: {
-    fontSize: Type.body,
-    lineHeight: Type.body * Line.normal,
-    maxWidth: 560,
-  },
-  tags: {
+  bars: {
     flexDirection: 'row',
-    flexWrap: 'wrap',
+    alignItems: 'flex-end',
     gap: Space.sm,
   },
-  tag: {
-    borderWidth: 1,
-    borderRadius: Radius.pill,
-    paddingHorizontal: Space.md,
-    paddingVertical: Space.xs,
+  barCol: {
+    flex: 1,
+    alignItems: 'center',
+    gap: Space.xs,
   },
-  tagText: {
-    fontSize: Type.small,
+  barValue: {
+    fontSize: Type.micro,
+    fontFamily: Fonts.monoRegular,
   },
-  facts: {
-    borderTopWidth: 1,
-    paddingTop: Space.lg,
-    gap: Space.md,
+  barTrack: {
+    width: '100%',
+    height: 72,
+    borderRadius: Radius.xs,
+    overflow: 'hidden',
+    justifyContent: 'flex-end',
   },
-  fact: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    gap: Space.lg,
+  barFill: {
+    width: '100%',
+    borderRadius: Radius.xs,
   },
-  factLabel: {
-    fontSize: Type.body,
+  barLabel: {
+    fontSize: Type.micro,
   },
-  factValue: {
-    fontSize: Type.body,
-  },
-  helper: {
+  note: {
     fontSize: Type.small,
     lineHeight: Type.small * Line.relaxed,
+  },
+  why: {
+    flexDirection: 'row',
+    gap: Space.md,
+  },
+  whyRule: {
+    width: 3,
+    borderRadius: 2,
+  },
+  whyBody: {
+    flex: 1,
+    gap: Space.sm,
+  },
+  whyText: {
+    fontSize: Type.body,
+    lineHeight: Type.body * Line.relaxed,
+    maxWidth: 560,
   },
 });

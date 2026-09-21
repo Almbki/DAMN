@@ -30,3 +30,20 @@ body {
 #root * {
   white-space: normal !important;
 }
+
+/*
+ * The focus ring is painted by the components: a 1.5px accent stroke that only
+ * appears for keyboard navigation (`hooks/use-input-modality.ts`). The browser's
+ * own outline would double it and, worse, shows an ugly box on a plain click, so
+ * it is switched off here. Text inputs keep their accent border as the focus
+ * cue, so no focusable element is left without an indicator.
+ */
+#root,
+#root * {
+  outline: none;
+}
+
+/* Touch web flashes a grey box on tap; the ripple is the real feedback. */
+#root * {
+  -webkit-tap-highlight-color: transparent;
+}

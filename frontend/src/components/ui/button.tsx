@@ -1,7 +1,10 @@
-import { Pressable, StyleSheet, Text, View, type StyleProp, type ViewStyle } from 'react-native';
+import { Pressable, StyleSheet, Text, type StyleProp, type ViewStyle } from 'react-native';
 
+import { Surface } from '@/components/surface';
 import { useInteraction } from '@/components/ui/interaction';
-import { Radius, Space, Type } from '@/constants/tokens';
+import { useRipple } from '@/components/ui/ripple';
+import { PressScale, Radius, Space, Type } from '@/constants/tokens';
+import { useReducedMotion } from '@/hooks/use-reduced-motion';
 import { useTheme } from '@/state/theme';
 
 type Variant = 'primary' | 'secondary' | 'ghost';
@@ -14,6 +17,7 @@ type ButtonProps = {
   style?: StyleProp<ViewStyle>;
 };
 
+/** Primary is the accent; nothing else may be. */
 export function Button({
   label,
   onPress,
@@ -22,42 +26,50 @@ export function Button({
   style,
 }: ButtonProps) {
   const { colors } = useTheme();
+  const reduced = useReducedMotion();
   const { focused, hovered, handlers } = useInteraction();
 
   const isPrimary = variant === 'primary';
-  const isSecondary = variant === 'secondary';
+  const isGhost = variant === 'ghost';
 
-  const restBackground = isPrimary ? colors.ink : 'transparent';
-  const textColor = isPrimary ? colors.onInk : variant === 'ghost' ? colors.inkMuted : colors.ink;
+  const textColor = isPrimary ? colors.onAccent : isGhost ? colors.inkMuted : colors.ink;
+  // A ripple reads against the fill it sits on: light on accent, ink elsewhere.
+  const ripple = useRipple(isPrimary ? colors.rippleOnAccent : colors.ripple);
 
   return (
-    <View style={[styles.wrapper, style]}>
+    <Surface
+      elevation={isGhost ? 'flat' : 'raised'}
+      radius={Radius.sm}
+      hairline={variant === 'secondary'}
+      background={isPrimary ? colors.accent : isGhost ? undefined : colors.raised}
+      ring={focused}
+      style={[styles.wrapper, disabled ? styles.disabled : null, style]}>
       <Pressable
         accessibilityRole="button"
         accessibilityLabel={label}
+        accessibilityState={{ disabled }}
         disabled={disabled}
         onPress={onPress}
         focusable={!disabled}
         {...handlers}
+        onLayout={ripple.onLayout}
+        onPressIn={ripple.onPressIn}
         style={({ pressed }) => [
           styles.base,
           {
-            backgroundColor: pressed
-              ? isPrimary
-                ? colors.ink
-                : colors.pressed
-              : hovered && !isPrimary
-                ? colors.hover
-                : restBackground,
-            borderColor: isSecondary ? colors.lineStrong : 'transparent',
-            borderWidth: isSecondary ? 1 : 0,
-            opacity: disabled ? 0.38 : pressed && isPrimary ? 0.9 : 1,
-            boxShadow: focused ? `0 0 0 2px ${colors.lineStrong}` : undefined,
+            backgroundColor:
+              pressed && !isPrimary
+                ? colors.pressed
+                : hovered && !isPrimary
+                  ? colors.hover
+                  : 'transparent',
+            transform: pressed && !reduced ? [{ scale: PressScale }] : undefined,
           },
         ]}>
+        {ripple.node}
         <Text style={[styles.label, { color: textColor }]}>{label}</Text>
       </Pressable>
-    </View>
+    </Surface>
   );
 }
 
@@ -65,10 +77,12 @@ const styles = StyleSheet.create({
   wrapper: {
     alignSelf: 'flex-start',
   },
+  disabled: {
+    opacity: 0.38,
+  },
   base: {
     minHeight: 44,
     paddingHorizontal: Space.xl,
-    borderRadius: Radius.sm,
     alignItems: 'center',
     justifyContent: 'center',
     flexDirection: 'row',
