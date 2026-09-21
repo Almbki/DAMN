@@ -1,8 +1,9 @@
 import { useState } from 'react';
-import { Modal, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { Pressable, StyleSheet, Text, View } from 'react-native';
 
 import { Button } from '@/components/ui/button';
 import { DateTimeField } from '@/components/ui/date-time-field';
+import { Dialog } from '@/components/ui/dialog';
 import { Segmented } from '@/components/ui/segmented';
 import { TextField } from '@/components/ui/text-field';
 import { Radius, Space, Type } from '@/constants/tokens';
@@ -74,130 +75,145 @@ export function TaskEditor({
   const intervalUnit = repeatFreq === 'weekly' ? '周' : repeatFreq === 'monthly' ? '个月' : '天';
 
   return (
-    <Modal transparent animationType="fade" visible onRequestClose={onClose}>
-      <View style={styles.overlay}>
-        <View style={[styles.panel, { backgroundColor: colors.paper, borderColor: colors.line }]}>
-          <ScrollView contentContainerStyle={styles.panelContent}>
-            <Text style={[styles.heading, { color: colors.ink }]}>{isNew ? '新建任务' : '编辑任务'}</Text>
+    <Dialog
+      visible
+      width={600}
+      title={isNew ? '新建任务' : '编辑任务'}
+      onRequestClose={onClose}
+      actions={[
+        ...(isNew
+          ? []
+          : [
+              { label: '上移', variant: 'text' as const, onPress: () => onMove(task.id, -1) },
+              { label: '下移', variant: 'text' as const, onPress: () => onMove(task.id, 1) },
+              {
+                label: '删除',
+                variant: 'text' as const,
+                onPress: () => {
+                  onDelete(task.id);
+                  onClose();
+                },
+              },
+            ]),
+        { label: '保存', variant: 'filled' as const, onPress: save },
+      ]}>
+      <TextField
+        label="标题"
+        value={title}
+        onChangeText={setTitle}
+        placeholder="要做什么？"
+        autoFocus={isNew}
+        testID="editor-title"
+        background={colors.surfaceContainerLowest}
+      />
+      <TextField
+        label="描述"
+        value={description}
+        onChangeText={setDescription}
+        placeholder="一句话说明"
+        background={colors.surfaceContainerLowest}
+      />
+      <TextField
+        label="备注"
+        value={notes}
+        onChangeText={setNotes}
+        placeholder="补充信息、链接…"
+        multiline
+        background={colors.surfaceContainerLowest}
+      />
 
-            <TextField label="标题" value={title} onChangeText={setTitle} placeholder="要做什么？" autoFocus={isNew} testID="editor-title" />
-            <TextField label="描述" value={description} onChangeText={setDescription} placeholder="一句话说明" />
-            <TextField label="备注" value={notes} onChangeText={setNotes} placeholder="补充信息、链接…" multiline />
+      <DateTimeField
+        label="开始"
+        date={startDate}
+        time={startTime}
+        onChangeDate={(value) => setStartDate(value ?? '')}
+        onChangeTime={(value) => setStartTime(value ?? '')}
+      />
+      <DateTimeField
+        label="截止"
+        date={dueDate}
+        time={dueTime}
+        onChangeDate={(value) => setDueDate(value ?? '')}
+        onChangeTime={(value) => setDueTime(value ?? '')}
+      />
 
-            <DateTimeField
-              label="开始"
-              date={startDate}
-              time={startTime}
-              onChangeDate={(value) => setStartDate(value ?? '')}
-              onChangeTime={(value) => setStartTime(value ?? '')}
+      <TextField
+        label="预计时长（分钟）"
+        value={minutes}
+        onChangeText={setMinutes}
+        placeholder="25"
+        keyboardType="number-pad"
+        background={colors.surfaceContainerLowest}
+      />
+
+      <View style={styles.repeatBlock}>
+        <Segmented
+          label="重复"
+          options={REPEAT_FREQS.map((item) => REPEAT_FREQ_LABEL[item])}
+          value={REPEAT_FREQS.indexOf(repeatFreq)}
+          onChange={(index) => setRepeatFreq(REPEAT_FREQS[index] as RepeatFreq)}
+          scroll
+        />
+        {repeatFreq !== 'none' ? (
+          <>
+            <View style={styles.stepperRow}>
+              <Text style={[styles.stepperLabel, { color: colors.inkMuted }]}>频率</Text>
+              <View style={styles.stepper}>
+                <Pressable
+                  accessibilityRole="button"
+                  accessibilityLabel="减少"
+                  onPress={() => setRepeatInterval(Math.max(1, repeatInterval - 1))}
+                  style={[styles.stepperBtn, { borderColor: colors.outline }]}>
+                  <Text style={[styles.stepperBtnText, { color: colors.primary }]}>−</Text>
+                </Pressable>
+                <Text style={[styles.stepperValue, { color: colors.ink }]}>
+                  每 {repeatInterval} {intervalUnit}
+                </Text>
+                <Pressable
+                  accessibilityRole="button"
+                  accessibilityLabel="增加"
+                  onPress={() => setRepeatInterval(repeatInterval + 1)}
+                  style={[styles.stepperBtn, { borderColor: colors.outline }]}>
+                  <Text style={[styles.stepperBtnText, { color: colors.primary }]}>＋</Text>
+                </Pressable>
+              </View>
+            </View>
+            <Segmented
+              label="结束条件"
+              options={REPEAT_ENDS.map((item) => REPEAT_END_LABEL[item])}
+              value={REPEAT_ENDS.indexOf(repeatEnd)}
+              onChange={(index) => setRepeatEnd(REPEAT_ENDS[index] as RepeatEnd)}
+              scroll
             />
-            <DateTimeField
-              label="截止"
-              date={dueDate}
-              time={dueTime}
-              onChangeDate={(value) => setDueDate(value ?? '')}
-              onChangeTime={(value) => setDueTime(value ?? '')}
-            />
-
-            <TextField label="预计时长（分钟）" value={minutes} onChangeText={setMinutes} placeholder="25" keyboardType="number-pad" />
-
-            <View style={styles.repeatBlock}>
-              <Segmented
-                label="重复"
-                options={REPEAT_FREQS.map((item) => REPEAT_FREQ_LABEL[item])}
-                value={REPEAT_FREQS.indexOf(repeatFreq)}
-                onChange={(index) => setRepeatFreq(REPEAT_FREQS[index] as RepeatFreq)}
+            {repeatEnd === 'until' ? (
+              <DateTimeField
+                label="重复到"
+                date={repeatUntil}
+                time=""
+                withTime={false}
+                onChangeDate={(value) => setRepeatUntil(value ?? '')}
+                onChangeTime={() => undefined}
               />
-              {repeatFreq !== 'none' ? (
-                <>
-                  <View style={styles.stepperRow}>
-                    <Text style={[styles.stepperLabel, { color: colors.inkMuted }]}>频率</Text>
-                    <Stepper
-                      value={repeatInterval}
-                      unit={intervalUnit}
-                      onChange={(next) => setRepeatInterval(Math.max(1, next))}
-                    />
-                  </View>
-                  <Segmented
-                    label="结束条件"
-                    options={REPEAT_ENDS.map((item) => REPEAT_END_LABEL[item])}
-                    value={REPEAT_ENDS.indexOf(repeatEnd)}
-                    onChange={(index) => setRepeatEnd(REPEAT_ENDS[index] as RepeatEnd)}
-                  />
-                  {repeatEnd === 'until' ? (
-                    <DateTimeField
-                      label="重复到"
-                      date={repeatUntil}
-                      time=""
-                      withTime={false}
-                      onChangeDate={(value) => setRepeatUntil(value ?? '')}
-                      onChangeTime={() => undefined}
-                    />
-                  ) : null}
-                  {repeatEnd === 'count' ? (
-                    <TextField label="重复次数" value={repeatCount} onChangeText={setRepeatCount} placeholder="5" keyboardType="number-pad" />
-                  ) : null}
-                </>
-              ) : null}
-            </View>
-
-            <View style={styles.actions}>
-              <Button label="保存" variant="primary" onPress={save} />
-              {!isNew ? (
-                <>
-                  <Button label="上移" variant="ghost" onPress={() => onMove(task.id, -1)} />
-                  <Button label="下移" variant="ghost" onPress={() => onMove(task.id, 1)} />
-                  <Button label="删除" variant="secondary" onPress={() => { onDelete(task.id); onClose(); }} />
-                </>
-              ) : null}
-              <Button label="关闭" variant="ghost" onPress={onClose} />
-            </View>
-          </ScrollView>
-        </View>
+            ) : null}
+            {repeatEnd === 'count' ? (
+              <TextField
+                label="重复次数"
+                value={repeatCount}
+                onChangeText={setRepeatCount}
+                placeholder="5"
+                keyboardType="number-pad"
+                background={colors.surfaceContainerLowest}
+              />
+            ) : null}
+          </>
+        ) : null}
       </View>
-    </Modal>
-  );
-}
-
-function Stepper({ value, unit, onChange }: { value: number; unit: string; onChange: (value: number) => void }) {
-  const { colors } = useTheme();
-  return (
-    <View style={styles.stepper}>
-      <Pressable accessibilityRole="button" accessibilityLabel="减少" onPress={() => onChange(value - 1)} style={[styles.stepperBtn, { borderColor: colors.line }]}>
-        <Text style={[styles.stepperBtnText, { color: colors.ink }]}>−</Text>
-      </Pressable>
-      <Text style={[styles.stepperValue, { color: colors.ink }]}>每 {value} {unit}</Text>
-      <Pressable accessibilityRole="button" accessibilityLabel="增加" onPress={() => onChange(value + 1)} style={[styles.stepperBtn, { borderColor: colors.line }]}>
-        <Text style={[styles.stepperBtnText, { color: colors.ink }]}>＋</Text>
-      </Pressable>
-    </View>
+      <Button label="取消" variant="text" onPress={onClose} />
+    </Dialog>
   );
 }
 
 const styles = StyleSheet.create({
-  overlay: {
-    flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.4)',
-    alignItems: 'center',
-    justifyContent: 'center',
-    padding: Space.lg,
-  },
-  panel: {
-    width: '100%',
-    maxWidth: 560,
-    maxHeight: '92%',
-    borderWidth: 1,
-    borderRadius: Radius.md,
-    overflow: 'hidden',
-  },
-  panelContent: {
-    padding: Space.xl,
-    gap: Space.lg,
-  },
-  heading: {
-    fontSize: Type.title,
-    fontWeight: '700',
-  },
   repeatBlock: {
     gap: Space.lg,
   },
@@ -207,7 +223,7 @@ const styles = StyleSheet.create({
     gap: Space.md,
   },
   stepperLabel: {
-    fontSize: Type.small,
+    fontSize: Type.labelMedium,
   },
   stepper: {
     flexDirection: 'row',
@@ -218,22 +234,17 @@ const styles = StyleSheet.create({
     width: 36,
     height: 36,
     borderWidth: 1,
-    borderRadius: Radius.sm,
+    borderRadius: Radius.pill,
     alignItems: 'center',
     justifyContent: 'center',
   },
   stepperBtnText: {
     fontSize: Type.bodyLg,
+    fontWeight: '600',
   },
   stepperValue: {
-    fontSize: Type.body,
+    fontSize: Type.bodyMedium,
     minWidth: 76,
     textAlign: 'center',
-  },
-  actions: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: Space.sm,
-    paddingTop: Space.sm,
   },
 });

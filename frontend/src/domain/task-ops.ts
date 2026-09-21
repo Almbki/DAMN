@@ -25,8 +25,11 @@ export interface NewTaskInput {
   title: string;
   description?: string;
   notes?: string;
+  goalId?: number | null;
+  priority?: number;
   startDate?: string | null;
   startTime?: string | null;
+  endTime?: string | null;
   dueDate?: string | null;
   dueTime?: string | null;
   estimatedMinutes?: number | null;
@@ -56,12 +59,15 @@ export function makeTask(state: StoreState, input: NewTaskInput): { state: Store
     title: input.title.trim() || '未命名任务',
     description: input.description ?? '',
     notes: input.notes ?? '',
+    goalId: input.goalId ?? null,
+    priority: input.priority ?? 2,
     done: false,
     skipped: false,
     startDate: input.startDate ?? null,
     startTime: input.startTime ?? null,
     dueDate: input.dueDate ?? null,
     dueTime: input.dueTime ?? null,
+    endTime: input.endTime ?? null,
     estimatedMinutes: input.estimatedMinutes ?? null,
     actualMinutes: null,
     cognitiveLoad: input.cognitiveLoad ?? 'medium',

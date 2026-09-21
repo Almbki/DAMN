@@ -19,107 +19,78 @@ Single package (`app/`) at the repo root — no monorepo. Windows-first.
 Use port **8000**. Some Windows ports are OS-reserved and uvicorn fails with
 `WinError 10013` (observed on 8123) — not a code bug.
 
-## Frontend: how to actually LOOK at the page (read before styling)
+## Frontend (`frontend/`)
 
-The Expo app lives in `damn-app/` (Expo SDK 57 · RN 0.86 · expo-router · react-native-web).
-Styling decisions here are about **layering and texture**, so reading the DOM is not
-enough — look at pixels. Use the system Edge, no install needed:
+Expo SDK 57 · RN 0.86 · expo-router · react-native-web. One frontend only. The data layer
+supports two sources selected by `EXPO_PUBLIC_DATA_SOURCE` (`mock` | `api`) — see the
+wiring section below. Imports use the `@/*` alias → `frontend/src/*`.
 
-```powershell
-# PREREQUISITE: the human is already running `npx expo start` — see "Do NOT start a dev
-# server" below. Nothing here may launch Expo or any long-running process.
-
-# one shot
-& "C:\Program Files (x86)\Microsoft\Edge\Application\msedge.exe" --headless --disable-gpu `
-  --window-size=1440,1000 --screenshot=out.png http://localhost:8099/workbench
-
-# light / dark: use the app's own URL override (preferred — it also exercises the toggle)
-#   ?theme=light   ?theme=dark   ?theme=system
-# Browser-flag fallback, historically unreliable here: --blink-settings=preferredColorScheme=1|0
-
-# measure real layout + full-page shot, same session (zero deps, drives CDP)
-node .shots/measure.js <url> <width> <height> [out.png] [1=light 0=dark]
-node .shots/shot.js    <url> <width> <height> <anchorText> <out.png>   # scroll to a section + print console errors
+```
+src/api/        client / config / endpoints / mapper / types / format   HTTP + wire types
+src/state/      plan provider (mock|api switch), session, theme, plan-context
+src/domain/     task, task-ops (pure), selectors, quick-add, stats, insight, date
+src/components/ shell + ui primitives + page-level pieces
+src/app/        routes: index (Todo), profile, feedback, settings
+src/constants/  tokens (colour / type / spacing), nav
 ```
 
-Pitfalls that cost real time — do not rediscover them:
+Identity: paper + hairlines, black/white/grey with a **single** accent (mint) reserved for
+"now"; time numerals in IBM Plex Mono, CJK on the system stack. Review visuals by pixels,
+not by reading the DOM.
 
-- **Chromium needs named pipes for IPC.** Under a confined sandbox it dies with
-  `FATAL:mojo platform_channel Check failed: 拒绝访问 (0x5)` and exit `0x80000003`,
-  producing no image. It is a sandbox limit, **not a flag problem** — do not burn time
-  on `--no-sandbox` / `--headless=old` / CDP ports. Run with file access relaxed.
-- **`--force-dark-mode` does NOT change `prefers-color-scheme`.** Two "light/dark"
-  shots come out byte-identical. `--blink-settings=preferredColorScheme=` works, but
-  prefer the app's `?theme=` override (it also exercises the real toggle path).
-- **A screenshot alone can lie about overflow.** Measure `document.scrollWidth` and
-  each element's `getBoundingClientRect` in the same session — a capture whose device
-  width does not match the layout viewport shows phantom "clipped" content.
-- **Restart the dev server (`--clear`) after editing `global.css` or adding files.**
-  HMR did not pick them up in headless sessions; the page kept rendering the old bundle.
-- **Metro HMR is not wired to the headless browser.** Re-navigate (the script does) or
-  restart; otherwise you are reviewing stale output.
+### Looking at the page (the human runs Expo; the agent does not)
 
-Two react-native-web traps found this way — see `damn-app/src/constants/tokens.ts` and
-`components/controls.tsx`:
+**The agent must not launch Expo or any long-running background process.** Ask for the port
+the human already has open (Expo web default `8081`) and screenshot against it with system
+Edge headless:
 
-- **Chinese text overflows its container.** RNW renders every `<Text>` with
-  `white-space: pre-wrap`, and **CJK does not break per character under `pre-wrap`**.
-  Fixed globally in `damn-app/src/global.css` (`white-space: normal !important` —
-  `!important` is required because RNW writes it inline).
-- **`flexWrap` is unreliable.** A container given `flexDirection:'row'` +
-  `flexWrap:'wrap'` computed back as `column` + `nowrap`, stacking every child at one
-  coordinate. Do not build wrapping layouts on it: split rows explicitly and compute
-  columns from `useWindowDimensions()` (see `CardGrid` in `components/controls.tsx`).
+```powershell
+& "C:\Program Files (x86)\Microsoft\Edge\Application\msedge.exe" --headless --disable-gpu `
+  --window-size=1440,1000 --screenshot=out.png "http://localhost:8081/?theme=light"
+```
 
-Verification loop that actually catches things: screenshot **and** measure at
-390 / 768 / 1440 wide, in **both** schemes, before claiming a visual change works.
+- Theme via the app's own URL override: `?theme=light` / `?theme=dark` / `?theme=system`.
+  Do **not** rely on `--force-dark-mode` — it does not change `prefers-color-scheme`.
+- To catch overflow, drive CDP in the same session and read `document.scrollWidth` plus each
+  element's `getBoundingClientRect`; a screenshot alone can show phantom clipping. Write a
+  small throwaway Node CDP script (Node 24 has `WebSocket` built in) — there is **no**
+  committed screenshot tool in the repo.
+- Verify at **390 / 768 / 1440** in **both** schemes before claiming a visual change works.
+- `npx expo export --platform web` is a **smoke test only** — it renders the SSR frame (the
+  narrow branch) and does not hydrate under `file://` (ES-module CORS). Content/errors only.
+- Under a confined sandbox Chromium may die with `FATAL:mojo platform_channel ... 0x5`
+  (exit `0x80000003`) and produce no image — a sandbox limit, not a flag problem.
 
-### Do NOT start a dev server — the human runs Expo
+### react-native-web traps (still true)
 
-**The agent must not launch Expo or any long-running background process.** The human
-owns the dev server. To review the UI:
-
-1. Ask for / use the port the human already has open (default `8099`), and point the
-   screenshot scripts at it.
-2. For theme switching, use the **URL override** — `?theme=light` / `?theme=dark` —
-   instead of browser flags. Browser color-scheme flags were measured to be unreliable
-   here (two "light/dark" captures came out byte-identical), and the override also
-   tests the real toggle path.
-3. If nothing is running, a **static export is a smoke test only**:
-   `npx expo export --platform web --output-dir .shots/preview`. It renders the SSR
-   frame only — desktop layout and theme **cannot** be evaluated from it, because
-   `useIsWide()` forces the narrow branch during SSR and the JS bundle does not
-   hydrate under `file://` (ES-module CORS). Use it to check content presence and
-   server-side errors, nothing more.
-4. Never write to `damn-app/dist` — that may be what the human packages with Tauri.
+- **CJK overflows its container.** RNW renders every `<Text>` with `white-space: pre-wrap`
+  and CJK does not break per character. Fixed globally in `frontend/src/global.css`
+  (`white-space: normal !important` — required because RNW writes the value inline).
+- **`flexWrap` is unreliable** (a `row` + `wrap` container can compute back as
+  `column` + `nowrap`). Split rows explicitly and compute columns from
+  `useWindowDimensions()` (see `SmartListTabs`, `Segmented`).
+- **RNW renders `accessibilityRole="button"` as a real `<button>`** — never nest a pressable
+  inside another pressable; use sibling buttons or you emit invalid HTML.
 
 ### Never silence a native-boundary type error with a cast
 
 **`tsc` passing proves nothing about native calls.** A wrong value at a native boundary
-compiles clean and then hard-crashes the device. This already happened once and bricked
-the Android app on launch:
+compiles clean and then hard-crashes the device:
 
 ```ts
 // WRONG — compiled fine, red-screened on every phone
 Appearance.setColorScheme(mode === 'system' ? null : mode as ColorSchemeName);
-//  Parameter specified as non-null is null: method
-//  com.facebook.react.modules.appearance.AppearanceModule.setColorScheme, parameter style
 ```
 
 Rules:
 
 - **Never write `as SomeType`, `as any`, `@ts-ignore` or `@ts-expect-error` to get past a
-  native-module signature.** If the compiler rejects the value, the value is wrong —
-  read the native source (RN sources are fetchable from
-  `raw.githubusercontent.com/facebook/react-native/v<version>/...`) and use what it takes.
-- In that case the answer was in our own `node_modules` the whole time:
-  `type ColorSchemeName = 'light' | 'dark' | 'unspecified'`. The "system" value for
-  `Appearance.setColorScheme` is the **string `'unspecified'`**, not `null`/`undefined`
-  (both marshall to `null` and throw).
-- **`tsc` cannot see this class of bug.** So native-affecting changes need a real device
-  or emulator run before being called done — a browser screenshot is not sufficient
-  evidence. Check that the app still *launches* after touching anything that reaches a
-  native module (Appearance, notifications, splash, system UI, permissions).
+  native-module signature.** If the compiler rejects the value, the value is wrong — read the
+  native source and use what it takes. The "system" value for `Appearance.setColorScheme` is
+  the string `'unspecified'`, not `null`/`undefined`.
+- **`tsc` cannot see this class of bug**, so native-affecting changes (Appearance,
+  notifications, splash, system UI, permissions) need a real device/emulator run before being
+  called done — a browser screenshot is not sufficient evidence.
 
 ## Architecture rules (easy to violate)
 
@@ -183,52 +154,41 @@ returns canned JSON, `app/ml/*` are `statistical-*` predictors with **no trained
 model**, `app/infrastructure/ml/model_store.py` is a placeholder, and plan
 generation runs synchronously (events are stored then replayed over SSE).
 
-## Frontend ↔ backend wiring (verified against the live LAN backend)
+## Frontend ↔ backend wiring (`frontend/`)
 
-The Expo app talks to the FastAPI backend over `EXPO_PUBLIC_API_BASE_URL`
-(`damn-app/.env`, build-time inlined → restart with `--clear`). Layers:
-`src/app/*` → `src/plan` + `src/session` → `src/api`; pages never call `fetch` directly.
-`_layout.tsx` gates on the session — signed out renders `components/auth-screen.tsx`
-instead of `Slot`.
+Config lives in `frontend/.env` (gitignored; `EXPO_PUBLIC_*` is inlined at build time →
+restart with `--clear`):
 
-Behaviours that are **measured, not read from `docs/api.md`** (that file drifts from
-`/openapi.json`):
+- `EXPO_PUBLIC_API_BASE_URL` — backend origin, e.g. `http://192.168.9.67:8000` (LAN machine).
+- `EXPO_PUBLIC_DATA_SOURCE` — `mock` (no backend) or `api`.
+- `EXPO_PUBLIC_DEV_EMAIL` / `EXPO_PUBLIC_DEV_PASSWORD` — silent dev login (register → 409 → login).
 
-- `/health` is at the **root**, not under `/api/v1`.
-- `POST /plans/generate` is **synchronous** (~1.5 s, `status:"completed"`, `plan` inline)
-  → no SSE needed; never fake the six-stage progress.
-- `PATCH {completed:false}` does **not** un-complete a task (and yields `pending`
-  otherwise); uncheck via `{status:'scheduled'}`.
-- Feedback with `completion_rate < 0.5` **creates a new plan version** — the UI must
-  switch to `replan_plan_id`. Replan keeps only unfinished tasks, so the new plan can
-  legitimately have zero tasks.
-- Replan cooldown is per-user (24 h, 409 `replan_not_eligible`); the 409 body's `detail`
-  carries `next_eligible_at`.
-- `"YYYY-MM-DD"` parses as UTC midnight and `"HH:MM:SS"` is not a Date — use
-  `src/api/format.ts`.
-- Generating a new plan marks the previous `active` plan `superseded` (versions keep
-  counting up); only one plan is `active` at a time.
-- **`PlanRead.goals` is mis-mapped server-side**: the count matches the plan but the
-  titles come from the account's oldest N goals (verified: plan #5's own goal is
-  "finish the half marathon plan" yet `goals` reports goal#1 "gaoshu limits review").
-  No page renders `plan.goals` yet — do **not** wire the "属于「目标」" line until the
-  backend join is fixed. `TaskRead.goal_id` is still trustworthy.
-- The LAN backend can stall (measured 18.3 s for `/health` while unauthenticated calls
-  answered in 0.36 s) → `REQUEST_TIMEOUT_MS` is 30 s on purpose; do not lower it.
+Layers: `src/app/*` → `src/state/*` (providers) → `src/api/*`; pages never call `fetch`.
+`src/domain/*` is pure (task model, recurrence, quick-add parser, stats, insight builder).
 
-UI verification (needs Edge headless → whole script at relaxed file access; Chromium's
-IPC is denied under the confined sandbox with `FATAL:mojo platform_channel ... 0x5`):
-`.shots/capture-all.ps1` (9 viewports/schemes, injects a JWT into localStorage),
-`.shots/interact.ps1` and `.shots/interact-generate.ps1` (real clicks; judge them by the
-**server state** they print, not the console text — PS 5.1 mangles non-ASCII argv).
+In `api` mode the backend cannot create/edit/delete/reorder tasks, so those UI actions are
+disabled; the add-bar becomes "goal → `POST /plans/generate`".
 
-Re-run the probes: `.shots/smoke-api.ps1`, `.shots/smoke-api-flows.ps1`
-(ASCII-only; PS 5.1 reads BOM-less `.ps1` as ANSI). Full write-up:
-`docs/frontend-api-integration.md`.
+Behaviours that are **measured against the live backend** (not read from `docs/api.md`,
+which drifts from `/openapi.json`):
+
+- `/health` is at the **root**, not under `/api/v1`; the API prefix is `/api/v1`.
+- `POST /plans/generate` is **synchronous** (`status:"completed"`, `plan` inline) → no SSE;
+  never fake the six-stage progress.
+- `PATCH {completed:false}` does **not** un-complete a task; un-complete via
+  `{status:'scheduled'}`. Skip is `{status:'skipped'}`; focus time is `{actual_duration}`.
+- Feedback with `completion_rate < 0.5` **creates a new plan version** → switch to
+  `replan_plan_id` (the new plan may legitimately have zero tasks). Replan cooldown is
+  per-user (24 h, 409 `replan_not_eligible`); the 409 body carries `next_eligible_at`.
+- `"YYYY-MM-DD"` parses as UTC midnight and `"HH:MM:SS"` is not a Date — use `src/api/format.ts`.
+- Generating a new plan marks the previous `active` plan `superseded`; only one is active.
+- **`PlanRead.goals` is mis-mapped server-side** (titles come from the account's oldest
+  goals) → do **not** render `plan.goals`. `TaskRead.goal_id` is still trustworthy.
+- The LAN backend can stall (measured 18.3 s once) → the request timeout is 30 s on purpose.
 
 ## Pointers
 
 - Design docs: `docs/architecture.md`, `docs/api.md`, `docs/langgraph.md`,
   `docs/ml.md`, `docs/domain.md`, `docs/development.md`.
-- `ideas and structures/` holds the original Chinese design notes/prompts — reference
-  material, not code.
+- `docs/design/` holds the original Chinese design notes, mind map and prompts
+  (`docs/design/notes/`) — reference material, not code.

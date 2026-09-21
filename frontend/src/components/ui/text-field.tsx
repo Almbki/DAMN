@@ -4,18 +4,11 @@ import { StyleSheet, Text, TextInput, View, type TextInputProps } from 'react-na
 import { Line, Radius, Space, Type } from '@/constants/tokens';
 import { useTheme } from '@/state/theme';
 
-type Props = {
-  label: string;
-  value: string;
-  onChangeText: (value: string) => void;
-  placeholder?: string;
-  multiline?: boolean;
-  autoFocus?: boolean;
-  error?: string | null;
-  keyboardType?: TextInputProps['keyboardType'];
-  testID?: string;
-};
-
+/**
+ * Material 3 outlined text field with a floating label. The label always rests
+ * on the top border (no animation), which keeps it legible and stable; the
+ * focus ring is the primary colour.
+ */
 export function TextField({
   label,
   value,
@@ -26,61 +19,100 @@ export function TextField({
   error,
   keyboardType,
   testID,
-}: Props) {
+  background,
+}: {
+  label: string;
+  value: string;
+  onChangeText: (value: string) => void;
+  placeholder?: string;
+  multiline?: boolean;
+  autoFocus?: boolean;
+  error?: string | null;
+  keyboardType?: TextInputProps['keyboardType'];
+  testID?: string;
+  /** Surface colour the field sits on, used to notch the floating label. */
+  background?: string;
+}) {
   const { colors } = useTheme();
   const [focused, setFocused] = useState(false);
+  const borderColor = error ? colors.error : focused ? colors.primary : colors.outline;
 
   return (
     <View style={styles.wrap}>
-      <Text style={[styles.label, { color: colors.inkMuted }]}>{label}</Text>
-      <TextInput
-        value={value}
-        onChangeText={onChangeText}
-        onFocus={() => setFocused(true)}
-        onBlur={() => setFocused(false)}
-        placeholder={placeholder}
-        placeholderTextColor={colors.inkFaint}
-        multiline={multiline}
-        autoFocus={autoFocus}
-        keyboardType={keyboardType}
-        accessibilityLabel={label}
-        testID={testID}
+      <View
         style={[
-          styles.input,
-          multiline ? styles.multiline : null,
+          styles.box,
+          multiline && styles.boxMultiline,
           {
-            color: colors.ink,
-            borderColor: error ? colors.ink : focused ? colors.lineStrong : colors.line,
-            backgroundColor: colors.paper,
+            borderColor,
+            backgroundColor: background ?? colors.surfaceContainerLowest,
+            boxShadow: focused ? `0 0 0 1px ${borderColor}` : undefined,
           },
-        ]}
-      />
-      {error ? <Text style={[styles.error, { color: colors.ink }]}>{error}</Text> : null}
+        ]}>
+        <Text
+          style={[
+            styles.floating,
+            {
+              color: error ? colors.error : focused ? colors.primary : colors.inkMuted,
+              backgroundColor: background ?? colors.surfaceContainerLowest,
+            },
+          ]}>
+          {label}
+        </Text>
+        <TextInput
+          value={value}
+          onChangeText={onChangeText}
+          onFocus={() => setFocused(true)}
+          onBlur={() => setFocused(false)}
+          placeholder={placeholder}
+          placeholderTextColor={colors.inkFaint}
+          multiline={multiline}
+          autoFocus={autoFocus}
+          keyboardType={keyboardType}
+          accessibilityLabel={label}
+          testID={testID}
+          style={[styles.input, multiline && styles.inputMultiline, { color: colors.ink }]}
+        />
+      </View>
+      {error ? <Text style={[styles.error, { color: colors.error }]}>{error}</Text> : null}
     </View>
   );
 }
 
 const styles = StyleSheet.create({
   wrap: {
-    gap: Space.sm,
+    gap: Space.xs,
   },
-  label: {
-    fontSize: Type.small,
+  box: {
+    borderWidth: 1,
+    borderRadius: Radius.xs,
+    minHeight: 56,
+    justifyContent: 'center',
+  },
+  boxMultiline: {
+    minHeight: 104,
+  },
+  floating: {
+    position: 'absolute',
+    top: -9,
+    left: 12,
+    paddingHorizontal: 4,
+    fontSize: Type.labelMedium,
   },
   input: {
-    minHeight: 44,
-    borderWidth: 1,
-    borderRadius: Radius.sm,
-    paddingHorizontal: Space.md,
-    fontSize: Type.body,
+    paddingHorizontal: 14,
+    paddingTop: 14,
+    paddingBottom: 8,
+    fontSize: Type.bodyLarge,
   },
-  multiline: {
-    minHeight: 84,
-    paddingTop: Space.md,
+  inputMultiline: {
+    paddingTop: 20,
+    paddingBottom: 12,
+    minHeight: 104,
     textAlignVertical: 'top',
   },
   error: {
-    fontSize: Type.small,
-    lineHeight: Type.small * Line.normal,
+    fontSize: Type.labelMedium,
+    lineHeight: Type.labelMedium * Line.normal,
   },
 });

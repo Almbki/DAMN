@@ -12,8 +12,18 @@ import {
 } from '@/api/endpoints';
 import { patchDone, patchSkipped, taskFromApi } from '@/api/mapper';
 import type { InsightRead, PlanRead, UserRead } from '@/api/types';
+import { mockFeedback, mockPlanChanges } from '@/data/mock';
 import { addDays, todayISO } from '@/domain/date';
+import {
+  decomposePending as decomposePendingLocal,
+  draftToDescription,
+  type DraftTask,
+  type PendingTask,
+} from '@/domain/decompose';
+import type { Goal } from '@/domain/goal';
+import type { SchedulingPreferences } from '@/domain/preferences';
 import { buildLists, buildRuler, countLists, pickCurrentTask } from '@/domain/selectors';
+import { buildSituation } from '@/domain/situation';
 import { isClosed, type Task } from '@/domain/task';
 import * as ops from '@/domain/task-ops';
 import {
@@ -21,8 +31,10 @@ import {
   type Assessment,
   type FeedbackInput,
   type FeedbackResult,
+  type PendingTaskInput,
   type PlanContextValue,
 } from '@/state/plan-context';
+import { loadPreferences, savePreferences } from '@/state/preferences-store';
 import { useSession } from '@/state/session';
 
 const ENERGY_LEVELS: ('low' | 'medium' | 'high')[] = ['low', 'medium', 'high', 'high'];
@@ -127,11 +139,32 @@ export function ApiPlanProvider({ children }: { children: React.ReactNode }) {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [assessment, setAssessment] = useState<Assessment>({ energy: 1, mood: 2, stress: 1 });
+  const [goals, setGoals] = useState<Goal[]>([]);
+  const [pendingTasks, setPendingTasks] = useState<PendingTask[]>([]);
+  const [preferences, setPreferences] = useState<SchedulingPreferences>(() => loadPreferences());
 
   const applyPlan = useCallback((plan: PlanRead) => {
     const mapped = plan.tasks.map(taskFromApi);
+    // `PlanRead.goals` is built from this plan's tasks' `goal_id`, so mapping it
+    // (instead of mock goals) is what makes goal progress line up with the real
+    // tasks. Locally created drafts (negative ids) are kept across reloads.
+    const planGoals: Goal[] = plan.goals.map((goal) => ({
+      id: goal.id,
+      title: goal.title,
+      description: '',
+      status:
+        goal.status === 'completed' ? 'completed' : goal.status === 'draft' ? 'draft' : 'active',
+      deadline: null,
+      estimatedMinutes: null,
+      priority: goal.priority ?? 2,
+      createdAt: '',
+    }));
     setPlanId(plan.id);
     setStore((prev) => ({ ...prev, tasks: mapped }));
+    setGoals((prev) => [
+      ...planGoals,
+      ...prev.filter((goal) => goal.status === 'draft' && goal.id < 0),
+    ]);
   }, []);
 
   const load = useCallback(async () => {
@@ -183,6 +216,91 @@ export function ApiPlanProvider({ children }: { children: React.ReactNode }) {
   );
 
   const energy = ENERGY_LEVELS[assessment.energy] ?? 'medium';
+
+  const situation = useMemo(
+    () =>
+      buildSituation(
+        mockFeedback,
+        (session.user ?? FALLBACK_USER).execution_weight,
+        stats.rate,
+      ),
+    [session.user, stats.rate],
+  );
+
+  const addPendingTask = useCallback((input: PendingTaskInput) => {
+    setPendingTasks((prev) => [
+      ...prev,
+      {
+        id: Math.max(0, ...prev.map((item) => item.id)) + 1,
+        title: input.title,
+        priority: input.priority,
+        dueDate: input.dueDate,
+        notes: input.notes,
+      },
+    ]);
+  }, []);
+
+  const updatePendingTask = useCallback((id: number, patch: Partial<PendingTask>) => {
+    setPendingTasks((prev) => prev.map((item) => (item.id === id ? { ...item, ...patch } : item)));
+  }, []);
+
+  const removePendingTask = useCallback((id: number) => {
+    setPendingTasks((prev) => prev.filter((item) => item.id !== id));
+  }, []);
+
+  const decomposePending = useCallback(
+    (feedback?: string) => decomposePendingLocal(pendingTasks, feedback),
+    [pendingTasks],
+  );
+
+  const updatePreferences = useCallback(
+    async (patch: Partial<SchedulingPreferences>) => {
+      setPreferences((prev) => {
+        const next = { ...prev, ...patch };
+        savePreferences(next);
+        return next;
+      });
+    },
+    [],
+  );
+
+  const confirmDecompose = useCallback(
+    async (tasks: DraftTask[]) => {
+      setLoading(true);
+      try {
+        // The backend re-decomposes from the goals (its agent owns 拆解); the
+        // preview is sent as description hints until the draft endpoint exists.
+        const descriptionBySource = new Map<number, string[]>();
+        tasks.forEach((task) => {
+          const list = descriptionBySource.get(task.sourceId) ?? [];
+          list.push(`${task.title}｜${task.dueDate} ${task.startTime}`);
+          descriptionBySource.set(task.sourceId, list);
+        });
+        const response = await generatePlan({
+          goals: pendingTasks.map((item) => ({
+            title: item.title,
+            description:
+              descriptionBySource.get(item.id)?.join('\n') || draftToDescription(tasks) || undefined,
+            priority: item.priority,
+            deadline: item.dueDate ? `${item.dueDate}T00:00:00` : null,
+          })),
+          plan_title: pendingTasks[0]?.title ?? '新计划',
+          available_minutes_per_day: preferences.availableMinutesPerDay,
+          daily_limit_minutes: preferences.dailyLimitMinutes,
+          buffer_minutes: preferences.bufferMinutes,
+          high_cognitive_max_per_day: preferences.highCognitiveMaxPerDay,
+        });
+        if (response.plan) applyPlan(response.plan);
+        setPendingTasks([]);
+        setError(null);
+      } catch (caught) {
+        setError(isApiError(caught) ? caught.message : '生成计划失败');
+      } finally {
+        setLoading(false);
+      }
+    },
+    [applyPlan, pendingTasks, preferences],
+  );
 
   /** Optimistic local change, reverted by a reload if the server rejects it. */
   const mutate = useCallback(
@@ -322,6 +440,17 @@ export function ApiPlanProvider({ children }: { children: React.ReactNode }) {
       stats,
       insight,
       completions: store.completions,
+      situation,
+      preferences,
+      updatePreferences,
+      planChanges: mockPlanChanges,
+      goals,
+      pendingTasks,
+      addPendingTask,
+      updatePendingTask,
+      removePendingTask,
+      decomposePending,
+      confirmDecompose,
       assessment,
       setAssessment,
       submitFeedback,
@@ -357,6 +486,16 @@ export function ApiPlanProvider({ children }: { children: React.ReactNode }) {
     stats,
     insight,
     store.completions,
+    situation,
+    preferences,
+    updatePreferences,
+    goals,
+    pendingTasks,
+    addPendingTask,
+    updatePendingTask,
+    removePendingTask,
+    decomposePending,
+    confirmDecompose,
     assessment,
     submitFeedback,
     submitGoal,

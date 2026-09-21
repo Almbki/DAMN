@@ -222,3 +222,65 @@ export interface ReplanResponse {
   reason: string;
   trigger_type: ReplanTriggerType;
 }
+
+/**
+ * Contract for endpoints the frontend currently mocks. See
+ * docs/design/backend-api-gaps.md for the exact shapes to implement.
+ */
+
+export interface GoalDetailRead {
+  id: number;
+  title: string;
+  description: string | null;
+  goal_type: string;
+  status: 'active' | 'draft' | 'completed' | 'archived' | 'cancelled';
+  deadline: string | null;
+  priority: number;
+  estimated_minutes: number | null;
+  created_at: string;
+  completed_minutes?: number;
+  total_minutes?: number;
+  progress?: number;
+}
+
+export interface SituationTrendPoint {
+  date: string;
+  energy: number | null;
+  stress: number | null;
+  efficacy: number | null;
+}
+
+export interface SituationTrendRead {
+  points: SituationTrendPoint[];
+  samples: number;
+  min_samples: number;
+  sufficient: boolean;
+  drivers: string[];
+}
+
+export interface PlanChangeDayRead {
+  date: string;
+  added: number;
+  moved: number;
+  removed: number;
+  summary: string;
+}
+
+export interface PlanChangeRead {
+  id: number;
+  trigger_type: ReplanTriggerType;
+  reason: string;
+  old_version: number;
+  new_version: number;
+  created_at: string;
+  days: PlanChangeDayRead[];
+}
+
+export interface SchedulingPreferencesRead {
+  available_minutes_per_day: number;
+  daily_limit_minutes: number;
+  buffer_minutes: number;
+  high_cognitive_max_per_day: number;
+  sleep_start?: string;
+  sleep_end?: string;
+}

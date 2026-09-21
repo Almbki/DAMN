@@ -1,16 +1,10 @@
 import { Link, usePathname } from 'expo-router';
-import {
-  Pressable,
-  ScrollView,
-  StyleSheet,
-  Text,
-  useWindowDimensions,
-  View,
-} from 'react-native';
+import { Pressable, ScrollView, StyleSheet, Text, useWindowDimensions, View } from 'react-native';
 
+import { Icon } from '@/components/ui/icon';
 import { useInteraction } from '@/components/ui/interaction';
 import { NAV, type NavItem } from '@/constants/nav';
-import { Layout, Line, Space, Type } from '@/constants/tokens';
+import { Elevation, Layout, Line, Radius, Space, Type } from '@/constants/tokens';
 import { useTheme } from '@/state/theme';
 
 function useWide() {
@@ -29,9 +23,9 @@ export function AppShell({ children }: { children: React.ReactNode }) {
     <View
       style={[
         styles.root,
-        { backgroundColor: colors.paper, flexDirection: wide ? 'row' : 'column' },
+        { backgroundColor: colors.surface, flexDirection: wide ? 'row' : 'column' },
       ]}>
-      {wide ? <Sidebar pathname={pathname} /> : null}
+      {wide ? <NavigationRail pathname={pathname} /> : null}
 
       <View style={styles.main}>
         <View
@@ -40,12 +34,11 @@ export function AppShell({ children }: { children: React.ReactNode }) {
             {
               height: Layout.headerHeight,
               paddingHorizontal: wide ? Layout.padWide : Layout.padNarrow,
-              borderBottomColor: colors.line,
-              backgroundColor: colors.paper,
+              borderBottomColor: colors.outlineVariant,
+              backgroundColor: colors.surface,
             },
           ]}>
           <Text style={[styles.headerTitle, { color: colors.ink }]}>{active.title}</Text>
-          <ThemeToggle />
         </View>
 
         <ScrollView style={styles.scroll} contentContainerStyle={styles.scrollContent}>
@@ -68,19 +61,19 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   );
 }
 
-function Sidebar({ pathname }: { pathname: string }) {
+function NavigationRail({ pathname }: { pathname: string }) {
   const { colors } = useTheme();
   return (
     <View
       style={[
-        styles.sidebar,
+        styles.rail,
         {
-          width: Layout.sidebarWidth,
-          backgroundColor: colors.panel,
-          borderRightColor: colors.line,
+          width: Layout.railWidth,
+          backgroundColor: colors.surfaceContainer,
+          borderRightColor: colors.outlineVariant,
         },
       ]}>
-      <Text style={[styles.wordmark, { color: colors.ink }]}>DAMN</Text>
+      <Text style={[styles.wordmark, { color: colors.primary }]}>DAMN</Text>
 
       <View style={styles.navList}>
         {NAV.map((item) => (
@@ -88,9 +81,9 @@ function Sidebar({ pathname }: { pathname: string }) {
         ))}
       </View>
 
-      <View style={[styles.sidebarFooter, { borderTopColor: colors.line }]}>
-        <Text style={[styles.footerLine, { color: colors.inkFaint }]}>Agentic Modified</Text>
-        <Text style={[styles.footerLine, { color: colors.inkFaint }]}>No-more-delay</Text>
+      <View style={[styles.railFooter, { borderTopColor: colors.outlineVariant }]}>
+        <Text style={[styles.footerLine, { color: colors.inkFaint }]}>Agentic</Text>
+        <Text style={[styles.footerLine, { color: colors.inkFaint }]}>Modified</Text>
       </View>
     </View>
   );
@@ -102,10 +95,14 @@ function BottomNav({ pathname }: { pathname: string }) {
     <View
       style={[
         styles.bottomNav,
-        { backgroundColor: colors.panel, borderTopColor: colors.line, height: Layout.navHeight },
+        {
+          backgroundColor: colors.surfaceContainer,
+          borderTopColor: colors.outlineVariant,
+          height: Layout.navBarHeight,
+        },
       ]}>
       {NAV.map((item) => (
-        <NavLink key={item.href} item={item} active={item.href === pathname} variant="tab" />
+        <NavLink key={item.href} item={item} active={item.href === pathname} variant="bar" />
       ))}
     </View>
   );
@@ -118,7 +115,7 @@ function NavLink({
 }: {
   item: NavItem;
   active: boolean;
-  variant: 'rail' | 'tab';
+  variant: 'rail' | 'bar';
 }) {
   const { colors } = useTheme();
   const { focused, hovered, handlers } = useInteraction();
@@ -129,52 +126,42 @@ function NavLink({
       <Pressable
         accessibilityRole="link"
         accessibilityState={{ selected: active }}
+        accessibilityLabel={item.title}
         {...handlers}
         style={StyleSheet.flatten([
-          isRail ? styles.railItem : styles.tabItem,
+          isRail ? styles.railItem : styles.barItem,
           {
-            borderLeftColor: isRail ? (active ? colors.ink : 'transparent') : undefined,
-            borderTopColor: !isRail ? (active ? colors.ink : 'transparent') : undefined,
-            backgroundColor: hovered ? colors.hover : 'transparent',
-            boxShadow: focused ? `0 0 0 2px ${colors.lineStrong}` : undefined,
+            backgroundColor: hovered && !active ? colors.hover : 'transparent',
+            boxShadow: focused ? `0 0 0 2px ${colors.focusRing}` : undefined,
           },
         ])}>
+        <View
+          style={[
+            styles.indicator,
+            isRail ? styles.indicatorRail : styles.indicatorBar,
+            {
+              backgroundColor: active ? colors.secondaryContainer : 'transparent',
+              boxShadow: active ? Elevation.highlight : undefined,
+            },
+          ]}>
+          <Icon
+            name={item.icon}
+            size={20}
+            color={active ? colors.onSecondaryContainer : colors.inkMuted}
+          />
+        </View>
         <Text
           style={[
-            isRail ? styles.railLabel : styles.tabLabel,
+            isRail ? styles.railLabel : styles.barLabel,
             {
               color: active ? colors.ink : colors.inkMuted,
-              fontWeight: active ? '700' : '500',
+              fontWeight: active ? '600' : '400',
             },
           ]}>
           {item.label}
         </Text>
       </Pressable>
     </Link>
-  );
-}
-
-function ThemeToggle() {
-  const { colors, mode, cycleMode } = useTheme();
-  const { focused, hovered, handlers } = useInteraction();
-  const label = mode === 'light' ? '浅色' : mode === 'dark' ? '深色' : '跟系统';
-
-  return (
-    <Pressable
-      accessibilityRole="button"
-      accessibilityLabel={`主题：${label}，点击切换`}
-      onPress={cycleMode}
-      {...handlers}
-      style={[
-        styles.themeToggle,
-        {
-          borderColor: colors.line,
-          backgroundColor: hovered ? colors.hover : 'transparent',
-          boxShadow: focused ? `0 0 0 2px ${colors.lineStrong}` : undefined,
-        },
-      ]}>
-      <Text style={[styles.themeLabel, { color: colors.inkMuted }]}>{label}</Text>
-    </Pressable>
   );
 }
 
@@ -193,8 +180,8 @@ const styles = StyleSheet.create({
     borderBottomWidth: 1,
   },
   headerTitle: {
-    fontSize: Type.title,
-    fontWeight: '700',
+    fontSize: Type.titleLarge,
+    fontWeight: '600',
   },
   scroll: {
     flex: 1,
@@ -206,62 +193,67 @@ const styles = StyleSheet.create({
     width: '100%',
     alignSelf: 'center',
   },
-  sidebar: {
+  rail: {
     borderRightWidth: 1,
-    paddingTop: Space.xl,
-    paddingBottom: Space.lg,
+    paddingTop: Space.lg,
+    paddingBottom: Space.md,
+    alignItems: 'center',
   },
   wordmark: {
-    fontSize: Type.title,
+    fontSize: Type.titleMedium,
     fontWeight: '700',
     letterSpacing: 2,
-    paddingHorizontal: Space.xl,
-    paddingBottom: Space.xxl,
+    paddingBottom: Space.xl,
   },
   navList: {
     flex: 1,
+    alignSelf: 'stretch',
+    gap: Space.sm,
   },
   railItem: {
-    paddingVertical: Space.md,
-    paddingHorizontal: Space.xl,
-    paddingLeft: Space.xl - 3,
-    borderLeftWidth: 3,
+    alignItems: 'center',
+    gap: Space.xs,
+    paddingVertical: Space.sm,
+  },
+  indicator: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderRadius: Radius.lg,
+  },
+  indicatorRail: {
+    width: 56,
+    height: 32,
+  },
+  indicatorBar: {
+    width: 64,
+    height: 32,
   },
   railLabel: {
-    fontSize: Type.body,
+    fontSize: Type.labelMedium,
   },
-  sidebarFooter: {
+  railFooter: {
     borderTopWidth: 1,
-    paddingHorizontal: Space.xl,
-    paddingTop: Space.lg,
+    paddingTop: Space.md,
+    alignItems: 'center',
     gap: 2,
   },
   footerLine: {
-    fontSize: Type.micro,
+    fontSize: Type.labelSmall,
   },
   bottomNav: {
     flexDirection: 'row',
     borderTopWidth: 1,
+    paddingTop: Space.sm,
+    paddingBottom: Space.sm,
   },
-  tabItem: {
+  barItem: {
     flex: 1,
     alignItems: 'center',
     justifyContent: 'center',
-    borderTopWidth: 2,
+    gap: Space.xs,
   },
-  tabLabel: {
-    fontSize: Type.small,
-    lineHeight: Type.small * Line.tight,
-  },
-  themeToggle: {
-    borderWidth: 1,
-    borderRadius: 999,
-    paddingHorizontal: Space.md,
-    paddingVertical: Space.xs,
-    minHeight: 30,
-    justifyContent: 'center',
-  },
-  themeLabel: {
-    fontSize: Type.small,
+  barLabel: {
+    fontSize: Type.labelMedium,
+    lineHeight: Type.labelMedium * Line.tight,
   },
 });

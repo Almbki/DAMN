@@ -1,82 +1,169 @@
-import { useState } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 
-import { Button } from '@/components/ui/button';
-import { Segmented } from '@/components/ui/segmented';
-import { Line, Radius, Space, Type } from '@/constants/tokens';
+import { Surface } from '@/components/ui/surface';
+import { Fonts, Line, Radius, Space, Type } from '@/constants/tokens';
+import { PREFERENCE_BOUNDS, clampPreference } from '@/domain/preferences';
 import { usePlan } from '@/state/plan';
-import { useTheme, type ThemeMode } from '@/state/theme';
-
-const THEME_OPTIONS: { label: string; value: ThemeMode }[] = [
-  { label: '浅色', value: 'light' },
-  { label: '深色', value: 'dark' },
-  { label: '跟系统', value: 'system' },
-];
-
-const MODELS = ['Agentic Modified v2', '标准模型'];
-const FREQUENCY = ['每天提醒', '只在重要时提醒', '关闭提醒'];
+import { useTheme } from '@/state/theme';
 
 export default function SettingsScreen() {
-  const { colors, mode, setMode } = useTheme();
-  const { user } = usePlan();
-  const [model, setModel] = useState(0);
-  const [frequency, setFrequency] = useState(0);
+  const { colors } = useTheme();
+  const { user, mode, preferences, updatePreferences, updateWeight } = usePlan();
+
+  const weightStep = (delta: number) => {
+    const next = Math.round(Math.min(1, Math.max(0, user.execution_weight + delta)) * 100) / 100;
+    if (next !== user.execution_weight) void updateWeight(next);
+  };
 
   return (
     <View style={styles.page}>
-      <View style={[styles.card, { borderColor: colors.line }]}>
-        <Text style={[styles.cardTitle, { color: colors.ink }]}>外观</Text>
-        <Text style={[styles.cardBody, { color: colors.inkMuted }]}>
-          默认浅色。选择会保存在本机，不影响其他设备。
-        </Text>
-        <View style={styles.row}>
-          {THEME_OPTIONS.map((option) => {
-            const selected = option.value === mode;
-            return (
-              <Pressable
-                key={option.value}
-                accessibilityRole="radio"
-                accessibilityState={{ selected }}
-                onPress={() => setMode(option.value)}
-                style={[
-                  styles.chip,
-                  {
-                    borderColor: selected ? colors.ink : colors.line,
-                    backgroundColor: selected ? colors.ink : 'transparent',
-                  },
-                ]}>
-                <Text style={[styles.chipText, { color: selected ? colors.onInk : colors.ink }]}>
-                  {option.label}
-                </Text>
-              </Pressable>
-            );
-          })}
+      <Surface level="level1" radius="lg">
+        <View style={styles.card}>
+          <Text style={[styles.title, { color: colors.ink }]}>账号信息</Text>
+          <View style={styles.fact}>
+            <Text style={[styles.factLabel, { color: colors.inkMuted }]}>邮箱</Text>
+            <Text style={[styles.factValue, { color: colors.ink }]}>{user.email}</Text>
+          </View>
+          <View style={styles.fact}>
+            <Text style={[styles.factLabel, { color: colors.inkMuted }]}>昵称</Text>
+            <Text style={[styles.factValue, { color: colors.ink }]}>{user.display_name ?? '—'}</Text>
+          </View>
+          <View style={styles.fact}>
+            <Text style={[styles.factLabel, { color: colors.inkMuted }]}>执行权重</Text>
+            <View style={styles.weightRow}>
+              {mode === 'api' ? (
+                <Step label="−" onPress={() => weightStep(-0.05)} />
+              ) : null}
+              <Text style={[styles.factValue, styles.mono, { color: colors.ink }]}>
+                {user.execution_weight.toFixed(2)}
+              </Text>
+              {mode === 'api' ? <Step label="＋" onPress={() => weightStep(0.05)} /> : null}
+            </View>
+          </View>
+          <Text style={[styles.helper, { color: colors.inkFaint }]}>
+            {mode === 'api' ? '执行权重会同步到后端。' : '演示模式：权重只影响本机判断。'}
+          </Text>
         </View>
-      </View>
+      </Surface>
 
-      <View style={[styles.card, { borderColor: colors.line }]}>
-        <Text style={[styles.cardTitle, { color: colors.ink }]}>安排</Text>
-        <Segmented label="拆解模型" options={MODELS} value={model} onChange={setModel} />
-        <Segmented
-          label="提醒频率"
-          options={FREQUENCY}
-          value={frequency}
-          onChange={setFrequency}
-        />
-        <Button label="保存设置" variant="primary" onPress={() => undefined} />
-      </View>
+      <Surface level="level1" radius="lg">
+        <View style={styles.card}>
+          <Text style={[styles.title, { color: colors.ink }]}>排程偏好</Text>
+          <Text style={[styles.body, { color: colors.inkMuted }]}>
+            这里设一次就会一直生效，之后每次生成计划都会自动带上，不用重填。
+          </Text>
 
-      <View style={[styles.card, { borderColor: colors.line }]}>
-        <Text style={[styles.cardTitle, { color: colors.ink }]}>账号</Text>
-        <View style={styles.fact}>
-          <Text style={[styles.factLabel, { color: colors.inkMuted }]}>邮箱</Text>
-          <Text style={[styles.factValue, { color: colors.ink }]}>{user.email}</Text>
+          <PrefRow
+            label="每日可投入时间"
+            hint="每天执行计划的时长上限"
+            value={preferences.availableMinutesPerDay}
+            unit="分钟"
+            onShift={(delta) =>
+              void updatePreferences({
+                availableMinutesPerDay: clampPreference(
+                  'availableMinutesPerDay',
+                  preferences.availableMinutesPerDay + delta,
+                ),
+              })
+            }
+            step={PREFERENCE_BOUNDS.availableMinutesPerDay.step}
+          />
+          <PrefRow
+            label="单日上限"
+            hint="一天最多排多久的活"
+            value={preferences.dailyLimitMinutes}
+            unit="分钟"
+            onShift={(delta) =>
+              void updatePreferences({
+                dailyLimitMinutes: clampPreference(
+                  'dailyLimitMinutes',
+                  preferences.dailyLimitMinutes + delta,
+                ),
+              })
+            }
+            step={PREFERENCE_BOUNDS.dailyLimitMinutes.step}
+          />
+          <PrefRow
+            label="缓冲时间"
+            hint="任务之间留的空档"
+            value={preferences.bufferMinutes}
+            unit="分钟"
+            onShift={(delta) =>
+              void updatePreferences({
+                bufferMinutes: clampPreference('bufferMinutes', preferences.bufferMinutes + delta),
+              })
+            }
+            step={PREFERENCE_BOUNDS.bufferMinutes.step}
+          />
+          <PrefRow
+            label="高认知任务上限"
+            hint="每天最多几条费脑子的任务"
+            value={preferences.highCognitiveMaxPerDay}
+            unit="条"
+            onShift={(delta) =>
+              void updatePreferences({
+                highCognitiveMaxPerDay: clampPreference(
+                  'highCognitiveMaxPerDay',
+                  preferences.highCognitiveMaxPerDay + delta,
+                ),
+              })
+            }
+            step={PREFERENCE_BOUNDS.highCognitiveMaxPerDay.step}
+          />
+
+          <Text style={[styles.helper, { color: colors.inkFaint }]}>
+            作息与入睡/起床时间在「画像 · 基础档案」里设置。
+          </Text>
         </View>
-        <Text style={[styles.helper, { color: colors.inkMuted }]}>
-          登录与注册暂未接入，当前使用演示账号。
+      </Surface>
+    </View>
+  );
+}
+
+function PrefRow({
+  label,
+  hint,
+  value,
+  unit,
+  step,
+  onShift,
+}: {
+  label: string;
+  hint: string;
+  value: number;
+  unit: string;
+  step: number;
+  onShift: (delta: number) => void;
+}) {
+  const { colors } = useTheme();
+  return (
+    <View style={[styles.prefRow, { borderTopColor: colors.outlineVariant }]}>
+      <View style={styles.prefText}>
+        <Text style={[styles.prefLabel, { color: colors.ink }]}>{label}</Text>
+        <Text style={[styles.helper, { color: colors.inkMuted }]}>{hint}</Text>
+      </View>
+      <View style={styles.prefControl}>
+        <Step label="−" onPress={() => onShift(-step)} />
+        <Text style={[styles.prefValue, { color: colors.ink }]}>
+          {value}
+          <Text style={[styles.prefUnit, { color: colors.inkMuted }]}> {unit}</Text>
         </Text>
+        <Step label="＋" onPress={() => onShift(step)} />
       </View>
     </View>
+  );
+}
+
+function Step({ label, onPress }: { label: string; onPress: () => void }) {
+  const { colors } = useTheme();
+  return (
+    <Pressable
+      accessibilityRole="button"
+      accessibilityLabel={label === '−' ? '减少' : '增加'}
+      onPress={onPress}
+      style={[styles.step, { borderColor: colors.outline }]}>
+      <Text style={[styles.stepText, { color: colors.primary }]}>{label}</Text>
+    </Pressable>
   );
 }
 
@@ -85,48 +172,84 @@ const styles = StyleSheet.create({
     gap: Space.xxl,
   },
   card: {
-    borderWidth: 1,
-    borderRadius: Radius.md,
     padding: Space.xl,
-    gap: Space.lg,
+    gap: Space.md,
   },
-  cardTitle: {
-    fontSize: Type.title,
-    fontWeight: '700',
+  title: {
+    fontSize: Type.titleLarge,
+    fontWeight: '600',
   },
-  cardBody: {
-    fontSize: Type.body,
-    lineHeight: Type.body * Line.normal,
+  body: {
+    fontSize: Type.bodyMedium,
+    lineHeight: Type.bodyMedium * Line.relaxed,
     maxWidth: 560,
-  },
-  row: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: Space.sm,
-  },
-  chip: {
-    borderWidth: 1,
-    borderRadius: Radius.sm,
-    paddingHorizontal: Space.lg,
-    minHeight: 40,
-    justifyContent: 'center',
-  },
-  chipText: {
-    fontSize: Type.body,
   },
   fact: {
     flexDirection: 'row',
+    alignItems: 'center',
     justifyContent: 'space-between',
     gap: Space.lg,
   },
   factLabel: {
-    fontSize: Type.body,
+    fontSize: Type.bodyMedium,
   },
   factValue: {
-    fontSize: Type.body,
+    fontSize: Type.bodyLarge,
+  },
+  mono: {
+    fontFamily: Fonts.mono,
+  },
+  weightRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Space.sm,
   },
   helper: {
-    fontSize: Type.small,
-    lineHeight: Type.small * Line.relaxed,
+    fontSize: Type.labelMedium,
+    lineHeight: Type.labelMedium * 1.5,
+    maxWidth: 560,
+  },
+  prefRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    flexWrap: 'wrap',
+    gap: Space.md,
+    borderTopWidth: 1,
+    paddingTop: Space.md,
+  },
+  prefText: {
+    flexGrow: 1,
+    flexBasis: 220,
+    gap: 2,
+  },
+  prefLabel: {
+    fontSize: Type.bodyLarge,
+  },
+  prefControl: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Space.sm,
+  },
+  prefValue: {
+    fontFamily: Fonts.mono,
+    fontSize: Type.titleMedium,
+    minWidth: 96,
+    textAlign: 'center',
+  },
+  prefUnit: {
+    fontSize: Type.labelMedium,
+  },
+  step: {
+    width: 40,
+    height: 40,
+    borderWidth: 1,
+    borderRadius: Radius.pill,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  stepText: {
+    fontSize: Type.bodyLg,
+    fontWeight: '600',
   },
 });

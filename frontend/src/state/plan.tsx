@@ -2,10 +2,27 @@ import { useCallback, useMemo, useState } from 'react';
 
 import { dataSource } from '@/api/config';
 import type { InsightRead, UserRead } from '@/api/types';
-import { energyLabel, mockCompletions, mockFeedback, mockPlanId, mockTasks, mockUser } from '@/data/mock';
+import {
+  energyLabel,
+  mockCompletions,
+  mockFeedback,
+  mockGoals,
+  mockPlanChanges,
+  mockPlanId,
+  mockTasks,
+  mockUser,
+} from '@/data/mock';
 import { addDays, todayISO } from '@/domain/date';
+import {
+  decomposePending as decomposePendingLocal,
+  type DraftTask,
+  type PendingTask,
+} from '@/domain/decompose';
+import type { Goal } from '@/domain/goal';
 import { buildInsight } from '@/domain/insight';
+import { type SchedulingPreferences } from '@/domain/preferences';
 import { buildLists, buildRuler, countLists, pickCurrentTask } from '@/domain/selectors';
+import { buildSituation } from '@/domain/situation';
 import {
   completionRate,
   completedToday,
@@ -23,8 +40,10 @@ import {
   type Assessment,
   type FeedbackInput,
   type FeedbackResult,
+  type PendingTaskInput,
   type PlanContextValue,
 } from '@/state/plan-context';
+import { loadPreferences, savePreferences } from '@/state/preferences-store';
 import { SessionProvider } from '@/state/session';
 
 const initialStore: ops.StoreState = {
@@ -36,6 +55,9 @@ const initialStore: ops.StoreState = {
 function MockPlanProvider({ children }: { children: React.ReactNode }) {
   const [state, setState] = useState<ops.StoreState>(initialStore);
   const [assessment, setAssessment] = useState<Assessment>({ energy: 1, mood: 2, stress: 1 });
+  const [goals, setGoals] = useState<Goal[]>(mockGoals);
+  const [pendingTasks, setPendingTasks] = useState<PendingTask[]>([]);
+  const [preferences, setPreferences] = useState<SchedulingPreferences>(() => loadPreferences());
 
   const ordered = useMemo(() => {
     const seen = new Set<number>();
@@ -79,6 +101,11 @@ function MockPlanProvider({ children }: { children: React.ReactNode }) {
     [ordered],
   );
 
+  const situation = useMemo(
+    () => buildSituation(mockFeedback, mockUser.execution_weight, stats.rate),
+    [stats.rate],
+  );
+
   const addTask = useCallback((text: string, defaults?: Partial<NewTaskInput>) => {
     setState((prev) => ops.createTaskFromText(prev, text, defaults).state);
   }, []);
@@ -119,6 +146,93 @@ function MockPlanProvider({ children }: { children: React.ReactNode }) {
     setState((prev) => ops.logFocus(prev, taskId, minutes));
   }, []);
 
+  const addPendingTask = useCallback(
+    (input: PendingTaskInput) => {
+      setPendingTasks((prev) => [
+        ...prev,
+        {
+          id: Math.max(0, ...prev.map((item) => item.id)) + 1,
+          title: input.title,
+          priority: input.priority,
+          dueDate: input.dueDate,
+          notes: input.notes,
+        },
+      ]);
+    },
+    [],
+  );
+
+  const updatePendingTask = useCallback((id: number, patch: Partial<PendingTask>) => {
+    setPendingTasks((prev) => prev.map((item) => (item.id === id ? { ...item, ...patch } : item)));
+  }, []);
+
+  const removePendingTask = useCallback((id: number) => {
+    setPendingTasks((prev) => prev.filter((item) => item.id !== id));
+  }, []);
+
+  const decomposePending = useCallback(
+    (feedback?: string) => decomposePendingLocal(pendingTasks, feedback),
+    [pendingTasks],
+  );
+
+  const confirmDecompose = useCallback(
+    async (tasks: DraftTask[]) => {
+      const bySource = new Map(pendingTasks.map((item) => [item.id, item]));
+      const sourceIds = Array.from(new Set(tasks.map((task) => task.sourceId)));
+      const goalIdBySource = new Map<number, number>();
+      const newGoals: Goal[] = [];
+      let nextGoalId = Math.max(0, ...goals.map((goal) => goal.id)) + 1;
+
+      for (const sourceId of sourceIds) {
+        const item = bySource.get(sourceId);
+        if (!item) continue;
+        const id = nextGoalId;
+        nextGoalId += 1;
+        goalIdBySource.set(sourceId, id);
+        newGoals.push({
+          id,
+          title: item.title,
+          description: item.notes,
+          status: 'active',
+          deadline: item.dueDate,
+          estimatedMinutes: null,
+          priority: item.priority,
+          createdAt: new Date().toISOString(),
+        });
+      }
+
+      setGoals((prev) => [...prev, ...newGoals]);
+      setState((prev) => {
+        let next = prev;
+        tasks.forEach((task) => {
+          next = ops.makeTask(next, {
+            title: task.title,
+            goalId: goalIdBySource.get(task.sourceId) ?? null,
+            priority: task.priority,
+            dueDate: task.dueDate,
+            startTime: task.startTime,
+            endTime: task.endTime,
+            estimatedMinutes: task.estimatedMinutes,
+          }).state;
+        });
+        return next;
+      });
+      setPendingTasks([]);
+    },
+    [goals, pendingTasks],
+  );
+
+  const updatePreferences = useCallback(
+    async (patch: Partial<SchedulingPreferences>) => {
+      setPreferences((prev) => {
+        const next = { ...prev, ...patch };
+        savePreferences(next);
+        return next;
+      });
+    },
+    [],
+  );
+
   const submitFeedback = useCallback(
     async (_input: FeedbackInput): Promise<FeedbackResult> => ({
       replanTriggered: false,
@@ -146,6 +260,17 @@ function MockPlanProvider({ children }: { children: React.ReactNode }) {
       stats,
       insight,
       completions: state.completions,
+      situation,
+      preferences,
+      updatePreferences,
+      planChanges: mockPlanChanges,
+      goals,
+      pendingTasks,
+      addPendingTask,
+      updatePendingTask,
+      removePendingTask,
+      decomposePending,
+      confirmDecompose,
       assessment,
       setAssessment,
       submitFeedback,
@@ -174,6 +299,16 @@ function MockPlanProvider({ children }: { children: React.ReactNode }) {
       stats,
       insight,
       state.completions,
+      situation,
+      preferences,
+      updatePreferences,
+      goals,
+      pendingTasks,
+      addPendingTask,
+      updatePendingTask,
+      removePendingTask,
+      decomposePending,
+      confirmDecompose,
       assessment,
       submitFeedback,
       addTask,

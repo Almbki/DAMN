@@ -1,51 +1,84 @@
-import { Pressable, StyleSheet, Text, View } from 'react-native';
+import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 
-import { Radius, Space, Type } from '@/constants/tokens';import { useTheme } from '@/state/theme';
+import { Radius, Space, Type } from '@/constants/tokens';
+import { useTheme } from '@/state/theme';
 
 /**
- * A row of mutually exclusive choices. Selected state is a filled ink chip — the
- * mint accent is reserved for "now", so selection never borrows it.
+ * Material 3 segmented buttons — a connected, outlined row of mutually
+ * exclusive choices. Selected state is the secondary container (never the live
+ * "now" colour). Renders as one explicit row; pass `scroll` when the options
+ * are wide/numerous, because react-native-web `flexWrap` is unreliable.
  */
 export function Segmented({
   label,
   options,
   value,
   onChange,
+  disabled = [],
+  scroll = false,
+  size = 'md',
 }: {
   label?: string;
   options: readonly string[];
   value: number;
   onChange: (index: number) => void;
+  /** Indices that render dimmed and are not selectable. */
+  disabled?: number[];
+  scroll?: boolean;
+  size?: 'sm' | 'md';
 }) {
   const { colors } = useTheme();
 
+  const row = (
+    <View
+      accessibilityRole="radiogroup"
+      style={[
+        styles.row,
+        { borderColor: colors.outline, backgroundColor: colors.surfaceContainerLowest },
+      ]}>
+      {options.map((option, index) => {
+        const selected = index === value;
+        const off = disabled.includes(index);
+        return (
+          <Pressable
+            key={option}
+            accessibilityRole="radio"
+            accessibilityState={{ selected, disabled: off }}
+            accessibilityLabel={option}
+            disabled={off}
+            onPress={() => onChange(index)}
+            style={[
+              styles.segment,
+              index > 0 && { borderLeftWidth: 1, borderLeftColor: colors.outline },
+              selected && { backgroundColor: colors.secondaryContainer },
+              off && styles.off,
+            ]}>
+            <Text
+              numberOfLines={1}
+              style={[
+                styles.label,
+                size === 'sm' && styles.labelSm,
+                { color: selected ? colors.onSecondaryContainer : colors.ink },
+                selected && styles.labelSelected,
+              ]}>
+              {option}
+            </Text>
+          </Pressable>
+        );
+      })}
+    </View>
+  );
+
   return (
     <View style={styles.wrap}>
-      {label ? <Text style={[styles.label, { color: colors.inkMuted }]}>{label}</Text> : null}
-      <View style={styles.row}>
-        {options.map((option, index) => {
-          const selected = index === value;
-          return (
-            <Pressable
-              key={option}
-              accessibilityRole="radio"
-              accessibilityState={{ selected }}
-              accessibilityLabel={option}
-              onPress={() => onChange(index)}
-              style={[
-                styles.chip,
-                {
-                  borderColor: selected ? colors.ink : colors.line,
-                  backgroundColor: selected ? colors.ink : 'transparent',
-                },
-              ]}>
-              <Text style={[styles.chipText, { color: selected ? colors.onInk : colors.ink }]}>
-                {option}
-              </Text>
-            </Pressable>
-          );
-        })}
-      </View>
+      {label ? <Text style={[styles.fieldLabel, { color: colors.inkMuted }]}>{label}</Text> : null}
+      {scroll ? (
+        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.scrollRow}>
+          {row}
+        </ScrollView>
+      ) : (
+        row
+      )}
     </View>
   );
 }
@@ -54,22 +87,36 @@ const styles = StyleSheet.create({
   wrap: {
     gap: Space.sm,
   },
-  label: {
-    fontSize: Type.small,
+  fieldLabel: {
+    fontSize: Type.labelMedium,
   },
   row: {
     flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: Space.sm,
-  },
-  chip: {
     borderWidth: 1,
-    borderRadius: Radius.sm,
-    paddingHorizontal: Space.lg,
+    borderRadius: Radius.pill,
+    overflow: 'hidden',
+  },
+  scrollRow: {
+    flexDirection: 'row',
+    paddingVertical: 1,
+  },
+  segment: {
+    flex: 1,
     minHeight: 40,
+    paddingHorizontal: Space.md,
+    alignItems: 'center',
     justifyContent: 'center',
   },
-  chipText: {
-    fontSize: Type.body,
+  off: {
+    opacity: 0.38,
+  },
+  label: {
+    fontSize: Type.labelLarge,
+  },
+  labelSm: {
+    fontSize: Type.labelMedium,
+  },
+  labelSelected: {
+    fontWeight: '600',
   },
 });

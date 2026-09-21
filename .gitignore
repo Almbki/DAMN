@@ -48,10 +48,3 @@ Thumbs.db
 
 # Research raw retrieval data (regenerable via docs/research/*/fetch_*.ps1)
 docs/research/**/api/
-
-# Verification artifacts: heavy headless-browser profiles + generated shots.
-# The probe scripts (.js/.ps1) stay tracked.
-.shots/cdp-*/
-.shots/preview/
-.shots/reports/
-.shots/*.png

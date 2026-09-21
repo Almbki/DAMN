@@ -1,87 +1,55 @@
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 
 import { TaskMeta } from '@/components/task-meta';
+import { Checkbox } from '@/components/ui/checkbox';
 import { useInteraction } from '@/components/ui/interaction';
-import { Line, Radius, Space, Type } from '@/constants/tokens';
+import { Fonts, Line, Space, Type } from '@/constants/tokens';
 import { isClosed, type Task } from '@/domain/task';
 import { useTheme } from '@/state/theme';
 
 type Props = {
   task: Task;
+  /** Keyboard/roving highlight. */
   active?: boolean;
-  selected?: boolean;
-  batchMode?: boolean;
-  dragging?: boolean;
-  draggable?: boolean;
   onToggleDone: () => void;
-  onOpen: () => void;
-  onToggleSelect: () => void;
-  onSkip: () => void;
-  onDragStart?: () => void;
-  onDragEnter?: () => void;
-  onDragEnd?: () => void;
+  /** Absent in api mode, where the backend cannot edit tasks. */
+  onOpen?: () => void;
+  onSkip?: () => void;
 };
 
 /**
- * The row is a plain container; every control is a sibling button. Nesting
- * pressables would emit real `<button>` inside `<button>` on web (RNW renders
- * `accessibilityRole="button"` as a native button element).
+ * A Material 3 list row. The row is a plain container; the checkbox and the
+ * optional action are sibling controls (nesting pressables emits invalid HTML
+ * on react-native-web).
  */
-export function TaskRow({
-  task,
-  active = false,
-  selected = false,
-  batchMode = false,
-  dragging = false,
-  draggable = false,
-  onToggleDone,
-  onOpen,
-  onToggleSelect,
-  onSkip,
-  onDragStart,
-  onDragEnter,
-  onDragEnd,
-}: Props) {
+export function TaskRow({ task, active = false, onToggleDone, onOpen, onSkip }: Props) {
   const { colors } = useTheme();
   const { focused, hovered, onFocus, onBlur, onHoverIn, onHoverOut } = useInteraction();
   const done = isClosed(task);
-  const marked = batchMode ? selected : done;
-  const ringed = focused || active;
 
   return (
     <View
-      onPointerEnter={() => {
-        onHoverIn();
-        if (dragging) onDragEnter?.();
-      }}
+      onPointerEnter={onHoverIn}
       onPointerLeave={onHoverOut}
       style={[
         styles.row,
         {
-          borderBottomColor: colors.line,
-          backgroundColor: dragging ? colors.pressed : hovered || active ? colors.hover : 'transparent',
-          boxShadow: ringed ? `inset 0 0 0 2px ${colors.lineStrong}` : undefined,
-          opacity: dragging ? 0.6 : 1,
+          borderBottomColor: colors.outlineVariant,
+          backgroundColor: active ? colors.secondaryContainer : hovered ? colors.hover : 'transparent',
+          boxShadow: focused ? `inset 0 0 0 2px ${colors.focusRing}` : undefined,
         },
       ]}>
-      <Pressable
-        accessibilityRole="checkbox"
-        accessibilityState={{ checked: marked }}
-        accessibilityLabel={`${batchMode ? '选择' : '完成'}：${task.title}`}
-        onPress={batchMode ? onToggleSelect : onToggleDone}
-        onFocus={onFocus}
-        onBlur={onBlur}
-        style={[
-          styles.checkbox,
-          { borderColor: colors.ink, backgroundColor: marked ? colors.ink : 'transparent' },
-        ]}>
-        {marked ? <Text style={[styles.checkGlyph, { color: colors.onInk }]}>✓</Text> : null}
-      </Pressable>
+      <Checkbox
+        checked={done}
+        onPress={onToggleDone}
+        label={`${done ? '取消完成' : '完成'}：${task.title}`}
+      />
 
       <Pressable
-        accessibilityRole="button"
-        accessibilityLabel={`打开任务：${task.title}`}
-        onPress={batchMode ? onToggleSelect : onOpen}
+        accessibilityRole={onOpen ? 'button' : undefined}
+        accessibilityLabel={onOpen ? `编辑任务：${task.title}` : task.title}
+        onPress={onOpen}
+        disabled={!onOpen}
         onFocus={onFocus}
         onBlur={onBlur}
         style={styles.content}>
@@ -98,29 +66,19 @@ export function TaskRow({
         <TaskMeta task={task} />
       </Pressable>
 
-      {hovered && !done && !batchMode ? (
+      {onSkip && !done && hovered ? (
         <Pressable
           accessibilityRole="button"
           accessibilityLabel={`今天先不做：${task.title}`}
           onPress={onSkip}
           style={styles.rowAction}>
-          <Text style={[styles.rowActionText, { color: colors.mintInk }]}>今天先不做</Text>
+          <Text style={[styles.rowActionText, { color: colors.primary }]}>今天先不做</Text>
         </Pressable>
       ) : null}
 
-      <Text style={[styles.duration, { color: colors.inkMuted }]}>{task.estimatedMinutes ?? '—'}</Text>
-
-      {draggable && !batchMode ? (
-        <Pressable
-          accessibilityRole="button"
-          accessibilityLabel={`拖动排序：${task.title}`}
-          onPointerDown={onDragStart}
-          onPointerUp={onDragEnd}
-          onPointerCancel={onDragEnd}
-          style={styles.handle}>
-          <Text style={[styles.handleText, { color: colors.inkFaint }]}>≡</Text>
-        </Pressable>
-      ) : null}
+      <Text style={[styles.duration, { color: colors.inkMuted }]}>
+        {task.estimatedMinutes ?? '—'}
+      </Text>
     </View>
   );
 }
@@ -129,32 +87,20 @@ const styles = StyleSheet.create({
   row: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: Space.md,
-    minHeight: 56,
-    paddingVertical: Space.md,
+    gap: Space.sm,
+    minHeight: 64,
+    paddingVertical: Space.sm,
     borderBottomWidth: 1,
-  },
-  checkbox: {
-    width: 20,
-    height: 20,
-    borderRadius: Radius.sm,
-    borderWidth: 1,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  checkGlyph: {
-    fontSize: Type.small,
-    lineHeight: Type.small * 1.1,
-    fontWeight: '700',
   },
   content: {
     flex: 1,
-    gap: Space.xs,
+    gap: 2,
     minWidth: 0,
+    paddingVertical: Space.xs,
   },
   title: {
-    fontSize: Type.body,
-    lineHeight: Type.body * Line.normal,
+    fontSize: Type.bodyLarge,
+    lineHeight: Type.bodyLarge * Line.normal,
   },
   rowAction: {
     paddingHorizontal: Space.sm,
@@ -162,20 +108,12 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   rowActionText: {
-    fontSize: Type.small,
+    fontSize: Type.labelMedium,
   },
   duration: {
-    fontSize: Type.small,
-    fontFamily: 'IBMPlexMono_400Regular',
+    fontFamily: Fonts.monoRegular,
+    fontSize: Type.labelMedium,
     minWidth: 28,
     textAlign: 'right',
-  },
-  handle: {
-    paddingHorizontal: Space.sm,
-    minHeight: 32,
-    justifyContent: 'center',
-  },
-  handleText: {
-    fontSize: Type.body,
   },
 });

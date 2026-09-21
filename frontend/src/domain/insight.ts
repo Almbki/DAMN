@@ -6,6 +6,7 @@ export interface FeedbackSample {
   date: string;
   stress_level: number | null;
   energy_level: number | null;
+  completion_rate?: number | null;
 }
 
 function round(value: number, digits: number): number {

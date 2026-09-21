@@ -27,6 +27,10 @@ export interface Task {
   title: string;
   description: string;
   notes: string;
+  /** Owning goal, from backend `TaskRead.goal_id` (trustworthy). */
+  goalId: number | null;
+  /** 1 low · 2 medium · 3 high. Mirrors backend `priority`, clamped for display. */
+  priority: number;
   done: boolean;
   /** "今天先不做" — a soft defer, not a failure. */
   skipped: boolean;
@@ -34,6 +38,8 @@ export interface Task {
   startTime: string | null;
   dueDate: string | null;
   dueTime: string | null;
+  /** Local clock `HH:MM` the task ends, when the backend provides it. */
+  endTime: string | null;
   estimatedMinutes: number | null;
   actualMinutes: number | null;
   /** Mirrors the backend `cognitive_load`; drives the insight panel. */

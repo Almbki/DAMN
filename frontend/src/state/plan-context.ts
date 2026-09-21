@@ -1,10 +1,15 @@
 import { createContext, useContext } from 'react';
 
 import type { InsightRead, UserRead } from '@/api/types';
+import type { DraftTask, PendingTask } from '@/domain/decompose';
+import type { Goal } from '@/domain/goal';
+import type { PlanChange } from '@/domain/plan-change';
+import type { SchedulingPreferences } from '@/domain/preferences';
+import type { RulerSegmentState, SmartListKey } from '@/domain/selectors';
+import type { Situation } from '@/domain/situation';
 import type { Completion } from '@/domain/stats';
 import type { NewTaskInput, StoreState } from '@/domain/task-ops';
 import type { Task } from '@/domain/task';
-import type { RulerSegmentState, SmartListKey } from '@/domain/selectors';
 
 export type { SmartListKey };
 
@@ -23,6 +28,13 @@ export type FeedbackResult = {
   replanPlanId: number | null;
   /** Human-readable cooldown note when a replan was requested but not eligible. */
   cooldownMessage: string | null;
+};
+
+export type PendingTaskInput = {
+  title: string;
+  priority: number;
+  dueDate: string | null;
+  notes: string;
 };
 
 export type PlanContextValue = {
@@ -56,6 +68,27 @@ export type PlanContextValue = {
   insight: InsightRead;
   completions: Completion[];
 
+  /** Current 精力 / 压力 / 效能 + trend (see domain/situation.ts). */
+  situation: Situation;
+  /** Scheduling preferences, set once and reused by every generate call. */
+  preferences: SchedulingPreferences;
+  updatePreferences: (patch: Partial<SchedulingPreferences>) => Promise<void>;
+  /** Replan change notice; mock until the backend exposes it. */
+  planChanges: PlanChange[];
+
+  /** Goals from the active plan — used only as group labels in 待办. */
+  goals: Goal[];
+
+  /** GOAL page: items waiting to be decomposed. */
+  pendingTasks: PendingTask[];
+  addPendingTask: (input: PendingTaskInput) => void;
+  updatePendingTask: (id: number, patch: Partial<PendingTask>) => void;
+  removePendingTask: (id: number) => void;
+  /** Build the preview (optionally reshaped by the user's feedback). */
+  decomposePending: (feedback?: string) => DraftTask[];
+  /** Persist a confirmed preview. */
+  confirmDecompose: (tasks: DraftTask[]) => Promise<void>;
+
   assessment: Assessment;
   setAssessment: (next: Assessment) => void;
   submitFeedback: (input: FeedbackInput) => Promise<FeedbackResult>;
@@ -87,4 +120,4 @@ export function usePlan(): PlanContextValue {
   return context;
 }
 
-export type { StoreState };
+export type { StoreState, Task };

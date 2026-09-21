@@ -1,4 +1,5 @@
-import { addDays, todayISO } from '@/domain/date';
+import { addDays, parseISO, todayISO } from '@/domain/date';
+import type { Goal } from '@/domain/goal';
 import { isClosed, type Task } from '@/domain/task';
 
 export type SmartListKey = 'all' | 'today' | 'tomorrow' | 'upcoming' | 'overdue' | 'noDate';
@@ -36,6 +37,36 @@ export function countLists(lists: Record<SmartListKey, Task[]>): Record<SmartLis
     counts[key] = lists[key].filter((task) => !isClosed(task)).length;
   });
   return counts;
+}
+
+/** Monday of the week containing `date`. */
+export function startOfWeek(date: string): string {
+  const dow = parseISO(date).getDay();
+  return addDays(date, -((dow + 6) % 7));
+}
+
+/** Monday..Sunday of the week containing `date`. */
+export function weekDates(date: string): string[] {
+  const start = startOfWeek(date);
+  return Array.from({ length: 7 }, (_, index) => addDays(start, index));
+}
+
+export interface GoalGroup {
+  goal: Goal | null;
+  tasks: Task[];
+}
+
+/** Group tasks by their owning goal, preserving the goal list order. */
+export function groupByGoal(tasks: Task[], goals: Goal[]): GoalGroup[] {
+  const groups: GoalGroup[] = goals.map((goal) => ({
+    goal,
+    tasks: tasks.filter((task) => task.goalId === goal.id),
+  }));
+  const orphans = tasks.filter(
+    (task) => task.goalId == null || !goals.some((goal) => goal.id === task.goalId),
+  );
+  if (orphans.length > 0) groups.push({ goal: null, tasks: orphans });
+  return groups;
 }
 
 export function pickCurrentTask(tasks: Task[], today: string = todayISO()): Task | null {

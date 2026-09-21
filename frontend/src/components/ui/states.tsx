@@ -1,7 +1,8 @@
 import { ActivityIndicator, StyleSheet, Text, View } from 'react-native';
 
 import { Button } from '@/components/ui/button';
-import { Line, Radius, Space, Type } from '@/constants/tokens';
+import { Surface } from '@/components/ui/surface';
+import { Line, Space, Type } from '@/constants/tokens';
 import { useTheme } from '@/state/theme';
 
 /**
@@ -13,20 +14,26 @@ export function EmptyState({
   title,
   body,
   actionLabel,
+  actionIcon,
   onAction,
 }: {
   title: string;
   body: string;
   actionLabel?: string;
+  actionIcon?: Parameters<typeof Button>[0]['icon'];
   onAction?: () => void;
 }) {
   const { colors } = useTheme();
   return (
-    <View style={[styles.box, styles.dashed, { borderColor: colors.line }]}>
-      <Text style={[styles.title, { color: colors.ink }]}>{title}</Text>
-      <Text style={[styles.body, { color: colors.inkMuted }]}>{body}</Text>
-      {actionLabel && onAction ? <Button label={actionLabel} onPress={onAction} /> : null}
-    </View>
+    <Surface level="level0" radius="lg" bordered style={{ borderStyle: 'dashed' }}>
+      <View style={styles.box}>
+        <Text style={[styles.title, { color: colors.ink }]}>{title}</Text>
+        <Text style={[styles.body, { color: colors.inkMuted }]}>{body}</Text>
+        {actionLabel && onAction ? (
+          <Button label={actionLabel} icon={actionIcon} variant="tonal" onPress={onAction} />
+        ) : null}
+      </View>
+    </Surface>
   );
 }
 
@@ -41,11 +48,13 @@ export function ErrorState({
 }) {
   const { colors } = useTheme();
   return (
-    <View style={[styles.box, { borderColor: colors.line }]}>
-      <Text style={[styles.title, { color: colors.ink }]}>{title}</Text>
-      <Text style={[styles.body, { color: colors.inkMuted }]}>{body}</Text>
-      {onRetry ? <Button label="重试" variant="secondary" onPress={onRetry} /> : null}
-    </View>
+    <Surface level="level1" radius="lg">
+      <View style={styles.box}>
+        <Text style={[styles.title, { color: colors.error }]}>{title}</Text>
+        <Text style={[styles.body, { color: colors.inkMuted }]}>{body}</Text>
+        {onRetry ? <Button label="重试" variant="tonal" onPress={onRetry} /> : null}
+      </View>
+    </Surface>
   );
 }
 
@@ -53,7 +62,7 @@ export function LoadingState({ label }: { label: string }) {
   const { colors } = useTheme();
   return (
     <View style={styles.loading}>
-      <ActivityIndicator color={colors.inkMuted} />
+      <ActivityIndicator color={colors.primary} />
       <Text style={[styles.body, { color: colors.inkMuted }]}>{label}</Text>
     </View>
   );
@@ -61,21 +70,16 @@ export function LoadingState({ label }: { label: string }) {
 
 const styles = StyleSheet.create({
   box: {
-    borderWidth: 1,
-    borderRadius: Radius.md,
     padding: Space.xl,
     gap: Space.md,
   },
-  dashed: {
-    borderStyle: 'dashed',
-  },
   title: {
-    fontSize: Type.title,
-    fontWeight: '700',
+    fontSize: Type.titleLarge,
+    fontWeight: '600',
   },
   body: {
-    fontSize: Type.body,
-    lineHeight: Type.body * Line.normal,
+    fontSize: Type.bodyMedium,
+    lineHeight: Type.bodyMedium * Line.relaxed,
     maxWidth: 560,
   },
   loading: {
