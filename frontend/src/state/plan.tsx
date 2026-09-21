@@ -1,6 +1,11 @@
-import { createContext, useCallback, useContext, useMemo, useState } from 'react';
+import { useCallback, useMemo, useState } from 'react';
 
+import { dataSource } from '@/api/config';
+import type { InsightRead, UserRead } from '@/api/types';
+import { energyLabel, mockCompletions, mockFeedback, mockPlanId, mockTasks, mockUser } from '@/data/mock';
 import { addDays, todayISO } from '@/domain/date';
+import { buildInsight } from '@/domain/insight';
+import { buildLists, buildRuler, countLists, pickCurrentTask } from '@/domain/selectors';
 import {
   completionRate,
   completedToday,
@@ -8,14 +13,19 @@ import {
   dailyBuckets,
   longestStreak,
   monthlyBuckets,
-  type Completion,
 } from '@/domain/stats';
 import { isClosed, type Task } from '@/domain/task';
 import * as ops from '@/domain/task-ops';
 import type { NewTaskInput } from '@/domain/task-ops';
-import { energyLabel, mockCompletions, mockTasks, mockUser, type EnergyLevel } from '@/data/mock';
-
-export type SmartListKey = 'all' | 'today' | 'tomorrow' | 'upcoming' | 'overdue' | 'noDate';
+import { ApiPlanProvider } from '@/state/api-plan';
+import {
+  PlanContext,
+  type Assessment,
+  type FeedbackInput,
+  type FeedbackResult,
+  type PlanContextValue,
+} from '@/state/plan-context';
+import { SessionProvider } from '@/state/session';
 
 const initialStore: ops.StoreState = {
   tasks: mockTasks,
@@ -23,52 +33,10 @@ const initialStore: ops.StoreState = {
   focusSessions: [],
 };
 
-type PlanContextValue = {
-  user: typeof mockUser;
-  tasks: Task[];
-  energy: EnergyLevel;
-  energyLabelText: string;
-  lists: Record<SmartListKey, Task[]>;
-  listCounts: Record<SmartListKey, number>;
-  currentTask: Task | null;
-  ruler: { key: string; state: 'done' | 'now' | 'todo' }[];
-  stats: {
-    completedToday: number;
-    openCount: number;
-    doneCount: number;
-    rate: number;
-    streak: number;
-    longest: number;
-    weekly: { date: string; count: number; minutes: number }[];
-    monthly: { date: string; count: number; minutes: number }[];
-    focusToday: number;
-    focusWeek: number;
-  };
-  completions: Completion[];
-  addTask: (text: string, defaults?: Partial<NewTaskInput>) => void;
-  createTask: (input: NewTaskInput) => void;
-  updateTask: (id: number, patch: Partial<Task>) => void;
-  deleteTask: (id: number) => void;
-  setDone: (id: number, done: boolean) => void;
-  toggleDone: (id: number) => void;
-  setSkipped: (id: number, skipped: boolean) => void;
-  reorder: (draggedId: number, targetId: number) => void;
-  moveBy: (id: number, delta: number) => void;
-  batchSetDone: (ids: number[], done: boolean) => void;
-  batchDelete: (ids: number[]) => void;
-  batchReschedule: (ids: number[], date: string | null) => void;
-  logFocus: (taskId: number, minutes: number) => void;
-};
-
-const PlanContext = createContext<PlanContextValue | null>(null);
-
-export function PlanProvider({ children }: { children: React.ReactNode }) {
+function MockPlanProvider({ children }: { children: React.ReactNode }) {
   const [state, setState] = useState<ops.StoreState>(initialStore);
-  const [energy] = useState<EnergyLevel>('medium');
+  const [assessment, setAssessment] = useState<Assessment>({ energy: 1, mood: 2, stress: 1 });
 
-  // De-duplicate by id as a safety net: a drifted id can leave two tasks sharing
-  // one id, which would render duplicate React keys. New ids are derived from the
-  // data (`nextId`), so this only ever drops already-corrupted entries.
   const ordered = useMemo(() => {
     const seen = new Set<number>();
     return [...state.tasks]
@@ -81,45 +49,13 @@ export function PlanProvider({ children }: { children: React.ReactNode }) {
   }, [state.tasks]);
 
   const today = todayISO();
-
-  const lists = useMemo(() => {
-    const tomorrow = addDays(today, 1);
-    const open = (task: Task) => !isClosed(task);
-    return {
-      all: ordered,
-      today: ordered.filter((task) => task.dueDate === today),
-      tomorrow: ordered.filter((task) => task.dueDate === tomorrow && open(task)),
-      upcoming: ordered.filter((task) => task.dueDate && task.dueDate > tomorrow && open(task)),
-      overdue: ordered.filter((task) => task.dueDate && task.dueDate < today && open(task)),
-      noDate: ordered.filter((task) => !task.dueDate && open(task)),
-    } satisfies Record<SmartListKey, Task[]>;
-  }, [ordered, today]);
-
-  const listCounts = useMemo(() => {
-    const counts = {} as Record<SmartListKey, number>;
-    (Object.keys(lists) as SmartListKey[]).forEach((key) => {
-      counts[key] = lists[key].filter((task) => !isClosed(task)).length;
-    });
-    return counts;
-  }, [lists]);
-
-  const currentTask = useMemo(() => {
-    const todayOpen = ordered.filter((task) => task.dueDate === today && !isClosed(task));
-    return todayOpen[0] ?? ordered.find((task) => !isClosed(task)) ?? null;
-  }, [ordered, today]);
-
-  const ruler = useMemo(() => {
-    const todays = ordered.filter((task) => task.dueDate === today);
-    const base = todays.length > 0 ? todays : ordered.filter((task) => !isClosed(task));
-    return base.map((task) => ({
-      key: String(task.id),
-      state: isClosed(task) ? ('done' as const) : task.id === currentTask?.id ? ('now' as const) : ('todo' as const),
-    }));
-  }, [ordered, today, currentTask]);
+  const lists = useMemo(() => buildLists(ordered, today), [ordered, today]);
+  const listCounts = useMemo(() => countLists(lists), [lists]);
+  const currentTask = useMemo(() => pickCurrentTask(ordered, today), [ordered, today]);
+  const ruler = useMemo(() => buildRuler(ordered, currentTask?.id, today), [ordered, currentTask, today]);
 
   const stats = useMemo(() => {
     const weekStart = addDays(today, -6);
-    const focusSessions = state.focusSessions;
     return {
       completedToday: completedToday(state.tasks),
       openCount: state.tasks.filter((task) => !isClosed(task)).length,
@@ -129,14 +65,19 @@ export function PlanProvider({ children }: { children: React.ReactNode }) {
       longest: longestStreak(state.completions),
       weekly: dailyBuckets(state.completions, 7),
       monthly: monthlyBuckets(state.completions, 6),
-      focusToday: focusSessions
+      focusToday: state.focusSessions
         .filter((session) => session.date === today)
         .reduce((sum, session) => sum + session.minutes, 0),
-      focusWeek: focusSessions
+      focusWeek: state.focusSessions
         .filter((session) => session.date >= weekStart)
         .reduce((sum, session) => sum + session.minutes, 0),
     };
   }, [state.tasks, state.completions, state.focusSessions, today]);
+
+  const insight: InsightRead = useMemo(
+    () => buildInsight(mockPlanId, ordered, mockFeedback),
+    [ordered],
+  );
 
   const addTask = useCallback((text: string, defaults?: Partial<NewTaskInput>) => {
     setState((prev) => ops.createTaskFromText(prev, text, defaults).state);
@@ -178,18 +119,38 @@ export function PlanProvider({ children }: { children: React.ReactNode }) {
     setState((prev) => ops.logFocus(prev, taskId, minutes));
   }, []);
 
+  const submitFeedback = useCallback(
+    async (_input: FeedbackInput): Promise<FeedbackResult> => ({
+      replanTriggered: false,
+      replanPlanId: null,
+      cooldownMessage: null,
+    }),
+    [],
+  );
+
   const value = useMemo<PlanContextValue>(
     () => ({
-      user: mockUser,
+      mode: 'mock',
+      canEditTasks: true,
+      loading: false,
+      error: null,
+      refresh: () => undefined,
+      user: mockUser as UserRead,
       tasks: ordered,
-      energy,
-      energyLabelText: energyLabel[energy],
+      energy: 'medium',
+      energyLabelText: energyLabel.medium,
       lists,
       listCounts,
       currentTask,
       ruler,
       stats,
+      insight,
       completions: state.completions,
+      assessment,
+      setAssessment,
+      submitFeedback,
+      submitGoal: (title: string) => addTask(title, { dueDate: todayISO() }),
+      updateWeight: async () => undefined,
       addTask,
       createTask,
       updateTask,
@@ -206,13 +167,15 @@ export function PlanProvider({ children }: { children: React.ReactNode }) {
     }),
     [
       ordered,
-      energy,
       lists,
       listCounts,
       currentTask,
       ruler,
       stats,
+      insight,
       state.completions,
+      assessment,
+      submitFeedback,
       addTask,
       createTask,
       updateTask,
@@ -232,10 +195,16 @@ export function PlanProvider({ children }: { children: React.ReactNode }) {
   return <PlanContext.Provider value={value}>{children}</PlanContext.Provider>;
 }
 
-export function usePlan(): PlanContextValue {
-  const context = useContext(PlanContext);
-  if (!context) throw new Error('usePlan must be used inside <PlanProvider>');
-  return context;
+export function PlanProvider({ children }: { children: React.ReactNode }) {
+  if (dataSource === 'api') {
+    return (
+      <SessionProvider>
+        <ApiPlanProvider>{children}</ApiPlanProvider>
+      </SessionProvider>
+    );
+  }
+  return <MockPlanProvider>{children}</MockPlanProvider>;
 }
 
-export { energyLabel };
+export { usePlan } from '@/state/plan-context';
+export type { SmartListKey } from '@/state/plan-context';

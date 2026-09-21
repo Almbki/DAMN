@@ -10,6 +10,7 @@ import { addDays, addMonths } from '@/domain/date';
 
 export type RepeatFreq = 'none' | 'daily' | 'weekly' | 'monthly' | 'custom';
 export type RepeatEnd = 'never' | 'until' | 'count';
+export type CognitiveLoad = 'low' | 'medium' | 'high';
 
 export interface Repeat {
   freq: RepeatFreq;
@@ -35,6 +36,8 @@ export interface Task {
   dueTime: string | null;
   estimatedMinutes: number | null;
   actualMinutes: number | null;
+  /** Mirrors the backend `cognitive_load`; drives the insight panel. */
+  cognitiveLoad: CognitiveLoad;
   repeat: Repeat;
   tags: string[];
   /** Display order inside a list. Lower comes first. */

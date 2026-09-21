@@ -4,10 +4,12 @@ import { IBMPlexMono_600SemiBold } from '@expo-google-fonts/ibm-plex-mono/600Sem
 import { useFonts } from 'expo-font';
 import { Slot } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
-import { View } from 'react-native';
+import { StyleSheet, View } from 'react-native';
 
 import { AppShell } from '@/components/shell/app-shell';
-import { PlanProvider } from '@/state/plan';
+import { ErrorState, LoadingState } from '@/components/ui/states';
+import { Space } from '@/constants/tokens';
+import { PlanProvider, usePlan } from '@/state/plan';
 import { ThemeProvider, useTheme } from '@/state/theme';
 
 export default function RootLayout() {
@@ -30,6 +32,30 @@ export default function RootLayout() {
 
 function RootShell() {
   const { colors, resolved } = useTheme();
+  const { mode, loading, error, refresh } = usePlan();
+
+  if (mode === 'api' && error) {
+    return (
+      <View style={[styles.center, { backgroundColor: colors.paper }]}>
+        <View style={styles.panel}>
+          <ErrorState
+            title="连不上后端"
+            body={`${error} 检查那台电脑是否在跑后端，以及是否同一局域网。`}
+            onRetry={refresh}
+          />
+        </View>
+      </View>
+    );
+  }
+
+  if (mode === 'api' && loading) {
+    return (
+      <View style={[styles.center, { backgroundColor: colors.paper }]}>
+        <LoadingState label="正在连接后端…" />
+      </View>
+    );
+  }
+
   return (
     <View style={{ flex: 1, backgroundColor: colors.paper }}>
       <StatusBar style={resolved === 'dark' ? 'light' : 'dark'} />
@@ -39,3 +65,16 @@ function RootShell() {
     </View>
   );
 }
+
+const styles = StyleSheet.create({
+  center: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: Space.xl,
+  },
+  panel: {
+    width: '100%',
+    maxWidth: 520,
+  },
+});

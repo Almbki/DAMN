@@ -2,7 +2,7 @@ import { useCallback, useMemo, useState } from 'react';
 import { StyleSheet, Text, TextInput, View, useWindowDimensions } from 'react-native';
 
 import { BatchBar } from '@/components/batch-bar';
-import { CircularChart } from '@/components/circular-chart';
+import { InsightPanel } from '@/components/insight-panel';
 import { NowCard } from '@/components/now-card';
 import { SmartListTabs } from '@/components/smart-list-tabs';
 import { TaskEditor } from '@/components/task-editor';
@@ -33,6 +33,7 @@ const BLANK_TASK: Task = {
   dueTime: null,
   estimatedMinutes: null,
   actualMinutes: null,
+  cognitiveLoad: 'medium',
   repeat: { freq: 'none', interval: 1, end: 'never', until: null, count: null },
   tags: [],
   order: -1,
@@ -51,7 +52,10 @@ export default function TodoScreen() {
     ruler,
     energyLabelText,
     stats,
-    addTask,
+    insight,
+    mode,
+    canEditTasks,
+    submitGoal,
     createTask,
     updateTask,
     deleteTask,
@@ -64,6 +68,7 @@ export default function TodoScreen() {
     batchReschedule,
     logFocus,
   } = usePlan();
+  const isApi = mode === 'api';
 
   const [draft, setDraft] = useState('');
   const [listKey, setListKey] = useState<SmartListKey>('today');
@@ -131,7 +136,7 @@ export default function TodoScreen() {
 
   function submitQuickAdd() {
     if (!draft.trim()) return;
-    addTask(draft, { dueDate: listKey === 'today' ? todayISO() : null });
+    submitGoal(draft);
     setDraft('');
   }
 
@@ -143,21 +148,29 @@ export default function TodoScreen() {
             value={draft}
             onChangeText={setDraft}
             onSubmitEditing={submitQuickAdd}
-            placeholder="输入任务，按回车添加…"
+            placeholder={isApi ? '输入目标，生成计划…' : '输入任务，按回车添加…'}
             placeholderTextColor={colors.inkFaint}
             returnKeyType="done"
-            accessibilityLabel="快速添加任务"
+            accessibilityLabel={isApi ? '输入目标' : '快速添加任务'}
             testID="quick-add"
             style={[
               styles.input,
               { color: colors.ink, borderColor: colors.line, backgroundColor: colors.paper },
             ]}
           />
-          <Button label="添加" variant="primary" onPress={submitQuickAdd} />
-          <Button label="详细" variant="secondary" onPress={() => setEditingId(null)} />
+          <Button
+            label={isApi ? '生成计划' : '添加'}
+            variant="primary"
+            onPress={submitQuickAdd}
+          />
+          {canEditTasks ? (
+            <Button label="详细" variant="secondary" onPress={() => setEditingId(null)} />
+          ) : null}
         </View>
         <Text style={[styles.quickHint, { color: colors.inkMuted }]}>
-          支持快速输入：明天 18:00 交报告
+          {isApi
+            ? '后端会据此新建一版计划，旧版本标为已取代。'
+            : '支持快速输入：明天 18:00 交报告'}
         </Text>
       </View>
 
@@ -173,10 +186,14 @@ export default function TodoScreen() {
         />
       ) : (
         <EmptyState
-          title="今天没有安排"
-          body="在上面写下一个目标，我来把它拆成今天能做完的几步。"
-          actionLabel="详细新建"
-          onAction={() => setEditingId(null)}
+          title={isApi ? '还没有计划' : '今天没有安排'}
+          body={
+            isApi
+              ? '在上面写一个目标，点「生成计划」，后端会把它拆成任务。'
+              : '在上面写下一个目标，我来把它拆成今天能做完的几步。'
+          }
+          actionLabel={canEditTasks ? '详细新建' : undefined}
+          onAction={canEditTasks ? () => setEditingId(null) : undefined}
         />
       )}
 
@@ -187,17 +204,19 @@ export default function TodoScreen() {
             <View style={styles.viewToggle}>
               <Segmented options={VIEWS} value={view} onChange={setView} />
             </View>
-            <Button
-              label={batchMode ? '退出多选' : '多选'}
-              variant="ghost"
-              onPress={() => (batchMode ? exitBatch() : setBatchMode(true))}
-            />
+            {canEditTasks ? (
+              <Button
+                label={batchMode ? '退出多选' : '多选'}
+                variant="ghost"
+                onPress={() => (batchMode ? exitBatch() : setBatchMode(true))}
+              />
+            ) : null}
           </View>
         </View>
 
         <SmartListTabs value={listKey} counts={listCounts} onChange={setListKey} />
 
-        {batchMode ? (
+        {batchMode && canEditTasks ? (
           <BatchBar
             count={selected.length}
             onComplete={() => {
@@ -225,7 +244,7 @@ export default function TodoScreen() {
         ) : null}
 
         {view === 1 ? (
-          <CircularChart tasks={visible} />
+          <InsightPanel insight={insight} />
         ) : (
           <View style={[styles.list, { borderTopColor: colors.line }]}>
             {visible.length === 0 ? (
@@ -239,12 +258,12 @@ export default function TodoScreen() {
                   selected={selectedSet.has(task.id)}
                   batchMode={batchMode}
                   dragging={draggingId === task.id}
-                  draggable={wide}
+                  draggable={wide && canEditTasks}
                   onToggleDone={() => toggleDone(task.id)}
-                  onOpen={() => setEditingId(task.id)}
+                  onOpen={canEditTasks ? () => setEditingId(task.id) : () => undefined}
                   onToggleSelect={() => toggleSelect(task.id)}
                   onSkip={() => setSkipped(task.id, true)}
-                  onDragStart={() => setDraggingId(task.id)}
+                  onDragStart={canEditTasks ? () => setDraggingId(task.id) : undefined}
                   onDragEnter={() => {
                     if (draggingId != null && draggingId !== task.id) {
                       reorder(draggingId, task.id);
@@ -260,7 +279,7 @@ export default function TodoScreen() {
 
         {wide && view === 0 ? (
           <Text style={[styles.keys, { color: colors.inkMuted }]}>
-            ↑ ↓ 移动 · 空格完成 · L 今天先不做 · 拖动 ≡ 排序
+            ↑ ↓ 移动 · 空格完成 · L 今天先不做{canEditTasks ? ' · 拖动 ≡ 排序' : ''}
           </Text>
         ) : null}
       </View>
@@ -271,7 +290,7 @@ export default function TodoScreen() {
         <Text style={styles.mono}>{stats.completedToday}</Text> 件
       </Text>
 
-      {editingTask ? (
+      {canEditTasks && editingTask ? (
         <TaskEditor
           key={editingId ?? 'new'}
           task={editingTask}

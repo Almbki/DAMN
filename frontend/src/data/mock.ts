@@ -1,5 +1,6 @@
 import type { UserRead } from '@/api/types';
 import { addDays, daysAgoISO, todayISO } from '@/domain/date';
+import type { FeedbackSample } from '@/domain/insight';
 import type { Completion } from '@/domain/stats';
 import { NO_REPEAT, type Task } from '@/domain/task';
 
@@ -18,6 +19,8 @@ export const mockUser: UserRead = {
 };
 
 export type EnergyLevel = 'low' | 'medium' | 'high';
+
+export const mockPlanId = 1;
 
 export const energyLabel: Record<EnergyLevel, string> = {
   low: '精力偏低',
@@ -41,6 +44,7 @@ export const mockTasks: Task[] = [
     dueTime: '08:00',
     estimatedMinutes: 30,
     actualMinutes: 33,
+    cognitiveLoad: 'medium',
     repeat: { ...NO_REPEAT, freq: 'daily', interval: 1 },
     tags: ['跑步'],
     order: 0,
@@ -59,6 +63,7 @@ export const mockTasks: Task[] = [
     dueTime: '15:00',
     estimatedMinutes: 25,
     actualMinutes: null,
+    cognitiveLoad: 'high',
     repeat: NO_REPEAT,
     tags: ['跑步', '力量'],
     order: 1,
@@ -69,18 +74,19 @@ export const mockTasks: Task[] = [
     title: '拉伸与放松',
     description: '',
     notes: '',
-    done: false,
+    done: true,
     skipped: false,
     startDate: null,
     startTime: null,
     dueDate: today,
     dueTime: '15:10',
     estimatedMinutes: 15,
-    actualMinutes: null,
+    actualMinutes: 14,
+    cognitiveLoad: 'low',
     repeat: NO_REPEAT,
     tags: [],
     order: 2,
-    completedAt: null,
+    completedAt: today,
   },
   {
     id: 4,
@@ -95,6 +101,7 @@ export const mockTasks: Task[] = [
     dueTime: null,
     estimatedMinutes: 20,
     actualMinutes: null,
+    cognitiveLoad: 'low',
     repeat: NO_REPEAT,
     tags: ['阅读'],
     order: 3,
@@ -113,6 +120,7 @@ export const mockTasks: Task[] = [
     dueTime: null,
     estimatedMinutes: 5,
     actualMinutes: null,
+    cognitiveLoad: 'low',
     repeat: { ...NO_REPEAT, freq: 'daily', interval: 1 },
     tags: [],
     order: 4,
@@ -131,6 +139,7 @@ export const mockTasks: Task[] = [
     dueTime: '18:00',
     estimatedMinutes: 45,
     actualMinutes: null,
+    cognitiveLoad: 'high',
     repeat: NO_REPEAT,
     tags: ['工作'],
     order: 5,
@@ -149,6 +158,7 @@ export const mockTasks: Task[] = [
     dueTime: null,
     estimatedMinutes: 10,
     actualMinutes: null,
+    cognitiveLoad: 'low',
     repeat: NO_REPEAT,
     tags: ['生活'],
     order: 6,
@@ -167,6 +177,7 @@ export const mockTasks: Task[] = [
     dueTime: '20:00',
     estimatedMinutes: 20,
     actualMinutes: null,
+    cognitiveLoad: 'medium',
     repeat: { freq: 'weekly', interval: 1, end: 'never', until: null, count: null },
     tags: ['复盘'],
     order: 7,
@@ -182,6 +193,14 @@ export const mockCompletions: Completion[] = [
   { id: 4, taskId: 1, date: daysAgoISO(2), minutes: 31 },
   { id: 5, taskId: 1, date: daysAgoISO(3), minutes: 28 },
   { id: 6, taskId: 1, date: daysAgoISO(6), minutes: 30 },
+];
+
+/** Feedback samples feeding avg stress / energy in the insight panel. */
+export const mockFeedback: FeedbackSample[] = [
+  { date: daysAgoISO(0), stress_level: 6, energy_level: 5 },
+  { date: daysAgoISO(1), stress_level: 7, energy_level: 4 },
+  { date: daysAgoISO(2), stress_level: 5, energy_level: 6 },
+  { date: daysAgoISO(3), stress_level: 8, energy_level: 3 },
 ];
 
 export const mockWhyNow = '昨天你只完成了 3/5，所以今天先排轻一点。这件事在 15:00 前做完就好。';

@@ -6,20 +6,36 @@ import { TextField } from '@/components/ui/text-field';
 import { Line, Radius, Space, Type } from '@/constants/tokens';
 import { parseISO } from '@/domain/date';
 import { usePlan } from '@/state/plan';
+import type { FeedbackResult } from '@/state/plan-context';
 import { useTheme } from '@/state/theme';
 
 const WEEKDAY = ['日', '一', '二', '三', '四', '五', '六'];
 
 export default function FeedbackScreen() {
   const { colors } = useTheme();
-  const { stats } = usePlan();
+  const { stats, submitFeedback } = usePlan();
   const [summary, setSummary] = useState('');
   const [reason, setReason] = useState('');
   const [plan, setPlan] = useState('');
-  const [submitted, setSubmitted] = useState(false);
+  const [submitting, setSubmitting] = useState(false);
+  const [result, setResult] = useState<FeedbackResult | null>(null);
 
   const weekMax = Math.max(1, ...stats.weekly.map((bucket) => bucket.count));
   const monthMax = Math.max(1, ...stats.monthly.map((bucket) => bucket.count));
+
+  async function handleSubmit() {
+    setSubmitting(true);
+    try {
+      const response = await submitFeedback({
+        completionRate: stats.rate,
+        freeText: [summary, plan].filter(Boolean).join(' / '),
+        delayReason: reason || undefined,
+      });
+      setResult(response);
+    } finally {
+      setSubmitting(false);
+    }
+  }
 
   return (
     <View style={styles.page}>
@@ -33,10 +49,17 @@ export default function FeedbackScreen() {
         <TextField label="没做完的原因" value={reason} onChangeText={setReason} placeholder="例如：被打断、预估时间不足…" />
         <TextField label="明天想怎么调整" value={plan} onChangeText={setPlan} placeholder="例如：减少任务量、换个时间段…" />
 
-        <Button label={submitted ? '已提交' : '提交反馈'} variant="primary" onPress={() => setSubmitted(true)} />
-        {submitted ? (
+        <Button
+          label={submitting ? '提交中…' : result ? '已提交' : '提交反馈'}
+          variant="primary"
+          onPress={handleSubmit}
+          disabled={submitting}
+        />
+        {result ? (
           <Text style={[styles.helper, { color: colors.mintInk }]}>
-            已提交。如果完成率低于一半，会生成新一版计划并在这里告诉你。
+            {result.replanTriggered
+              ? '已根据这次反馈生成新一版计划，任务已切到新版本。'
+              : result.cooldownMessage ?? '已提交。完成率低于一半时会生成新一版计划。'}
           </Text>
         ) : null}
       </View>
