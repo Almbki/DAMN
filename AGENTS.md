@@ -83,6 +83,8 @@ generation runs synchronously (events are stored then replayed over SSE).
 
 ## Pointers
 
+- **中文模块详解（含调用链与调试清单）：`docs/modules.md`** — start here when
+  adding/debugging a module.
 - Design docs: `docs/architecture.md`, `docs/api.md`, `docs/langgraph.md`,
   `docs/ml.md`, `docs/domain.md`, `docs/development.md`.
 - `ideas and structures/` holds the original Chinese design notes/prompts — reference
