@@ -126,16 +126,23 @@ class GoalInput(BaseModel):
 
 
 class PreferenceInput(BaseModel):
-    """Client-supplied scheduling preferences (optional overrides)."""
+    """Client-supplied scheduling overrides.
 
-    available_minutes_per_day: int = Field(default=480, ge=1)
-    daily_limit_minutes: int = Field(default=300, ge=1)
-    buffer_minutes: int = Field(default=15, ge=0)
-    high_cognitive_max_per_day: int = Field(default=2, ge=1)
-    day_start: str = "08:00"
-    day_end: str = "22:00"
-    preferred_time_slots: dict[str, str] = Field(default_factory=dict)
-    unavailable_weekdays: list[int] = Field(default_factory=list)
+    Every field is optional: only the values the client actually sent are
+    applied, so omitting one falls back to the user's stored preferences
+    instead of silently forcing a default. (Previously these were non-optional
+    with defaults, which made an omitted cap indistinguishable from an
+    explicit one.)
+    """
+
+    available_minutes_per_day: int | None = Field(default=None, ge=1)
+    daily_limit_minutes: int | None = Field(default=None, ge=1)
+    buffer_minutes: int | None = Field(default=None, ge=0)
+    high_cognitive_max_per_day: int | None = Field(default=None, ge=1)
+    day_start: str | None = None
+    day_end: str | None = None
+    preferred_time_slots: dict[str, str] | None = None
+    unavailable_weekdays: list[int] | None = None
 
 
 class PlannerRequest(BaseModel):

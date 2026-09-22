@@ -59,7 +59,7 @@ class Settings(BaseSettings):
     agent_checkpointer: str = "auto"
     # Maximum user-requested preview adjustments before the user is pushed to
     # execution (no more LLM regeneration).
-    agent_max_preview_adjustments: int = Field(default=2, ge=0)
+    agent_max_preview_adjustments: int = Field(default=3, ge=0)
     # Maximum plan_repair rounds before the graph gives up.
     agent_max_repair_attempts: int = Field(default=2, ge=1)
     agent_llm_max_retries: int = Field(default=2, ge=0)

@@ -57,6 +57,17 @@ class PlanRepository(RepositoryBase):
         latest = self.get_latest_by_user(user_id)
         return latest.version + 1 if latest is not None else 1
 
+    def get_by_user_and_version(self, user_id: int, version: int) -> Plan | None:
+        """Fetch one specific version (used to diff a replan against its parent)."""
+        stmt = (
+            select(PlanORM)
+            .where(PlanORM.user_id == user_id, PlanORM.version == version)
+            .order_by(PlanORM.id.desc())
+            .limit(1)
+        )
+        orm = self._session.scalars(stmt).first()
+        return Plan.model_validate(orm) if orm is not None else None
+
     def update_status(self, plan_id: int, status: PlanStatus) -> Plan | None:
         orm = self._session.get(PlanORM, plan_id)
         if orm is None:

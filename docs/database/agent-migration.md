@@ -6,13 +6,16 @@ Two phases are recorded here:
 | --- | --- | --- |
 | **P0** (agent skeleton) | none | — |
 | **P1** (memory + observability) | 3 new tables | `7f9ae3f96ba3` |
+| **P2** (frontend contract) | 1 new column on `users` | `d696086158be` |
 
 Current head:
 
 ```
 $ uv run alembic current
-7f9ae3f96ba3 (head)
+d696086158be (head)
 ```
+
+Revision chain: `4e95b02e3696` → `7f9ae3f96ba3` → `d696086158be`
 
 ---
 
@@ -146,6 +149,41 @@ and `agent_memories`; no business data (`plans`, `tasks`, `goals`, `feedbacks`,
   at plan time must be immutable for honest scoring.
 
 ---
+
+## P2 — migration `d696086158be`
+
+### `users.scheduling_preferences` (JSON, nullable)
+
+Added for the frontend's `GET/PUT /api/v1/users/me/preferences` contract.
+
+| Aspect | Detail |
+| --- | --- |
+| Column | `users.scheduling_preferences JSON NULL` |
+| Why a dedicated column | `PATCH /users/me` writes `profile` **wholesale**, so storing preferences inside `profile` meant a profile update could silently wipe them |
+| Nullable | yes — existing rows get `NULL`, so the migration never fails; the domain model normalises `NULL` → `{}` (`User._null_dict_becomes_empty`) |
+| Read layering | `defaults < users.profile (legacy keys) < users.scheduling_preferences` — implemented once in `app/application/preferences.py` and used by both the API and the Context Builder, so legacy users keep whatever they had in `profile` |
+| Contents | `available_minutes_per_day`, `daily_limit_minutes`, `buffer_minutes`, `high_cognitive_max_per_day`, `sleep_start`, `sleep_end` (`sleep_*` are UI-only for now; the scheduler still uses `profile.day_start/day_end`) |
+
+```bash
+uv run alembic upgrade head       # 7f9ae3f96ba3 -> d696086158be
+uv run alembic downgrade -1       # drops the column
+uv run alembic upgrade head       # re-apply
+```
+
+Round-trip verified against PostgreSQL 17.11; the column is present afterwards.
+No existing column was altered and no row was rewritten.
+
+### Checkpoint tables: startup warm-up fix
+
+`checkpoints` / `checkpoint_blobs` / `checkpoint_writes` / `checkpoint_migrations`
+are created by `PostgresSaver.setup()`, which used to run **lazily** inside the
+first request that built the checkpointer. After a database was recreated the
+tables were missing until that request happened (observed during verification).
+
+`app/main.py::lifespan` now warms the checkpointer at startup
+(`get_checkpointer(settings)`) and logs `agent checkpointer ready: postgres`. If
+Postgres is unreachable the factory logs a warning and degrades to in-memory —
+startup never fails.
 
 ## Hardening TODO (recorded, not done)
 

@@ -18,6 +18,7 @@ class UserRepository(RepositoryBase):
             display_name=user.display_name,
             execution_weight=user.execution_weight,
             profile=user.profile,
+            scheduling_preferences=user.scheduling_preferences or None,
             created_at=user.created_at,
         )
         self._session.add(orm)

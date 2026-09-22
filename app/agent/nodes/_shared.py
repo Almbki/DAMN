@@ -82,11 +82,13 @@ def drafts_to_tasks(
 
 
 def resolve_preferences(state: PlannerState) -> UserPreferences:
-    """Preferences = context defaults, overridden by the explicit request.
+    """Preferences = stored defaults, then only the client's explicit overrides.
 
-    ``state["limit_factor"]`` (set by a MICRO_ADJUST) scales both the daily limit
-    and the available time so the scheduler produces a lighter candidate without
-    touching the user's stored preferences.
+    Layering (highest wins):
+    1. ``state["limit_factor"]`` (a MICRO_ADJUST scaling of the final values)
+    2. ``request.preferences`` — **only fields that were actually sent**; an
+       omitted field keeps the stored value instead of forcing a default
+    3. the user's stored preferences (dedicated column, else ``profile``)
     """
     context: PlanningContext | None = state.get("user_context")
     base = context.preferences if context is not None else UserPreferences()
@@ -95,16 +97,26 @@ def resolve_preferences(state: PlannerState) -> UserPreferences:
     override = getattr(request, "preferences", None) if request is not None else None
     resolved = base
     if override is not None:
-        resolved = UserPreferences(
-            available_minutes_per_day=override.available_minutes_per_day,
-            daily_limit_minutes=override.daily_limit_minutes,
-            buffer_minutes=override.buffer_minutes,
-            high_cognitive_max_per_day=override.high_cognitive_max_per_day,
-            day_start=_parse_time(override.day_start, base.day_start),
-            day_end=_parse_time(override.day_end, base.day_end),
-            preferred_time_slots=override.preferred_time_slots or base.preferred_time_slots,
-            unavailable_weekdays=override.unavailable_weekdays or base.unavailable_weekdays,
-        )
+        updates: dict[str, object] = {}
+        for field in (
+            "available_minutes_per_day",
+            "daily_limit_minutes",
+            "buffer_minutes",
+            "high_cognitive_max_per_day",
+        ):
+            value = getattr(override, field, None)
+            if value is not None:
+                updates[field] = int(value)
+        if override.day_start is not None:
+            updates["day_start"] = _parse_time(override.day_start, base.day_start)
+        if override.day_end is not None:
+            updates["day_end"] = _parse_time(override.day_end, base.day_end)
+        if override.preferred_time_slots:
+            updates["preferred_time_slots"] = dict(override.preferred_time_slots)
+        if override.unavailable_weekdays:
+            updates["unavailable_weekdays"] = list(override.unavailable_weekdays)
+        if updates:
+            resolved = resolved.model_copy(update=updates)
 
     factor = float(state.get("limit_factor") or 1.0)
     if factor != 1.0:

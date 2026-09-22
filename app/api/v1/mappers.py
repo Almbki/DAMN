@@ -5,20 +5,84 @@ Keeps ORM/domain objects out of the response models without cluttering routes.
 
 from __future__ import annotations
 
+from datetime import date, time
+
 from app.application.dto.insight import InsightReport
-from app.application.dto.plan import PlanDetail
+from app.application.dto.plan import PlanChange, PlanDetail
 from app.domain.models import Plan
 from app.schemas.common import ViolationRead
 from app.schemas.plan import (
     DailyCompletionRead,
+    DecomposeDay,
+    DecomposeDraftTask,
+    DecomposeResponse,
     GoalRead,
     InsightRead,
+    PlanChangeDayRead,
+    PlanChangeRead,
     PlanListItem,
     PlanRead,
     PreviewRead,
     PreviewTaskRead,
 )
 from app.schemas.task import TaskRead, TaskStandardRead
+from app.schemas.user import DataSufficiency
+
+#: The frontend contract exposes priority as 1 (low) .. 3 (high).
+_MAX_CONTRACT_PRIORITY = 3
+
+
+def decompose_response(draft_id: str, preview) -> DecomposeResponse:
+    """Group a draft preview into the contract's per-day shape.
+
+    ``source_index`` maps a task back to the 0-based request ``goals[]`` index
+    (the graph tracks it as a 1-based `goal_id`).
+    """
+    grouped: dict[date, list[DecomposeDraftTask]] = {}
+    fallback_day = preview.start_date or date.today()
+    for task in preview.tasks:
+        day = task.scheduled_date or fallback_day
+        grouped.setdefault(day, []).append(
+            DecomposeDraftTask(
+                title=task.title,
+                priority=min(int(task.priority), _MAX_CONTRACT_PRIORITY),
+                estimated_minutes=max(int(task.estimated_duration), 1),
+                start_time=task.start_time,
+                end_time=task.end_time,
+                source_index=max(0, (task.goal_id or 1) - 1),
+            )
+        )
+
+    days = [
+        DecomposeDay(
+            date=day,
+            tasks=sorted(tasks, key=lambda item: (item.start_time or time.min, item.title)),
+        )
+        for day, tasks in sorted(grouped.items())
+    ]
+    return DecomposeResponse(draft_id=draft_id, days=days)
+
+
+def plan_change_read(change: PlanChange) -> PlanChangeRead:
+    return PlanChangeRead(
+        id=change.id,
+        trigger_type=change.trigger_type,
+        reason=change.reason,
+        old_version=change.old_version,
+        new_version=change.new_version,
+        created_at=change.created_at,
+        days=[
+            PlanChangeDayRead(
+                date=day.date,
+                added=day.added,
+                moved=day.moved,
+                removed=day.removed,
+                summary=day.summary,
+                task_ids=list(day.task_ids),
+            )
+            for day in change.days
+        ],
+    )
 
 
 def preview_read(payload) -> PreviewRead:
@@ -111,4 +175,10 @@ def insight_read(report: InsightReport) -> InsightRead:
         cognitive_load_breakdown=report.cognitive_load_breakdown,
         daily=[DailyCompletionRead(**item.model_dump()) for item in report.daily],
         recommendations=report.recommendations,
+        data_sufficiency=(
+            DataSufficiency(**report.data_sufficiency)
+            if report.data_sufficiency is not None
+            else None
+        ),
+        drivers=report.drivers or None,
     )

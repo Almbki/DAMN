@@ -5,6 +5,7 @@ from __future__ import annotations
 from sqlalchemy.orm import Session
 
 from app.application.exceptions import AuthenticationError, ConflictError, NotFoundError
+from app.application.preferences import effective_scheduling_preferences
 from app.core.security import create_access_token, hash_password, verify_password
 from app.domain.models import User
 from app.infrastructure.database.repositories import UserRepository
@@ -78,3 +79,23 @@ class AuthService:
             if updated is not None:
                 return updated
         return user
+
+    # -- scheduling preferences -------------------------------------------
+    def get_preferences(self, user_id: int) -> dict:
+        """Effective preferences: dedicated column, else profile, else defaults."""
+        user = self.get_user(user_id)
+        return effective_scheduling_preferences(
+            user.profile, user.scheduling_preferences
+        )
+
+    def update_preferences(self, user_id: int, preferences: dict) -> dict:
+        """Replace the stored scheduling preferences (full overwrite)."""
+        self.get_user(user_id)  # 404 if unknown
+        stored = {key: value for key, value in preferences.items() if value is not None}
+        updated = self._users.update_fields(user_id, scheduling_preferences=stored)
+        self._session.commit()
+        if updated is None:  # pragma: no cover - defensive
+            return stored
+        return effective_scheduling_preferences(
+            updated.profile, updated.scheduling_preferences
+        )

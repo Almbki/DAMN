@@ -26,6 +26,7 @@ from app.agent.memory import (
     build_semantic_memory,
     derive_procedural_memory,
 )
+from app.application.preferences import effective_scheduling_preferences
 from app.domain.models import AgentMemory, Goal, Task
 from app.domain.models.enums import TaskStatus
 from app.infrastructure.database.repositories import (
@@ -148,7 +149,9 @@ class RepoContextBuilder:
             mbti=profile.get("mbti"),
             execution_weight=user.execution_weight if user else 0.5,
             profile=profile,
-            preferences=self._preferences(profile),
+            preferences=self._preferences(
+                profile, user.scheduling_preferences if user else None
+            ),
             semantic_memory=merge_memory(
                 build_semantic_memory(user, user_model, mbti=profile.get("mbti")),
                 by_kind.get(MemoryKind.SEMANTIC.value, []),
@@ -172,12 +175,14 @@ class RepoContextBuilder:
 
     # -- internals ---------------------------------------------------------
     @staticmethod
-    def _preferences(profile: dict) -> UserPreferences:
+    def _preferences(profile: dict, stored: dict | None = None) -> UserPreferences:
+        """Scheduling prefs: dedicated column > legacy profile keys > defaults."""
+        effective = effective_scheduling_preferences(profile, stored)
         return UserPreferences(
-            available_minutes_per_day=int(profile.get("available_minutes_per_day") or 480),
-            daily_limit_minutes=int(profile.get("daily_limit_minutes") or 300),
-            buffer_minutes=int(profile.get("buffer_minutes") or 15),
-            high_cognitive_max_per_day=int(profile.get("high_cognitive_max_per_day") or 2),
+            available_minutes_per_day=effective["available_minutes_per_day"],
+            daily_limit_minutes=effective["daily_limit_minutes"],
+            buffer_minutes=effective["buffer_minutes"],
+            high_cognitive_max_per_day=effective["high_cognitive_max_per_day"],
             day_start=_parse_time(profile.get("day_start"), DEFAULT_DAY_START),
             day_end=_parse_time(profile.get("day_end"), DEFAULT_DAY_END),
             preferred_time_slots=dict(profile.get("preferred_time_slots") or {}),

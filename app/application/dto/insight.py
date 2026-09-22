@@ -29,3 +29,7 @@ class InsightReport(BaseModel):
     cognitive_load_breakdown: dict[str, int] = Field(default_factory=dict)
     daily: list[DailyCompletion] = Field(default_factory=list)
     recommendations: list[str] = Field(default_factory=list)
+    #: {samples, min_samples, sufficient} - whether history backs these numbers.
+    data_sufficiency: dict | None = None
+    #: Human-readable reasons (Chinese UI copy).
+    drivers: list[str] = Field(default_factory=list)

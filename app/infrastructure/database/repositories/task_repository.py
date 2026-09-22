@@ -69,6 +69,11 @@ class TaskRepository(RepositoryBase):
         self._session.flush()
         return Task.model_validate(orm)
 
+    def list_by_goal(self, goal_id: int) -> list[Task]:
+        """Tasks that reference a goal (used to protect goal deletion)."""
+        stmt = select(TaskORM).where(TaskORM.goal_id == goal_id).order_by(TaskORM.id)
+        return [Task.model_validate(orm) for orm in self._session.scalars(stmt).all()]
+
     def delete_by_plan(self, plan_id: int) -> int:
         """Delete every task of a plan; returns the number of deleted rows.
 

@@ -13,9 +13,11 @@ from app.application.services import (
     AuthService,
     FeedbackService,
     GenerationService,
+    GoalService,
     InsightService,
     PlanService,
     ReplanService,
+    SituationService,
     UserModelService,
 )
 from app.core.security import InvalidTokenError, decode_access_token
@@ -74,6 +76,14 @@ def get_feedback_service(
 
 def get_insight_service(db: Session = Depends(get_db)) -> InsightService:
     return InsightService(db)
+
+
+def get_goal_service(db: Session = Depends(get_db)) -> GoalService:
+    return GoalService(db)
+
+
+def get_situation_service(db: Session = Depends(get_db)) -> SituationService:
+    return SituationService(db)
 
 
 def get_generation_service() -> GenerationService:

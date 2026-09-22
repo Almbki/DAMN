@@ -17,6 +17,11 @@ from app.agent.state import PlannerState
 
 NODE = "preview"
 
+#: Note used when the client asks for a revision without giving feedback
+#: ("regenerate as-is"). Kept non-empty so the graph treats it as a revision
+#: round instead of falling through to confirmation.
+NEUTRAL_ADJUSTMENT = "keep the plan as it is"
+
 
 def build_preview_payload(state: PlannerState, max_adjustments: int) -> PreviewPayload:
     """Assemble the preview from the drafts plus their scheduled placement."""
@@ -98,8 +103,12 @@ def preview_node(state: PlannerState, runtime: object) -> dict:
         updates["notes"] = [
             "preview: adjustment budget exhausted - please start executing the plan"
         ]
-    elif decision.action == "adjust" and decision.feedback:
-        updates["user_adjustment"] = decision.feedback
+    elif decision.action == "adjust":
+        # An `adjust` with no text means "regenerate without changes" (the
+        # frontend's decompose with the same draft_id). It must still count as a
+        # revision round, not silently fall through to confirmation.
+        note = (decision.feedback or "").strip() or NEUTRAL_ADJUSTMENT
+        updates["user_adjustment"] = note
         updates["adjustment_count"] = payload.adjustment_count + 1
         updates["adjustment_rejected"] = False
         updates["notes"] = [

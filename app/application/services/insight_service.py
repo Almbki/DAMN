@@ -17,6 +17,9 @@ from app.infrastructure.database.repositories import (
     TaskRepository,
 )
 
+#: Minimum recorded samples before insights are labelled trustworthy.
+MIN_SAMPLES = 7
+
 
 class InsightService:
     def __init__(self, session: Session) -> None:
@@ -89,7 +92,59 @@ class InsightService:
                 completion_rate=round(len(completed) / len(tasks), 3) if tasks else 0.0,
                 avg_stress=mean(stress_values) if stress_values else None,
             ),
+            data_sufficiency=self._data_sufficiency(len(feedback), len(executions)),
+            drivers=self._drivers(
+                total_tasks=len(tasks),
+                completed=len(completed),
+                ratio=ratio,
+                avg_stress=mean(stress_values) if stress_values else None,
+                avg_energy=mean(energy_values) if energy_values else None,
+                high_cognitive_minutes=high_cognitive_minutes,
+            ),
         )
+
+    @staticmethod
+    def _data_sufficiency(feedback_count: int, execution_count: int) -> dict:
+        """Whether the recorded history is enough to trust the insights.
+
+        ``MIN_SAMPLES`` is a product decision, not a statistical claim: below it
+        the profile page labels the numbers as provisional.
+        """
+        samples = feedback_count + execution_count
+        return {
+            "samples": samples,
+            "min_samples": MIN_SAMPLES,
+            "sufficient": samples >= MIN_SAMPLES,
+        }
+
+    @staticmethod
+    def _drivers(
+        *,
+        total_tasks: int,
+        completed: int,
+        ratio: float | None,
+        avg_stress: float | None,
+        avg_energy: float | None,
+        high_cognitive_minutes: int,
+    ) -> list[str]:
+        """Human-readable reasons behind the summary (Chinese UI copy)."""
+        drivers: list[str] = []
+        if total_tasks:
+            drivers.append(f"本计划共 {total_tasks} 项任务，已完成 {completed} 项。")
+        if ratio is not None:
+            if ratio > 1.3:
+                drivers.append(f"实际耗时是计划的 {ratio:.2f} 倍，说明预估偏乐观。")
+            elif ratio < 0.7:
+                drivers.append(f"实际耗时是计划的 {ratio:.2f} 倍，说明预估偏保守。")
+            else:
+                drivers.append(f"实际耗时约为计划的 {ratio:.2f} 倍，预估基本准确。")
+        if avg_stress is not None:
+            drivers.append(f"平均压力 {avg_stress:.1f}/10。")
+        if avg_energy is not None:
+            drivers.append(f"平均精力 {avg_energy:.1f}/10。")
+        if high_cognitive_minutes:
+            drivers.append(f"高认知任务合计 {high_cognitive_minutes} 分钟。")
+        return drivers
 
     @staticmethod
     def _recommendations(

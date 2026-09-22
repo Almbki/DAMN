@@ -2,28 +2,39 @@
 
 from __future__ import annotations
 
-from datetime import date, timedelta
+from datetime import date, datetime, time, timedelta
 
 from fastapi import APIRouter, Depends, status
 from fastapi.responses import StreamingResponse
 
-from app.agent.state import GenerationRequest, GoalInput
+from app.agent.state import GenerationRequest, GoalInput, PreferenceInput
 from app.api.deps import (
     get_current_user,
     get_generation_service,
     get_plan_service,
     get_replan_service,
 )
-from app.api.v1.mappers import plan_list_item, plan_read, preview_read
+from app.api.v1.mappers import (
+    decompose_response,
+    plan_change_read,
+    plan_list_item,
+    plan_read,
+    preview_read,
+)
 from app.application.exceptions import ConflictError, ReplanNotEligibleError
 from app.application.services import GenerationService, PlanService, ReplanService
 from app.core.config import get_settings
 from app.domain.models import User
+from app.domain.models.enums import Priority
 from app.schemas.common import ErrorResponse
 from app.schemas.plan import (
     AdjustRequest,
     AdjustResponse,
+    ConfirmDraftRequest,
     ConfirmResponse,
+    DecomposeRequest,
+    DecomposeResponse,
+    PlanChangeRead,
     PlanGenerateRequest,
     PlanGenerateResponse,
     PlanListItem,
@@ -34,6 +45,9 @@ from app.schemas.plan import (
     ReplanResponse,
 )
 
+#: Default scheduling horizon when the client does not send an end date.
+DEFAULT_HORIZON_DAYS = 13
+
 router = APIRouter()
 
 _NOT_FOUND = {404: {"model": ErrorResponse, "description": "Plan not found"}}
@@ -42,8 +56,29 @@ _AUTH = {401: {"model": ErrorResponse, "description": "Not authenticated"}}
 
 
 def _to_generation_request(user: User, payload: PlanGenerateRequest) -> GenerationRequest:
+    """Map the API payload onto the graph input.
+
+    Only the caps the client actually sent go into ``preferences``; the rest
+    falls back to the user's stored scheduling preferences inside the graph
+    (`resolve_preferences`). ``user_profile`` is forwarded as ``profile``.
+    """
     start = payload.start_date or date.today()
     end = payload.end_date or (start + timedelta(days=13))
+    overrides = PreferenceInput(
+        available_minutes_per_day=payload.available_minutes_per_day,
+        daily_limit_minutes=payload.daily_limit_minutes,
+        buffer_minutes=payload.buffer_minutes,
+        high_cognitive_max_per_day=payload.high_cognitive_max_per_day,
+    )
+    has_overrides = any(
+        value is not None
+        for value in (
+            payload.available_minutes_per_day,
+            payload.daily_limit_minutes,
+            payload.buffer_minutes,
+            payload.high_cognitive_max_per_day,
+        )
+    )
     return GenerationRequest(
         user_id=user.id or 0,
         goals=[
@@ -62,16 +97,43 @@ def _to_generation_request(user: User, payload: PlanGenerateRequest) -> Generati
         start_date=start,
         end_date=end,
         plan_title=payload.plan_title,
-        available_minutes_per_day=payload.available_minutes_per_day,
-        daily_limit_minutes=payload.daily_limit_minutes,
-        buffer_minutes=payload.buffer_minutes,
-        high_cognitive_max_per_day=payload.high_cognitive_max_per_day,
-        user_profile=payload.user_profile,
+        preferences=overrides if has_overrides else None,
+        profile=dict(payload.user_profile or {}),
         execution_weight=(
             payload.execution_weight
             if payload.execution_weight is not None
             else user.execution_weight
         ),
+    )
+
+
+def _decompose_request(user: User, payload: DecomposeRequest) -> GenerationRequest:
+    """Map the frontend's decompose payload onto the graph input.
+
+    The four scheduling caps are omitted on purpose so the user's stored
+    preferences apply (see `resolve_preferences`).
+    """
+    start = date.today()
+    end = start + timedelta(days=DEFAULT_HORIZON_DAYS)
+    return GenerationRequest(
+        user_id=user.id or 0,
+        goals=[
+            GoalInput(
+                title=goal.title,
+                description=goal.notes,
+                deadline=(
+                    datetime.combine(goal.deadline, time.min) if goal.deadline else None
+                ),
+                priority=Priority(goal.priority),
+            )
+            for goal in payload.goals
+        ],
+        start_date=start,
+        end_date=end,
+        plan_title=None,
+        preferences=None,
+        profile={},
+        execution_weight=user.execution_weight,
     )
 
 
@@ -209,6 +271,80 @@ def adjust_preview(
     )
 
 
+@router.post(
+    "/decompose",
+    response_model=DecomposeResponse,
+    status_code=status.HTTP_200_OK,
+    summary="Decompose several goals into a per-day draft (not persisted)",
+    description=(
+        "Frontend contract: send the goals you want split up and get a draft back "
+        "grouped by day. Nothing is persisted except the goals. Pass `draft_id` + "
+        "`feedback` to regenerate the same draft (bounded by "
+        "`AGENT_MAX_PREVIEW_ADJUSTMENTS`; over budget returns 409)."
+    ),
+    responses={
+        **_AUTH,
+        409: {"model": ErrorResponse, "description": "Adjustment budget exhausted"},
+    },
+)
+def decompose_plan(
+    payload: DecomposeRequest,
+    current_user: User = Depends(get_current_user),
+    plan_service: PlanService = Depends(get_plan_service),
+) -> DecomposeResponse:
+    user_id = current_user.id or 0
+
+    if payload.draft_id:
+        # Regeneration path: the draft must exist, belong to the user and have
+        # budget left (pending_draft raises 404 / 403 / 409 as appropriate).
+        pending = plan_service.pending_draft(user_id, payload.draft_id)
+        used = int(pending.get("adjustment_count") or 0)
+        limit = plan_service.max_preview_adjustments
+        if used >= limit:
+            raise ConflictError(
+                f"调整次数已用完（{used}/{limit}），请先执行当前计划再重新拆解"
+            )
+        result = plan_service.adjust_preview(
+            user_id, payload.draft_id, payload.feedback or ""
+        )
+        if result.preview is None:  # budget hit on this very call
+            raise ConflictError("调整次数已用完，草稿已定稿为正式计划")
+        return decompose_response(result.thread_id, result.preview)
+
+    request = _decompose_request(current_user, payload)
+    preview_result = plan_service.generate_preview(user_id, request)
+    return decompose_response(preview_result.thread_id, preview_result.preview)
+
+
+@router.post(
+    "/confirm",
+    response_model=PlanRead,
+    status_code=status.HTTP_200_OK,
+    summary="Confirm a draft and persist it as a plan",
+    description=(
+        "Frontend contract: `{draft_id}`. Returns the full plan so the client does "
+        "not need a follow-up fetch. 404 when the draft is unknown/expired, 409 "
+        "when it was already confirmed."
+    ),
+    responses={
+        **_AUTH,
+        **_NOT_FOUND,
+        409: {"model": ErrorResponse, "description": "Already confirmed"},
+    },
+)
+def confirm_draft(
+    payload: ConfirmDraftRequest,
+    current_user: User = Depends(get_current_user),
+    plan_service: PlanService = Depends(get_plan_service),
+) -> PlanRead:
+    user_id = current_user.id or 0
+    plan_service.pending_draft(user_id, payload.draft_id)  # 404 / 403 / 409
+    result = plan_service.confirm_plan(user_id, payload.draft_id)
+    if result.pending_preview is not None:  # pragma: no cover - confirm finalises
+        raise ConflictError("draft is still pending")
+    return plan_read(result.detail)
+
+
 @router.get(
     "/generation/{job_id}/events",
     summary="Stream plan generation progress (SSE)",
@@ -275,6 +411,26 @@ def get_plan(
 ) -> PlanRead:
     detail = plan_service.get_plan(current_user.id or 0, plan_id)
     return plan_read(detail)
+
+
+@router.get(
+    "/{plan_id}/changes",
+    response_model=list[PlanChangeRead],
+    summary="What the system changed, day by day",
+    description=(
+        "Replan history for this plan version, with a per-day diff (added / moved "
+        "/ removed tasks and a short summary). The diff is derived by comparing "
+        "the task rows of the previous version with this one."
+    ),
+    responses={**_AUTH, **_NOT_FOUND, **_FORBIDDEN},
+)
+def list_plan_changes(
+    plan_id: int,
+    current_user: User = Depends(get_current_user),
+    plan_service: PlanService = Depends(get_plan_service),
+) -> list[PlanChangeRead]:
+    changes = plan_service.list_changes(current_user.id or 0, plan_id)
+    return [plan_change_read(change) for change in changes]
 
 
 @router.post(

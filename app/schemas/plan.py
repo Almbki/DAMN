@@ -17,9 +17,16 @@ from app.domain.models.enums import (
 )
 from app.schemas.common import ViolationRead
 from app.schemas.task import TaskRead
+from app.schemas.user import DataSufficiency
 
 
-class GoalCreate(BaseModel):
+class PlanGoalCreate(BaseModel):
+    """A goal supplied inside a plan-generation request.
+
+    Distinct from :class:`app.schemas.goal.GoalCreate` (the `/goals` CRUD
+    surface): no `status`, and `subject`/`task_type` are optional hints.
+    """
+
     title: str = Field(min_length=1, max_length=255)
     description: str | None = None
     goal_type: GoalType = GoalType.SHORT_TERM
@@ -44,16 +51,22 @@ class GoalRead(BaseModel):
 
 
 class PlanGenerateRequest(BaseModel):
-    """Request body of ``POST /plans/generate``."""
+    """Request body of ``POST /plans/generate``.
 
-    goals: list[GoalCreate] = Field(min_length=1)
+    The four scheduling caps are **optional**: send them to override this plan
+    only, omit them to use the user's stored preferences. (They used to carry
+    defaults, which made an omitted value indistinguishable from an explicit
+    one — and they were silently dropped downstream.)
+    """
+
+    goals: list[PlanGoalCreate] = Field(min_length=1)
     start_date: date | None = None
     end_date: date | None = None
     plan_title: str | None = None
-    available_minutes_per_day: int = Field(default=480, ge=1, le=1440)
-    daily_limit_minutes: int = Field(default=300, ge=1, le=1440)
-    buffer_minutes: int = Field(default=15, ge=0, le=120)
-    high_cognitive_max_per_day: int = Field(default=2, ge=1, le=10)
+    available_minutes_per_day: int | None = Field(default=None, ge=1, le=1440)
+    daily_limit_minutes: int | None = Field(default=None, ge=1, le=1440)
+    buffer_minutes: int | None = Field(default=None, ge=0, le=120)
+    high_cognitive_max_per_day: int | None = Field(default=None, ge=1, le=10)
     user_profile: dict = Field(default_factory=dict)
     execution_weight: float | None = Field(default=None, ge=0.0, le=1.0)
 
@@ -146,6 +159,77 @@ class FeedbackAdjustmentRead(BaseModel):
     degraded: bool = False
 
 
+# ---------------------------------------------------------------------------
+# Draft decomposition (frontend contract: decompose -> confirm)
+# ---------------------------------------------------------------------------
+class DecomposeGoal(BaseModel):
+    """One item from the frontend's "待拆解清单"."""
+
+    title: str = Field(min_length=1)
+    priority: int = Field(default=2, ge=1, le=3)
+    deadline: date | None = None
+    notes: str | None = None
+
+
+class DecomposeRequest(BaseModel):
+    """``POST /plans/decompose`` - multi-goal decomposition into a draft.
+
+    Send ``draft_id`` + ``feedback`` to regenerate an existing draft (bounded by
+    ``AGENT_MAX_PREVIEW_ADJUSTMENTS``).
+    """
+
+    goals: list[DecomposeGoal] = Field(min_length=1)
+    draft_id: str | None = None
+    feedback: str | None = None
+
+
+class DecomposeDraftTask(BaseModel):
+    title: str
+    #: 1 = low, 2 = medium, >=3 = high (clamped to the contract's 1..3 range).
+    priority: int = Field(ge=1, le=3)
+    estimated_minutes: int = Field(ge=1)
+    start_time: time | None = None
+    end_time: time | None = None
+    #: 0-based index into the request's ``goals[]`` this task came from.
+    source_index: int = 0
+
+
+class DecomposeDay(BaseModel):
+    date: date
+    tasks: list[DecomposeDraftTask] = Field(default_factory=list)
+
+
+class DecomposeResponse(BaseModel):
+    draft_id: str
+    days: list[DecomposeDay] = Field(default_factory=list)
+
+
+class ConfirmDraftRequest(BaseModel):
+    draft_id: str = Field(min_length=1)
+
+
+# ---------------------------------------------------------------------------
+# Plan change history
+# ---------------------------------------------------------------------------
+class PlanChangeDayRead(BaseModel):
+    date: date
+    added: int = 0
+    moved: int = 0
+    removed: int = 0
+    summary: str = ""
+    task_ids: list[int] = Field(default_factory=list)
+
+
+class PlanChangeRead(BaseModel):
+    id: int
+    trigger_type: ReplanTriggerType
+    reason: str = ""
+    old_version: int
+    new_version: int
+    created_at: datetime
+    days: list[PlanChangeDayRead] = Field(default_factory=list)
+
+
 class PlanRead(BaseModel):
     id: int
     user_id: int
@@ -231,3 +315,7 @@ class InsightRead(BaseModel):
     cognitive_load_breakdown: dict[str, int] = Field(default_factory=dict)
     daily: list[DailyCompletionRead] = Field(default_factory=list)
     recommendations: list[str] = Field(default_factory=list)
+    #: Whether there is enough recorded history to trust the numbers above.
+    data_sufficiency: DataSufficiency | None = None
+    #: Human-readable reasons behind the summary (Chinese UI copy).
+    drivers: list[str] | None = None

@@ -76,3 +76,23 @@ class GoalRepository(RepositoryBase):
         orm.status = status
         self._session.flush()
         return Goal.model_validate(orm)
+
+    def update_fields(self, goal_id: int, **fields: object) -> Goal | None:
+        """Update arbitrary columns and return the refreshed domain model."""
+        orm = self._session.get(GoalORM, goal_id)
+        if orm is None:
+            return None
+        for key, value in fields.items():
+            setattr(orm, key, value)
+        self._session.flush()
+        self._session.refresh(orm)
+        return Goal.model_validate(orm)
+
+    def delete(self, goal_id: int) -> bool:
+        """Hard delete one goal; ``False`` when it does not exist."""
+        orm = self._session.get(GoalORM, goal_id)
+        if orm is None:
+            return False
+        self._session.delete(orm)
+        self._session.flush()
+        return True

@@ -14,6 +14,9 @@ class GoalType(StrEnum):
 
 
 class GoalStatus(StrEnum):
+    #: Waiting to be decomposed (frontend "待拆解清单"). Added for the
+    #: frontend contract; stored as a string so no data migration is needed.
+    DRAFT = "draft"
     ACTIVE = "active"
     COMPLETED = "completed"
     ARCHIVED = "archived"
