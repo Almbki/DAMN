@@ -6,6 +6,15 @@ validation → scheduling → execution feedback → replan.
 Python 3.12 · uv · FastAPI · Pydantic v2 · SQLAlchemy 2 · Alembic · LangGraph.
 Single package (`app/`) at the repo root — no monorepo. Windows-first.
 
+## Citation rules
+
+- Any file reference in discussion, review, or generated docs must give the
+  **full path**, plus a line number when a specific line is meant.
+- Bare filenames are ambiguous in this repo: write `app/agent/graph.py:364`,
+  never `graph.py:364`.
+- Document shorthand must be expanded to its full path on first use:
+  `docs/research/RO-5-RuleEngine与决策架构.md`, not "RO-5".
+
 ## Commands (verified)
 
 - Install: `uv sync --extra dev` (creates `.venv`; requires Python 3.12)
