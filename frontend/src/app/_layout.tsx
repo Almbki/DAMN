@@ -10,6 +10,7 @@ import { AppShell } from '@/components/shell/app-shell';
 import { ErrorState, LoadingState } from '@/components/ui/states';
 import { Space } from '@/constants/tokens';
 import { PlanProvider, usePlan } from '@/state/plan';
+import { ProfileProvider } from '@/state/profile';
 import { ThemeProvider, useTheme } from '@/state/theme';
 
 export default function RootLayout() {
@@ -24,7 +25,9 @@ export default function RootLayout() {
   return (
     <ThemeProvider>
       <PlanProvider>
-        <RootShell />
+        <ProfileProvider>
+          <RootShell />
+        </ProfileProvider>
       </PlanProvider>
     </ThemeProvider>
   );

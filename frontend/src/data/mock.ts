@@ -1,4 +1,4 @@
-import type { UserRead } from '@/api/types';
+import type { UserProfileRead, UserRead, UserStateRead } from '@/api/types';
 import { addDays, daysAgoISO, todayISO } from '@/domain/date';
 import type { Goal } from '@/domain/goal';
 import type { FeedbackSample } from '@/domain/insight';
@@ -20,6 +20,53 @@ export const mockUser: UserRead = {
   profile: { available_minutes_per_day: 480, sleep_schedule: '23:30-07:30' },
   created_at: '2026-09-01T08:00:00Z',
 };
+
+/** Demo 基础画像; mirrors the `GET /users/me/profile` payload. */
+export const mockProfile: UserProfileRead = {
+  mbti_type: 'INTP',
+  // INTP: I (ie >= .5), N (sn < .5), T (tf >= .5), P (jp < .5).
+  mbti_dims: { ie: 0.65, sn: 0.35, tf: 0.58, jp: 0.42 },
+  identity: '大学生 / 开发者',
+};
+
+/** Demo adaptive state. `update_count: 2` keeps the 冷启动校准中 badge visible. */
+export const mockUserState: UserStateRead = {
+  duration_factor: 1.34,
+  completion_prob: 0.66,
+  stress_baseline: 0.54,
+  energy_drain_rate: 0.47,
+  proactive_score: 0.43,
+  procrastination_tendency: 0.62,
+  preferred_time_slots: {
+    high: 'night',
+    medium: 'evening',
+    low: 'afternoon',
+    restorative: 'morning',
+  },
+  stress_response: 0.56,
+  state_energy: 0.44,
+  state_fatigue: 0.57,
+  self_efficacy: 0.48,
+  update_count: 2,
+  degraded: true,
+};
+
+/**
+ * Mock stand-in for the backend's `init_state`, which derives the numbers from
+ * a per-type template table. We only reset the feedback-updated fields here —
+ * the points are that saving re-initialises the state and `update_count` drops
+ * back to cold-start.
+ */
+export function mockResetState(): UserStateRead {
+  return {
+    ...mockUserState,
+    state_energy: 0.5,
+    state_fatigue: 0.5,
+    self_efficacy: 0.5,
+    update_count: 0,
+    degraded: true,
+  };
+}
 
 export type EnergyLevel = 'low' | 'medium' | 'high';
 

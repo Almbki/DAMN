@@ -17,6 +17,14 @@ from app.schemas.plan import (
     ReplanRequest,
     ReplanResponse,
 )
+from app.schemas.profile import (
+    ProfileResponse,
+    ProfileUpdateRequest,
+    ProfileUpsert,
+    RegisterRequestWithProfile,
+    UserProfileRead,
+    UserStateRead,
+)
 from app.schemas.task import (
     TaskRead,
     TaskStandardRead,
@@ -41,6 +49,10 @@ __all__ = [
     "PlanGenerateResponse",
     "PlanListItem",
     "PlanRead",
+    "ProfileResponse",
+    "ProfileUpdateRequest",
+    "ProfileUpsert",
+    "RegisterRequestWithProfile",
     "RegisterRequest",
     "ReplanEligibilityRead",
     "ReplanRequest",
@@ -50,7 +62,9 @@ __all__ = [
     "TaskStandardUpdate",
     "TaskUpdateRequest",
     "TokenResponse",
+    "UserProfileRead",
     "UserRead",
+    "UserStateRead",
     "UserUpdate",
     "ViolationRead",
 ]

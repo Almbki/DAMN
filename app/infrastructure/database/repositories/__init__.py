@@ -13,7 +13,9 @@ from app.infrastructure.database.repositories.replan_event_repository import Rep
 from app.infrastructure.database.repositories.task_repository import TaskRepository
 from app.infrastructure.database.repositories.task_standard_repository import TaskStandardRepository
 from app.infrastructure.database.repositories.user_model_repository import UserModelRepository
+from app.infrastructure.database.repositories.user_profile_repository import UserProfileRepository
 from app.infrastructure.database.repositories.user_repository import UserRepository
+from app.infrastructure.database.repositories.user_state_repository import UserStateRepository
 
 __all__ = [
     "FeedbackRepository",
@@ -25,5 +27,7 @@ __all__ = [
     "TaskRepository",
     "TaskStandardRepository",
     "UserModelRepository",
+    "UserProfileRepository",
     "UserRepository",
+    "UserStateRepository",
 ]

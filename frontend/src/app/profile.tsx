@@ -1,6 +1,8 @@
 import { useRouter } from 'expo-router';
 import { StyleSheet, Text, View } from 'react-native';
 
+import { BasicProfileSection } from '@/components/profile/basic-profile';
+import { StateDashboardSection } from '@/components/profile/state-dashboard';
 import { TrendChart } from '@/components/trend-chart';
 import { Button } from '@/components/ui/button';
 import { Surface } from '@/components/ui/surface';
@@ -31,6 +33,10 @@ export default function ProfileScreen() {
 
   return (
     <View style={styles.page}>
+      <BasicProfileSection />
+
+      <StateDashboardSection />
+
       <View style={styles.section}>
         <Text style={[styles.sectionTitle, { color: colors.ink }]}>当前状态</Text>
         <View style={styles.tiles}>

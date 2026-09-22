@@ -413,9 +413,12 @@ class PlannerGraph:
         *,
         user_features: UserFeatureSet,
         goal_id_map: dict[int, int] | None = None,
+        profile_prompt: dict | None = None,
     ) -> PlannerState:
         """Run the pipeline and return the final planner state."""
-        return self._runner.run(self._initial_state(request, user_features, goal_id_map))
+        return self._runner.run(
+            self._initial_state(request, user_features, goal_id_map, profile_prompt)
+        )
 
     def run_with_events(
         self,
@@ -423,10 +426,11 @@ class PlannerGraph:
         *,
         user_features: UserFeatureSet,
         goal_id_map: dict[int, int] | None = None,
+        profile_prompt: dict | None = None,
     ) -> tuple[PlannerState, list[GenerationEvent]]:
         """Run the pipeline and return ``(final state, generation events)``."""
         return self._runner.run_with_events(
-            self._initial_state(request, user_features, goal_id_map)
+            self._initial_state(request, user_features, goal_id_map, profile_prompt)
         )
 
     def _initial_state(
@@ -434,6 +438,7 @@ class PlannerGraph:
         request: GenerationRequest,
         user_features: UserFeatureSet,
         goal_id_map: dict[int, int] | None = None,
+        profile_prompt: dict | None = None,
     ) -> dict:
         """Seed the state with the request and the injected collaborators."""
         return {
@@ -445,6 +450,8 @@ class PlannerGraph:
             # goal_key (1-based goal index) -> persisted goal id, so drafts can
             # reference real Goal rows without the graph touching the database.
             "goal_id_map": dict(goal_id_map or {}),
+            # 环节 2 画像提示词 injected by the Service (None when unprofiled).
+            "profile_prompt": dict(profile_prompt) if profile_prompt else None,
             "llm": self.llm,
             "predictors": self.predictors,
             "scheduler": self.scheduler,

@@ -14,6 +14,8 @@ from app.infrastructure.database.models.task import Task
 from app.infrastructure.database.models.task_standard import TaskStandard
 from app.infrastructure.database.models.user import User
 from app.infrastructure.database.models.user_model import UserModel
+from app.infrastructure.database.models.user_profile import UserProfileModel
+from app.infrastructure.database.models.user_state import UserStateModel
 
 __all__ = [
     "Feedback",
@@ -25,4 +27,6 @@ __all__ = [
     "TaskStandard",
     "User",
     "UserModel",
+    "UserProfileModel",
+    "UserStateModel",
 ]

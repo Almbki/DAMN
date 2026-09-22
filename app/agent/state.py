@@ -99,6 +99,9 @@ class PlannerState(TypedDict, total=False):
     user_features: UserFeatureSet
     # goal_key (1-based goal index) -> persisted goal primary key.
     goal_id_map: dict[int, int]
+    # 环节 2 画像提示词: portrait JSON built by the Service, injected into the
+    # plan-generation prompt. ``None`` when the user has no profile.
+    profile_prompt: dict | None
     # Optional LLM client (infrastructure) injected by the Service.
     llm: object
     theoretical_agent: object

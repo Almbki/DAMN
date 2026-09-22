@@ -7,6 +7,7 @@ import type {
   PlanGenerateResponse,
   PlanListItem,
   PlanRead,
+  ProfileUpdateRequest,
   RegisterRequest,
   ReplanEligibilityRead,
   ReplanRequest,
@@ -14,6 +15,7 @@ import type {
   TaskRead,
   TaskUpdateRequest,
   TokenResponse,
+  UserProfileResponse,
   UserRead,
 } from '@/api/types';
 
@@ -34,6 +36,16 @@ export function getMe() {
 }
 
 export function updateMe(body: { display_name?: string; execution_weight?: number }) {
+  return apiRequest<UserRead>('/users/me', { method: 'PATCH', body });
+}
+
+/** 基础画像 + adaptive state; the caller treats a 404 as "no profile yet". */
+export function getMyProfile() {
+  return apiRequest<UserProfileResponse>('/users/me/profile');
+}
+
+/** Sending any field re-initialises the backend state from the new profile. */
+export function updateMyProfile(body: ProfileUpdateRequest) {
   return apiRequest<UserRead>('/users/me', { method: 'PATCH', body });
 }
 

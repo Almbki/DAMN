@@ -7,6 +7,8 @@ are copied from the matching :class:`~app.agent.state.GoalInput` by index.
 
 from __future__ import annotations
 
+import json
+
 from app.agent.schemas import (
     GeneratedTaskDraft,
     PlanGenerationResult,
@@ -58,6 +60,7 @@ class PlanGenerationAgent:
                 )
             )
 
+        self._send_prompt(state)
         return PlanGenerationResult(
             title=request.plan_title or "Adaptive Plan",
             start_date=request.start_date,
@@ -65,6 +68,37 @@ class PlanGenerationAgent:
             tasks=drafts,
             confidence=0.5,  # MOCK: fixed heuristic confidence
         )
+
+    def _send_prompt(self, state: PlannerState) -> str | None:
+        """Assemble the generation prompt and append the 画像提示词 if present.
+
+        Nodes are deterministic MOCK heuristics: the LLM (when one has been
+        injected into the graph) is called only to receive the prompt; its reply
+        is intentionally ignored so the node output is unchanged.
+        """
+        profile_prompt = state.get("profile_prompt")
+        if not profile_prompt:
+            return None
+
+        sections = ["请根据以下用户画像与目标生成学习任务计划。"]
+        goals: list[GoalInput] = list(state.get("goals") or [])
+        if goals:
+            sections.append("目标: " + "; ".join(goal.title for goal in goals))
+        # 环节 2 画像提示词: compact JSON so it stays cheap in the prompt.
+        sections.append(
+            "画像提示词: "
+            + json.dumps(profile_prompt, ensure_ascii=False, separators=(",", ":"))
+        )
+        prompt = "\n".join(sections)
+
+        llm = state.get("llm")
+        complete = getattr(llm, "complete", None)
+        if callable(complete):
+            try:
+                complete(prompt)
+            except Exception:  # noqa: BLE001 - prompt injection must never break planning
+                pass
+        return prompt
 
     @staticmethod
     def _predicted_duration(

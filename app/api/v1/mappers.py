@@ -8,6 +8,7 @@ from __future__ import annotations
 from app.application.dto.insight import InsightReport
 from app.application.dto.plan import PlanDetail
 from app.domain.models import Plan
+from app.domain.profile import UserProfileData, UserStateData
 from app.schemas.plan import (
     DailyCompletionRead,
     GoalRead,
@@ -15,6 +16,7 @@ from app.schemas.plan import (
     PlanListItem,
     PlanRead,
 )
+from app.schemas.profile import UserProfileRead, UserStateRead
 from app.schemas.task import TaskRead, TaskStandardRead
 
 
@@ -55,6 +57,32 @@ def plan_list_item(plan: Plan, *, task_count: int = 0, completed_count: int = 0)
         created_at=plan.created_at,
         task_count=task_count,
         completed_count=completed_count,
+    )
+
+
+def user_profile_read(profile: UserProfileData) -> UserProfileRead:
+    return UserProfileRead(
+        mbti_type=profile.mbti_type,
+        mbti_dims=dict(profile.mbti_dims) if profile.mbti_dims else None,
+        identity=profile.identity,
+    )
+
+
+def user_state_read(state: UserStateData) -> UserStateRead:
+    return UserStateRead(
+        duration_factor=state.duration_factor,
+        completion_prob=state.completion_prob,
+        stress_baseline=state.stress_baseline,
+        energy_drain_rate=state.energy_drain_rate,
+        proactive_score=state.proactive_score,
+        procrastination_tendency=state.procrastination_tendency,
+        preferred_time_slots=dict(state.preferred_time_slots),
+        stress_response=state.stress_response,
+        state_energy=state.state_energy,
+        state_fatigue=state.state_fatigue,
+        self_efficacy=state.self_efficacy,
+        update_count=state.update_count,
+        degraded=state.is_degraded(),
     )
 
 

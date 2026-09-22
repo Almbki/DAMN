@@ -15,6 +15,7 @@ from app.application.services import (
     GenerationService,
     InsightService,
     PlanService,
+    ProfileService,
     ReplanService,
     UserModelService,
 )
@@ -47,6 +48,10 @@ def get_user_model_service(db: Session = Depends(get_db)) -> UserModelService:
 
 def get_plan_service(db: Session = Depends(get_db)) -> PlanService:
     return PlanService(db)
+
+
+def get_profile_service(db: Session = Depends(get_db)) -> ProfileService:
+    return ProfileService(db)
 
 
 def get_replan_service(db: Session = Depends(get_db)) -> ReplanService:

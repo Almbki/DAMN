@@ -6,6 +6,7 @@ from sqlalchemy.orm import Session
 
 from app.application.dto.feedback import FeedbackSubmitResult
 from app.application.exceptions import NotFoundError, PermissionDeniedError
+from app.application.services.profile_service import ProfileService
 from app.domain.models import Feedback
 from app.domain.models.enums import ReplanTriggerType
 from app.infrastructure.database.repositories import (
@@ -38,6 +39,16 @@ class FeedbackService:
         payload = feedback.model_copy(update={"user_id": user_id, "plan_id": plan_id})
         saved = self._feedback.create(payload)
         self._session.commit()
+
+        # 环节 3 feedback reflow: fold the check-in into the adaptive state before
+        # replanning. ``apply_feedback`` is a no-op when the user has no state row.
+        ProfileService(self._session).apply_feedback(
+            user_id,
+            completed=saved.completion_rate >= 0.8,
+            partial_pct=saved.completion_rate,
+            energy_after=float(saved.energy_level) if saved.energy_level is not None else None,
+            stress_after=float(saved.stress_level) if saved.stress_level is not None else None,
+        )
 
         triggered = False
         eligibility = None

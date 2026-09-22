@@ -16,6 +16,7 @@ from app.agent.schemas import GeneratedTaskDraft
 from app.agent.state import GenerationRequest, PlannerState
 from app.application.dto.plan import PlanDetail, TaskWithStandards
 from app.application.exceptions import NotFoundError, PermissionDeniedError
+from app.application.services.profile_service import ProfileService
 from app.domain.models import Goal, Plan, Task, TaskExecution, TaskStandard
 from app.domain.models.enums import PlanStatus, TaskStatus
 from app.domain.rules.base import RuleEngine
@@ -92,21 +93,27 @@ class PlanService:
         # 1. Persist the goals so drafts can reference real goal ids.
         goal_id_map = self._persist_goals(user_id, request)
 
-        # 2. Build user features (history => ML predictors).
+        # 2. Build user features (history => ML predictors) and the 画像 prompt.
+        profile_service = ProfileService(self._session)
         if user_features is None:
-            from app.application.services.user_model_service import UserModelService
-
-            user_features = UserModelService(self._session).get_user_features(user_id)
+            user_features = profile_service.build_user_features(user_id)
+        profile_prompt = profile_service.build_profile_prompt(user_id)
 
         # 3. Run the agent graph (no DB access inside).
         graph = self._build_graph()
         if collect_events:
             state, events = graph.run_with_events(
-                request, user_features=user_features, goal_id_map=goal_id_map
+                request,
+                user_features=user_features,
+                goal_id_map=goal_id_map,
+                profile_prompt=profile_prompt,
             )
         else:
             state = graph.invoke(
-                request, user_features=user_features, goal_id_map=goal_id_map
+                request,
+                user_features=user_features,
+                goal_id_map=goal_id_map,
+                profile_prompt=profile_prompt,
             )
             events = []
 
@@ -296,3 +303,11 @@ class PlanService:
             completed=True,
         )
         self._executions.create(execution)
+        # 环节 3 feedback reflow: an execution with real duration is an observation.
+        if execution.actual_duration is not None:
+            ProfileService(self._session).apply_feedback(
+                user_id,
+                actual_min=execution.actual_duration,
+                theoretical_min=task.estimated_duration,
+                completed=True,
+            )

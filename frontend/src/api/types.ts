@@ -75,6 +75,60 @@ export interface UserRead {
   created_at: string;
 }
 
+/**
+ * MBTI dimension weights. Each is `0..1`, weighted toward the FIRST letter of
+ * its pair (I / S / T / J): `ie: 0.65` means 65% I, 35% E. Omitted keys mean the
+ * backend keeps its default for that axis.
+ */
+export interface MbtiDims {
+  ie?: number;
+  sn?: number;
+  tf?: number;
+  jp?: number;
+}
+
+/** Static 基础画像 fields (`GET /users/me/profile`). */
+export interface UserProfileRead {
+  mbti_type: string | null;
+  mbti_dims: MbtiDims | null;
+  identity: string | null;
+}
+
+/**
+ * Feedback-updated adaptive user state, returned alongside the profile.
+ * Every metric is `0..1` except `duration_factor` (unitless multiplier) and
+ * `update_count`.
+ */
+export interface UserStateRead {
+  duration_factor: number;
+  completion_prob: number;
+  stress_baseline: number;
+  energy_drain_rate: number;
+  proactive_score: number;
+  procrastination_tendency: number;
+  preferred_time_slots: Record<string, string>;
+  stress_response: number;
+  state_energy: number;
+  state_fatigue: number;
+  self_efficacy: number;
+  update_count: number;
+  /** True while `update_count < 3` (冷启动校准中). */
+  degraded: boolean;
+}
+
+/** `GET /users/me/profile`; 404 when the user has no profile yet. */
+export interface UserProfileResponse {
+  profile: UserProfileRead;
+  state: UserStateRead;
+}
+
+/** Body for `PATCH /users/me`; sending any field re-initialises the state. */
+export interface ProfileUpdateRequest {
+  mbti_type?: string | null;
+  mbti_dims?: MbtiDims | null;
+  identity?: string | null;
+}
+
 export interface DailyCompletionRead {
   date: string;
   total_tasks: number;
@@ -125,6 +179,10 @@ export interface RegisterRequest {
   display_name?: string | null;
   execution_weight?: number;
   profile?: Record<string, unknown>;
+  /** Optional 基础画像 fields accepted at registration. */
+  mbti_type?: string | null;
+  mbti_dims?: MbtiDims | null;
+  identity?: string | null;
 }
 
 export interface PlanListItem {
