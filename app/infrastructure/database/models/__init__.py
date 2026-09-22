@@ -16,7 +16,7 @@ from app.infrastructure.database.models.replan_event import ReplanEvent
 from app.infrastructure.database.models.task import Task
 from app.infrastructure.database.models.task_standard import TaskStandard
 from app.infrastructure.database.models.user import User
-from app.infrastructure.database.models.user_model import UserModel
+from app.infrastructure.database.models.user_state import UserStateModel
 
 __all__ = [
     "AgentMemory",
@@ -30,5 +30,5 @@ __all__ = [
     "TaskExecution",
     "TaskStandard",
     "User",
-    "UserModel",
+    "UserStateModel",
 ]

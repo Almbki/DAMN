@@ -8,15 +8,17 @@ frontend's authoritative OpenAPI 3.0.3 spec) after its refactor.
 Verified mechanically by diffing our generated OpenAPI against the spec:
 
 ```
-frontend endpoints: 25   ours: 28
+frontend endpoints: 25   ours: 30
 MISSING: (none)
-EXTRA:   POST /api/v1/plans/preview
-         POST /api/v1/plans/preview/{thread_id}/adjust
+EXTRA:   POST /api/v1/plans/preview                     (now 202 async job)
+         POST /api/v1/plans/preview/{thread_id}/adjust  (now 202 async job)
          POST /api/v1/plans/preview/{thread_id}/confirm
+         GET  /api/v1/plans/generation/{job_id}          (polling status)
+         GET  /api/v1/plans/generation/{job_id}/events    (live SSE)
 ```
 
-The three "extra" routes are the original preview flow, kept **on purpose** so
-the existing implementation, tests and `docs/agent/*` stay valid. The frontend's
+The three "extra" routes are the preview flow, kept **on purpose** so the existing
+implementation, tests and `docs/agent/*` stay valid. The frontend's
 `decompose`/`confirm` are additive aliases over the same graph.
 
 ## What was added
@@ -36,6 +38,24 @@ the existing implementation, tests and `docs/agent/*` stay valid. The frontend's
 
 `InsightRead` gained `data_sufficiency {samples, min_samples, sufficient}` and
 `drivers[]` (both nullable/optional, so existing clients are unaffected).
+
+## 真流式异步任务（preview / adjust 改造）
+
+`POST /plans/preview` 与 `POST /plans/preview/{thread_id}/adjust` 不再是同步长请求，
+它们立刻返回 **202** 任务描述符，图在后台线程执行（自己的 DB session），进度通过
+SSE 实时推送：
+
+| Endpoint | Status | Behaviour |
+| --- | --- | --- |
+| `POST /plans/preview` | 202 | `{job_id, status, events_url, status_url}`；不再直接返回 preview |
+| `POST /plans/preview/{thread_id}/adjust` | 202 | 同上；body 只需 `{feedback}`（`thread_id` 在 path） |
+| `GET /plans/generation/{job_id}` | 200 | 轮询兜底：`{job_id, kind, status, result, error, events}` |
+| `GET /plans/generation/{job_id}/events` | 200 | **实时** SSE；逐节点 `event: <node>`，最后 `event: completed`（data 含 `result`） |
+
+- `result` 的形状：`kind="preview"` → 原 `PreviewResponse`；`kind="preview_adjust"` → 原 `AdjustResponse`（含 `final_plan`）。
+- SSE 会在 15s 无事件时发送 `: ping` 心跳，防代理断开。
+- 前端用 `expo/fetch`（SDK 57 内建流式）+ 手写 SSE 解析；`response.body` 不可用时自动降级为轮询 `status_url`。
+- `POST /plans/generate`、`/plans/decompose`、`/plans/confirm` 仍为同步（未改）。
 
 ## Decisions taken (confirmed with the product owner)
 
@@ -93,7 +113,7 @@ the existing implementation, tests and `docs/agent/*` stay valid. The frontend's
 
 ```bash
 uv run pytest tests/api/test_frontend_contract.py -v   # 16 contract tests
-uv run pytest                                          # 110 tests
+uv run pytest                                          # 172 tests
 uv run alembic current                                 # d696086158be (head)
 uv run python scripts/evaluate_predictors.py           # prediction scoring
 ```

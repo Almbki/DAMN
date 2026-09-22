@@ -36,11 +36,9 @@ from app.infrastructure.database.repositories import (
     PlanRepository,
     TaskExecutionRepository,
     TaskRepository,
-    UserModelRepository,
     UserRepository,
 )
 from app.ml.base import FeedbackSignal, PlanProgress
-from app.ml.user_model import StatisticalUserModelBuilder
 
 DEFAULT_DAY_START = time(8, 0)
 DEFAULT_DAY_END = time(22, 0)
@@ -92,14 +90,16 @@ class RepoContextBuilder:
     def __init__(self, session: Session) -> None:
         self._session = session
         self._users = UserRepository(session)
-        self._models = UserModelRepository(session)
         self._executions = TaskExecutionRepository(session)
         self._feedback = FeedbackRepository(session)
         self._plans = PlanRepository(session)
         self._tasks = TaskRepository(session)
         self._goals = GoalRepository(session)
         self._memories = AgentMemoryRepository(session)
-        self._builder = StatisticalUserModelBuilder()
+        # Imported lazily to keep this module free of a service-level cycle.
+        from app.application.services.profile_service import ProfileService
+
+        self._profiles = ProfileService(session)
 
     # -- public API --------------------------------------------------------
     def build(
@@ -111,7 +111,6 @@ class RepoContextBuilder:
         profile_overrides: dict | None = None,
     ) -> PlanningContext:
         user = self._users.get_by_id(user_id)
-        user_model = self._models.get_by_user(user_id)
         executions = self._executions.list_by_user(user_id)
         feedbacks = self._feedback.list_by_user(user_id)
 
@@ -131,12 +130,13 @@ class RepoContextBuilder:
         goals = self._goals.list_by_user(user_id)
         goal_by_id = {goal.id: goal for goal in goals}
 
-        features = self._builder.to_features(
-            user_model,
-            executions,
-            feedbacks,
-            user_id=user_id,
-            execution_weight=user.execution_weight if user else 0.5,
+        # ML features and memory are both driven by the portrait state now, so
+        # there is one behavioural model instead of a parallel statistical one.
+        features = self._profiles.build_user_features(user_id)
+        state = self._profiles.get_state(user_id)
+        profile_snapshot = self._profiles.snapshot(user_id)
+        profile_decision = self._profiles.replan_decision_for(
+            user_id, duration_bias=self._profiles.duration_bias(user_id)
         )
 
         stored = self._memories.list_by_user(user_id)
@@ -144,16 +144,20 @@ class RepoContextBuilder:
         for row in stored:
             by_kind.setdefault(row.kind, []).append(row)
 
+        # Single source of truth for MBTI: the dedicated users column, falling
+        # back to the legacy free-form profile key.
+        mbti = (user.mbti_type if user else None) or profile.get("mbti")
+
         return PlanningContext(
             user_id=user_id,
-            mbti=profile.get("mbti"),
+            mbti=mbti,
             execution_weight=user.execution_weight if user else 0.5,
             profile=profile,
             preferences=self._preferences(
                 profile, user.scheduling_preferences if user else None
             ),
             semantic_memory=merge_memory(
-                build_semantic_memory(user, user_model, mbti=profile.get("mbti")),
+                build_semantic_memory(user, state, mbti=mbti),
                 by_kind.get(MemoryKind.SEMANTIC.value, []),
             ),
             episodic_memory=merge_memory(
@@ -161,7 +165,7 @@ class RepoContextBuilder:
                 by_kind.get(MemoryKind.EPISODIC.value, []),
             ),
             procedural_memory=merge_memory(
-                derive_procedural_memory(user_model, executions, feedbacks),
+                derive_procedural_memory(state, executions, feedbacks),
                 by_kind.get(MemoryKind.PROCEDURAL.value, []),
             ),
             user_features=features,
@@ -171,6 +175,9 @@ class RepoContextBuilder:
             ),
             recent_feedback=self._recent_feedback(feedbacks),
             user_note=user_note,
+            profile_prompt=profile_snapshot,
+            profile_replan=profile_decision.decision,
+            profile_replan_reason=profile_decision.reason_code,
         )
 
     # -- internals ---------------------------------------------------------

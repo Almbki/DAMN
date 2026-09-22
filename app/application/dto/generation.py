@@ -53,14 +53,16 @@ class AgentEvent(BaseModel):
 class GenerationJob(BaseModel):
     """In-memory record of one plan generation run.
 
-    The first version runs the pipeline synchronously in ``create_job`` and
-    stores the ordered events; the SSE endpoint replays them.
+    A worker thread runs the pipeline and appends events to ``events`` as they
+    happen; ``events`` doubles as the replay buffer for late SSE subscribers.
     """
 
     job_id: str
     user_id: int
+    kind: str = "preview"
     status: JobStatus = JobStatus.PENDING
     plan_id: int | None = None
+    result: dict | None = None
     error: str | None = None
     events: list[AgentEvent] = Field(default_factory=list)
     created_at: datetime = Field(default_factory=lambda: datetime.now(UTC))

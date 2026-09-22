@@ -16,7 +16,6 @@ if TYPE_CHECKING:
     from app.infrastructure.database.models.feedback import Feedback
     from app.infrastructure.database.models.goal import Goal
     from app.infrastructure.database.models.plan import Plan
-    from app.infrastructure.database.models.user_model import UserModel
 
 
 class User(Base):
@@ -35,6 +34,12 @@ class User(Base):
     scheduling_preferences: Mapped[dict[str, Any] | None] = mapped_column(
         JSON, nullable=True, default=None
     )
+    # --- user portrait (static part of the profile engine, P3) ------------
+    #: MBTI is a SOFT self-report input, never a diagnosis.
+    mbti_type: Mapped[str | None] = mapped_column(String(4), nullable=True)
+    #: Per-dimension weights {"ie","sn","tf","jp"} -> [0, 1]; NULL = not answered.
+    mbti_dims: Mapped[dict[str, Any] | None] = mapped_column(JSON, nullable=True, default=None)
+    identity: Mapped[str | None] = mapped_column(String(200), nullable=True)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, default=utcnow
     )
@@ -45,7 +50,6 @@ class User(Base):
         "TaskExecution", back_populates="user"
     )
     feedbacks: Mapped[list[Feedback]] = relationship("Feedback", back_populates="user")
-    user_models: Mapped[list[UserModel]] = relationship("UserModel", back_populates="user")
 
     def __repr__(self) -> str:
         return f"<User id={self.id} email={self.email!r}>"

@@ -31,4 +31,7 @@ USER REQUEST:
 PREFERENCES:
 {{preferences}}
 
+PROFILE (cold-start prior - bias the mix, never exclude work):
+{{profile}}
+
 Return only the structured PlanGenerationResult object.

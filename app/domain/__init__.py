@@ -15,7 +15,6 @@ from app.domain.models import (
     TaskStandard,
     TaskStatus,
     User,
-    UserModel,
 )
 
 __all__ = [
@@ -28,5 +27,4 @@ __all__ = [
     "TaskStandard",
     "TaskStatus",
     "User",
-    "UserModel",
 ]

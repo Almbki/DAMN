@@ -19,8 +19,8 @@ from app.infrastructure.database.repositories.prediction_log_repository import (
 from app.infrastructure.database.repositories.replan_event_repository import ReplanEventRepository
 from app.infrastructure.database.repositories.task_repository import TaskRepository
 from app.infrastructure.database.repositories.task_standard_repository import TaskStandardRepository
-from app.infrastructure.database.repositories.user_model_repository import UserModelRepository
 from app.infrastructure.database.repositories.user_repository import UserRepository
+from app.infrastructure.database.repositories.user_state_repository import UserStateRepository
 
 __all__ = [
     "AgentMemoryRepository",
@@ -34,6 +34,6 @@ __all__ = [
     "TaskExecutionRepository",
     "TaskRepository",
     "TaskStandardRepository",
-    "UserModelRepository",
     "UserRepository",
+    "UserStateRepository",
 ]

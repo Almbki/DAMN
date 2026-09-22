@@ -26,6 +26,14 @@ class User(DomainModel):
     #: app/schemas/user.py). Kept separate from `profile` so a wholesale profile
     #: update cannot wipe them.
     scheduling_preferences: dict[str, Any] = Field(default_factory=dict)
+    # --- user portrait (static part of the profile engine) ----------------
+    #: MBTI 4-letter code. A SOFT profile input, never a diagnosis.
+    mbti_type: str | None = None
+    #: Per-dimension weights in [0, 1] for ``ie``/``sn``/``tf``/``jp``.
+    #: ``None`` means "no dimension data" (the engine falls back to the type).
+    mbti_dims: dict[str, float] | None = None
+    #: Free-text self description from the profile questionnaire.
+    identity: str | None = None
     created_at: datetime = Field(default_factory=utcnow)
 
     @field_validator("profile", "scheduling_preferences", mode="before")

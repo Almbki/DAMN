@@ -44,6 +44,11 @@ class Settings(BaseSettings):
     llm_api_key: str | None = None
     llm_model: str = "mock-model"
     llm_timeout_seconds: float = 30.0
+    # How structured JSON output is requested. "json_object" is portable
+    # (response_format={"type": "json_object"}); "json_schema" asks for OpenAI
+    # Structured Outputs, which DeepSeek rejects with HTTP 400
+    # ("This response_format type is unavailable now").
+    llm_response_format: str = "json_object"
 
     # --- Scheduler / rules -------------------------------------------------
     scheduler_daily_limit_minutes: int = Field(default=300, ge=1)
@@ -72,6 +77,14 @@ class Settings(BaseSettings):
     @classmethod
     def _strip_origins(cls, value: str) -> str:
         return value.strip()
+
+    @field_validator("llm_response_format")
+    @classmethod
+    def _valid_llm_response_format(cls, value: str) -> str:
+        normalized = value.strip().lower()
+        if normalized not in {"json_object", "json_schema"}:
+            raise ValueError("llm_response_format must be 'json_object' or 'json_schema'")
+        return normalized
 
     @property
     def cors_origin_list(self) -> list[str]:

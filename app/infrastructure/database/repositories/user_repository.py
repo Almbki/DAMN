@@ -19,6 +19,9 @@ class UserRepository(RepositoryBase):
             execution_weight=user.execution_weight,
             profile=user.profile,
             scheduling_preferences=user.scheduling_preferences or None,
+            mbti_type=user.mbti_type,
+            mbti_dims=user.mbti_dims,
+            identity=user.identity,
             created_at=user.created_at,
         )
         self._session.add(orm)

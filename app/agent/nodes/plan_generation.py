@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import json
+
 from app.agent.nodes._shared import get_context, resolve_preferences
 from app.agent.schemas import AgentError, PlanGenerationResult
 from app.agent.state import PlannerState, PreferenceInput, ToolCallRecord
@@ -29,6 +31,19 @@ def _completed_titles(state: PlannerState) -> list[str]:
         for task in plan.tasks
         if getattr(task.status, "value", task.status) == "completed"
     ]
+
+
+def _profile_block(state: PlannerState) -> str:
+    """Render the portrait for the prompt (cold-start prior, not a diagnosis)."""
+    profile = state.get("profile_prompt") or {}
+    if not profile:
+        return ""
+    rendered = json.dumps(profile, ensure_ascii=False, sort_keys=True)
+    return (
+        "Cold-start portrait (MBTI-derived prior, NOT a diagnosis; it is "
+        "overridden by observed feedback as update_count grows). Use it only to "
+        "bias the task mix, never to exclude work:\n" + rendered
+    )
 
 
 def plan_generation_node(state: PlannerState, runtime: object) -> dict:
@@ -78,6 +93,7 @@ def plan_generation_node(state: PlannerState, runtime: object) -> dict:
         replan_reason=state.get("replan_reason"),
         completed_task_titles=_completed_titles(state),
         prediction_source=state.get("prediction_source"),
+        profile_context=_profile_block(state),
     )
 
     outcome = ctx.tool(TOOL).invoke(payload)

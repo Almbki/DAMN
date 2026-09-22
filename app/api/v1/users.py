@@ -4,10 +4,17 @@ from __future__ import annotations
 
 from fastapi import APIRouter, Depends, Query
 
-from app.api.deps import get_auth_service, get_current_user, get_situation_service
-from app.application.services import AuthService, SituationService
+from app.api.deps import (
+    get_auth_service,
+    get_current_user,
+    get_profile_service,
+    get_situation_service,
+)
+from app.application.exceptions import NotFoundError
+from app.application.services import AuthService, ProfileService, SituationService
 from app.domain.models import User
 from app.schemas.common import ErrorResponse
+from app.schemas.profile import ProfileRead
 from app.schemas.user import (
     SchedulingPreferences,
     SituationTrendRead,
@@ -16,6 +23,11 @@ from app.schemas.user import (
 )
 
 router = APIRouter()
+
+_AUTH = {401: {"model": ErrorResponse, "description": "Not authenticated"}}
+
+#: Fields handled by ProfileService (dedicated columns + state reset).
+PORTRAIT_FIELDS = frozenset({"mbti_type", "mbti_dims", "identity"})
 
 
 @router.get(
@@ -58,14 +70,50 @@ def update_me(
     payload: UserUpdate,
     current_user: User = Depends(get_current_user),
     service: AuthService = Depends(get_auth_service),
+    profiles: ProfileService = Depends(get_profile_service),
 ) -> UserRead:
+    user_id = current_user.id or 0
     updated = service.update_user(
-        current_user.id or 0,
+        user_id,
         display_name=payload.display_name,
         execution_weight=payload.execution_weight,
         profile=payload.profile,
     )
+    # Portrait fields are handled separately: they live on dedicated columns and
+    # changing them re-initialises the adaptive state. Only fields the client
+    # actually sent are touched (an explicit null clears one).
+    provided = PORTRAIT_FIELDS & payload.model_fields_set
+    if provided:
+        profiles.upsert_profile(
+            user_id,
+            provided=set(provided),
+            mbti_type=payload.mbti_type,
+            mbti_dims=payload.mbti_dims,
+            identity=payload.identity,
+        )
+        updated = service.get_user(user_id)
     return UserRead.model_validate(updated)
+
+
+@router.get(
+    "/me/profile",
+    response_model=ProfileRead,
+    summary="Read the user portrait (static MBTI + adaptive state)",
+    description=(
+        "404 when the user has not set a portrait yet. `degraded` is true while "
+        "`update_count < 3`: the numbers are then cold-start priors derived from "
+        "the MBTI template, not a psychological assessment."
+    ),
+    responses={**_AUTH, 404: {"model": ErrorResponse, "description": "Profile not set"}},
+)
+def read_profile(
+    current_user: User = Depends(get_current_user),
+    profiles: ProfileService = Depends(get_profile_service),
+) -> ProfileRead:
+    user_id = current_user.id or 0
+    if not profiles.is_configured(user_id):
+        raise NotFoundError("profile not set")
+    return ProfileRead.from_parts(profiles.get_profile(user_id), profiles.get_state(user_id))
 
 
 @router.get(

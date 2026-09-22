@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import threading
 from collections.abc import Iterator
 
 from fastapi import Depends
@@ -16,9 +17,9 @@ from app.application.services import (
     GoalService,
     InsightService,
     PlanService,
+    ProfileService,
     ReplanService,
     SituationService,
-    UserModelService,
 )
 from app.core.security import InvalidTokenError, decode_access_token
 from app.domain.models import User
@@ -28,6 +29,7 @@ bearer_scheme = HTTPBearer(auto_error=False)
 
 #: Process-wide registry of generation jobs (in-memory; see GenerationService).
 _generation_service: GenerationService | None = None
+_generation_service_lock = threading.Lock()
 
 
 def get_db() -> Iterator[Session]:
@@ -43,11 +45,16 @@ def get_auth_service(db: Session = Depends(get_db)) -> AuthService:
     return AuthService(db)
 
 
-def get_user_model_service(db: Session = Depends(get_db)) -> UserModelService:
-    return UserModelService(db)
+def get_profile_service(db: Session = Depends(get_db)) -> ProfileService:
+    return ProfileService(db)
 
 
-def get_plan_service(db: Session = Depends(get_db)) -> PlanService:
+def _build_plan_service(db: Session) -> PlanService:
+    """Construct a fully-wired ``PlanService`` for ``db``.
+
+    Shared by :func:`get_plan_service` (request session) and
+    :func:`_plan_service_factory` (fresh session on a worker thread).
+    """
     from app.agent.checkpointer import get_checkpointer
     from app.agent.llm import StructuredLLM
     from app.core.config import get_settings
@@ -60,6 +67,15 @@ def get_plan_service(db: Session = Depends(get_db)) -> PlanService:
         prompt_version=settings.agent_prompt_version,
     )
     return PlanService(db, llm=llm, checkpointer=get_checkpointer(settings))
+
+
+def get_plan_service(db: Session = Depends(get_db)) -> PlanService:
+    return _build_plan_service(db)
+
+
+def _plan_service_factory() -> PlanService:
+    """Build a ``PlanService`` on a fresh session (background worker)."""
+    return _build_plan_service(SessionLocal())
 
 
 def get_replan_service(db: Session = Depends(get_db)) -> ReplanService:
@@ -89,8 +105,20 @@ def get_situation_service(db: Session = Depends(get_db)) -> SituationService:
 def get_generation_service() -> GenerationService:
     global _generation_service
     if _generation_service is None:
-        _generation_service = GenerationService()
+        with _generation_service_lock:
+            if _generation_service is None:
+                _generation_service = GenerationService(service_factory=_plan_service_factory)
     return _generation_service
+
+
+def close_generation_service() -> None:
+    """Shut down the process-wide generation service (workers + channels)."""
+    global _generation_service
+    with _generation_service_lock:
+        service = _generation_service
+        _generation_service = None
+    if service is not None:
+        service.close()
 
 
 def get_current_user(

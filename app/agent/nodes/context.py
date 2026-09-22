@@ -57,6 +57,9 @@ def load_context_node(state: PlannerState, runtime: object) -> dict:
     updates["current_plan"] = planning.current_plan
     updates["progress"] = planning.progress
     updates["user_id"] = request.user_id
+    updates["profile_prompt"] = dict(planning.profile_prompt or {})
+    updates["profile_replan"] = planning.profile_replan or "none"
+    updates["profile_replan_reason"] = planning.profile_replan_reason or ""
     if not state.get("goals") and request.goals:
         updates["goals"] = list(request.goals)
     if errors:
@@ -64,7 +67,8 @@ def load_context_node(state: PlannerState, runtime: object) -> dict:
     updates["notes"] = [
         f"load_context: plan={planning.current_plan.plan_id if planning.current_plan else 'none'}, "
         f"memory={len(planning.all_memory())} item(s), "
-        f"feedback={len(planning.recent_feedback)}"
+        f"feedback={len(planning.recent_feedback)}, "
+        f"profile_replan={updates['profile_replan']}"
     ]
     ctx.publish("node.completed", {"node": NODE, "summary": updates["notes"][0]})
     return updates

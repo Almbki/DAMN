@@ -31,6 +31,9 @@ REPLAN REASON:
 PLANNING CONTEXT:
 {{planning_context}}
 
+PROFILE (cold-start prior - bias the mix, never exclude work):
+{{profile}}
+
 ML PREDICTION:
 {{ml_prediction}}
 

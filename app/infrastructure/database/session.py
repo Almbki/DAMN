@@ -18,6 +18,8 @@ settings = get_settings()
 _engine_kwargs: dict[str, Any] = {
     "echo": settings.db_echo,
     "future": True,
+    "pool_pre_ping": True,
+    "pool_recycle": 1800,
 }
 
 if settings.is_sqlite:
@@ -27,6 +29,9 @@ if settings.is_sqlite:
         # Keep a single shared in-memory sqlite connection alive for tests and
         # short-lived processes.
         _engine_kwargs["poolclass"] = StaticPool
+else:
+    _engine_kwargs["pool_size"] = 10
+    _engine_kwargs["max_overflow"] = 20
 
 engine = create_engine(settings.database_url, **_engine_kwargs)
 

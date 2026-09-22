@@ -29,6 +29,9 @@ THEORETICAL WORKLOAD:
 USER SITUATION:
 {{user_situation}}
 
+PROFILE (cold-start prior - bias the mix, never exclude work):
+{{profile}}
+
 GOALS:
 {{goals}}
 

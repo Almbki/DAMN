@@ -6,6 +6,7 @@ tools, ML adapters and persistence are all covered together.
 
 from __future__ import annotations
 
+import time
 from dataclasses import dataclass
 from datetime import date, timedelta
 
@@ -14,7 +15,7 @@ from fastapi.testclient import TestClient
 
 from app.agent.checkpointer import build_checkpointer
 from app.agent.state import AgentConfig
-from app.api.deps import get_plan_service
+from app.api.deps import get_generation_service, get_plan_service
 from app.application.services.plan_service import PlanService
 from app.core.config import get_settings
 from app.main import app
@@ -99,17 +100,20 @@ def override_plan_service(
 ) -> None:
     """Force the agent's ML route / config for the next requests.
 
-    Reuses the request-scoped session from ``get_db`` so the override never
-    leaks a connection (SQLite would lock the test database). Pass
-    ``context_builder`` to simulate a failing context (degradation path).
+    Overrides BOTH the request-scoped ``get_plan_service`` and the worker's
+    ``get_generation_service`` factory: the async preview/adjust jobs run on a
+    background thread with their own session, so overriding only the request
+    dependency would leave the job using the real (mock-LLM) service.
     """
     from fastapi import Depends
     from sqlalchemy.orm import Session
 
     from app.agent.llm import StructuredLLM
     from app.api.deps import get_db
+    from app.application.services.generation_service import GenerationService
+    from app.infrastructure.database import SessionLocal
 
-    def factory(db: Session = Depends(get_db)) -> PlanService:
+    def build(db: Session) -> PlanService:
         predictors = make_predictors(route, severity=severity)
         RouteOverride().install(predictors)
         return PlanService(
@@ -124,13 +128,19 @@ def override_plan_service(
             ),
         )
 
+    def factory(db: Session = Depends(get_db)) -> PlanService:
+        return build(db)
+
     app.dependency_overrides[get_plan_service] = factory
+    generation_service = GenerationService(service_factory=lambda: build(SessionLocal()))
+    app.dependency_overrides[get_generation_service] = lambda: generation_service
 
 
 @pytest.fixture(autouse=True)
 def _reset_overrides():
     yield
     app.dependency_overrides.pop(get_plan_service, None)
+    app.dependency_overrides.pop(get_generation_service, None)
 
 
 @pytest.fixture()
@@ -163,7 +173,24 @@ def preview_payload(goals: list[dict]) -> dict:
     }
 
 
+def run_job(client: TestClient, headers: dict, job_id: str, *, timeout: float = 120.0) -> dict:
+    """Poll an async generation job to completion and return its status payload."""
+    deadline = time.time() + timeout
+    while True:
+        response = client.get(f"/api/v1/plans/generation/{job_id}", headers=headers)
+        assert response.status_code == 200, response.text
+        body = response.json()
+        if body["status"] in {"completed", "failed"}:
+            return body
+        assert time.time() < deadline, f"job {job_id} still {body['status']}"
+        time.sleep(0.05)
+
+
 def preview_of(client: TestClient, headers: dict, payload: dict) -> dict:
+    """Submit the async preview job and return its result (the preview payload)."""
     response = client.post("/api/v1/plans/preview", json=payload, headers=headers)
     assert response.status_code == 202, response.text
-    return response.json()
+    job = response.json()
+    body = run_job(client, headers, job["job_id"])
+    assert body["status"] == "completed", body
+    return body["result"]

@@ -7,13 +7,22 @@ layer's Context Builder, per the architecture rule "agents never touch the DB".
 from __future__ import annotations
 
 from app.agent.context import MemoryItem, MemoryKind
-from app.domain.models import User, UserModel
+from app.domain.models import User
+from app.domain.profile import UserStateData
+
+
+def _confidence(update_count: int, *, base: float = 0.4, span: int = 20) -> float:
+    """More observations -> more confidence (capped well below certainty)."""
+    return round(min(base + update_count / span, 0.9), 4)
 
 
 def build_semantic_memory(
-    user: User | None, user_model: UserModel | None, *, mbti: str | None = None
+    user: User | None,
+    state: UserStateData | None = None,
+    *,
+    mbti: str | None = None,
 ) -> list[MemoryItem]:
-    """Derive long-lived facts about the user from their profile and model."""
+    """Derive long-lived facts about the user from their profile and state."""
     items: list[MemoryItem] = []
 
     if user is not None:
@@ -38,6 +47,17 @@ def build_semantic_memory(
                 source="users.execution_weight",
             )
         )
+        if user.identity:
+            items.append(
+                MemoryItem(
+                    kind=MemoryKind.SEMANTIC,
+                    key="identity",
+                    value={"value": user.identity},
+                    summary=f"self description: {user.identity}",
+                    confidence=0.7,
+                    source="users.identity",
+                )
+            )
 
     # MBTI is a soft profile input only - never a diagnosis.
     if mbti:
@@ -46,31 +66,34 @@ def build_semantic_memory(
                 kind=MemoryKind.SEMANTIC,
                 key="mbti",
                 value={"value": mbti.upper()},
-                summary=f"MBTI self-report {mbti.upper()} (soft signal, not a diagnosis)",
+                summary=(
+                    f"MBTI self-report {mbti.upper()} "
+                    "(soft cold-start prior, not a diagnosis; decays as feedback accumulates)"
+                ),
                 confidence=0.4,
-                source="users.profile.mbti",
+                source="users.mbti_type",
             )
         )
 
-    if user_model is not None:
+    if state is not None:
         items.append(
             MemoryItem(
                 kind=MemoryKind.SEMANTIC,
-                key="duration_factors",
-                value={"factors": dict(user_model.duration_factors)},
-                summary=f"duration multipliers: {user_model.duration_factors}",
-                confidence=min(0.4 + user_model.sample_size / 50, 0.9),
-                source="user_models.duration_factors",
+                key="duration_factor",
+                value={"value": round(state.duration_factor, 4)},
+                summary=f"duration multiplier {state.duration_factor:.2f}",
+                confidence=_confidence(state.update_count),
+                source="user_states.duration_factor",
             )
         )
         items.append(
             MemoryItem(
                 kind=MemoryKind.SEMANTIC,
                 key="preferred_time_slots",
-                value={"slots": dict(user_model.preferred_time_slots)},
-                summary=f"preferred time slots: {user_model.preferred_time_slots}",
-                confidence=min(0.4 + user_model.sample_size / 50, 0.9),
-                source="user_models.preferred_time_slots",
+                value={"slots": dict(state.preferred_time_slots)},
+                summary=f"preferred time slots: {state.preferred_time_slots}",
+                confidence=_confidence(state.update_count),
+                source="user_states.preferred_time_slots",
             )
         )
     return items

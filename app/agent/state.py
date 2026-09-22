@@ -272,6 +272,11 @@ class PlannerState(TypedDict, total=False):
 
     # --- routing / outcome ---
     route: AdjustmentRoute | None
+    #: Cold-start portrait for prompt injection (MBTI priors; not a diagnosis).
+    profile_prompt: dict
+    #: Portrait-driven replan verdict ("full_replan" / "local_repair" / "none").
+    profile_replan: str
+    profile_replan_reason: str
     #: Multiplier applied to the daily limits (set by MICRO_ADJUST, 1.0 otherwise).
     limit_factor: float
     replan_reason: str | None

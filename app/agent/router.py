@@ -69,6 +69,23 @@ class AdjustmentRouter:
             decision.overridden = route != base.route
             decision.policy_reason = why
             decision.reasons = reasons + [why]
+
+        # --- portrait model (user_states / MBTI priors) ---
+        # It may ESCALATE (never downgrade) the route: the portrait is a
+        # cold-start prior plus EWMA observations, so it must not be able to
+        # cancel a stronger signal coming from the ML predictor or the policy.
+        profile_route = state.get("profile_replan")
+        profile_reason = state.get("profile_replan_reason") or "portrait model"
+        if profile_route == "full_replan" and decision.route is not AdjustmentRoute.FULL_REPLAN:
+            decision.route = AdjustmentRoute.FULL_REPLAN
+            decision.overridden = True
+            decision.policy_reason = f"portrait model: {profile_reason}"
+            decision.reasons = reasons + [decision.policy_reason]
+        elif profile_route == "local_repair" and decision.route is AdjustmentRoute.NO_CHANGE:
+            decision.route = AdjustmentRoute.MICRO_ADJUST
+            decision.overridden = True
+            decision.policy_reason = f"portrait model: {profile_reason}"
+            decision.reasons = reasons + [decision.policy_reason]
         return decision
 
     # -- base prediction ---------------------------------------------------

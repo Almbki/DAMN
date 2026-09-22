@@ -115,6 +115,13 @@ class PlanningContext(BaseModel):
 
     # Free-form note the user attached to this run (adjustment / feedback text).
     user_note: str | None = None
+    #: Cold-start portrait from the profile engine (`ProfileService.snapshot`).
+    #: MBTI-derived priors - NOT a diagnosis, decays as feedback accumulates.
+    profile_prompt: dict = Field(default_factory=dict)
+    #: Portrait-driven replan verdict: "full_replan" | "local_repair" | "none".
+    #: Computed by the application layer so the router stays pure.
+    profile_replan: str | None = None
+    profile_replan_reason: str | None = None
     assembled_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
 
     def all_memory(self) -> list[MemoryItem]:

@@ -4,9 +4,14 @@ Reading history is cheap but recomputing it every run is not, and some
 information (explicit preferences, consolidated rules of thumb) cannot be
 re-derived from raw rows. This service is the write side of the memory loop;
 :class:`app.application.context.RepoContextBuilder` is the read side.
+
+Memory is derived from the portrait state (`user_states`) and the raw history -
+the retired `user_models` aggregate is no longer involved.
 """
 
 from __future__ import annotations
+
+import logging
 
 from sqlalchemy.orm import Session
 
@@ -21,12 +26,34 @@ from app.infrastructure.database.repositories import (
     AgentMemoryRepository,
     FeedbackRepository,
     TaskExecutionRepository,
-    UserModelRepository,
     UserRepository,
+    UserStateRepository,
 )
 
 #: Episodic memory is append-only; keep the most recent N entries per user.
 EPISODIC_KEEP = 50
+
+#: ``agent_memories.summary`` is VARCHAR(500). Derived summaries (e.g. the raw
+#: user profile field list) can exceed it and abort the transaction.
+_SUMMARY_MAX_LEN = 500
+
+logger = logging.getLogger(__name__)
+
+
+def _clip_summary(value: str | None) -> str | None:
+    """Fit a derived summary into ``agent_memories.summary`` (VARCHAR(500))."""
+    if value is None:
+        return None
+    text = str(value).strip()
+    if len(text) <= _SUMMARY_MAX_LEN:
+        return text
+    logger.warning(
+        "memory summary too long (%d chars, max %d); truncating: %.80s",
+        len(text),
+        _SUMMARY_MAX_LEN,
+        text,
+    )
+    return text[:_SUMMARY_MAX_LEN]
 
 
 class MemoryService:
@@ -34,7 +61,7 @@ class MemoryService:
         self._session = session
         self._memories = AgentMemoryRepository(session)
         self._users = UserRepository(session)
-        self._models = UserModelRepository(session)
+        self._states = UserStateRepository(session)
         self._executions = TaskExecutionRepository(session)
         self._feedback = FeedbackRepository(session)
 
@@ -46,15 +73,16 @@ class MemoryService:
         pruned to :data:`EPISODIC_KEEP`.
         """
         user = self._users.get_by_id(user_id)
-        model = self._models.get_by_user(user_id)
+        state = self._states.get_by_user(user_id)
         executions = self._executions.list_by_user(user_id)
         feedbacks = self._feedback.list_by_user(user_id)
         profile = (user.profile if user else None) or {}
+        mbti = (user.mbti_type if user else None) or profile.get("mbti")
 
         items = [
-            *build_semantic_memory(user, model, mbti=profile.get("mbti")),
+            *build_semantic_memory(user, state, mbti=mbti),
             *build_episodic_memory(executions, feedbacks),
-            *derive_procedural_memory(model, executions, feedbacks),
+            *derive_procedural_memory(state, executions, feedbacks),
         ]
 
         saved = self._memories.upsert_many(
@@ -64,7 +92,7 @@ class MemoryService:
                     kind=item.kind.value,
                     key=item.key,
                     value=item.value,
-                    summary=item.summary,
+                    summary=_clip_summary(item.summary),
                     confidence=item.confidence,
                     source=item.source,
                 )

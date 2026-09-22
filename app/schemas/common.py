@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 
 
 class ErrorResponse(BaseModel):
@@ -23,6 +23,12 @@ class HealthResponse(BaseModel):
 
 
 class ViolationRead(BaseModel):
+    #: Rule violations arrive as ``app.domain.rules.base.RuleViolation`` (a
+    #: Pydantic model), not as a dict; without this, ``model_validate`` raises
+    #: "Input should be a valid dictionary or instance of ViolationRead" whenever
+    #: a plan actually violates a hard rule.
+    model_config = ConfigDict(from_attributes=True)
+
     rule: str
     severity: str
     task_ids: list[int] = Field(default_factory=list)

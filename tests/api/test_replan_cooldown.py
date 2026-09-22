@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import time
 from datetime import date, timedelta
 
 from fastapi.testclient import TestClient
@@ -27,7 +28,18 @@ def _create_plan(client: TestClient, headers: dict) -> int:
         headers=headers,
     )
     assert response.status_code == 202, response.text
-    thread_id = response.json()["thread_id"]
+    job_id = response.json()["job_id"]
+    deadline = time.time() + 120
+    while True:
+        status = client.get(f"/api/v1/plans/generation/{job_id}", headers=headers)
+        assert status.status_code == 200, status.text
+        body = status.json()
+        if body["status"] in {"completed", "failed"}:
+            break
+        assert time.time() < deadline, f"preview job still {body['status']}"
+        time.sleep(0.05)
+    assert body["status"] == "completed", body
+    thread_id = body["result"]["thread_id"]
     confirmed = client.post(
         f"/api/v1/plans/preview/{thread_id}/confirm", headers=headers
     )

@@ -51,7 +51,7 @@ _POOL_OPEN_TIMEOUT_SECONDS = 10.0
 _checkpointer: Any | None = None
 _checkpointer_pool: Any | None = None
 _checkpointer_mode: str = "memory"
-_checkpointer_lock = threading.Lock()
+_checkpointer_lock = threading.RLock()
 
 
 def _build_serde() -> Any:
@@ -102,8 +102,20 @@ def _build_postgres(dsn: str) -> Any:
         pool.close()
         raise
     # Keep the pool referenced for the process lifetime; the saver alone is not a
-    # reliable owner (the old code proved that).
+    # reliable owner (the old code proved that). If a pool was already installed
+    # (e.g. build_checkpointer called directly, outside get_checkpointer), close
+    # it so the replaced pool does not leak.
+    previous_pool = _checkpointer_pool
     _checkpointer_pool = pool
+    if previous_pool is not None and previous_pool is not pool:
+        try:
+            previous_pool.close()
+        except Exception as exc:  # noqa: BLE001 - replacement must not raise
+            logger.warning(
+                "agent checkpointer: previous pool close failed: %s: %s",
+                type(exc).__name__,
+                exc,
+            )
     return saver
 
 
@@ -116,7 +128,8 @@ def build_checkpointer(settings: Settings | None = None) -> Any:
     if mode == "postgres":
         try:
             saver = _build_postgres(settings.checkpointer_dsn)
-            _checkpointer_mode = "postgres"
+            with _checkpointer_lock:
+                _checkpointer_mode = "postgres"
             logger.info("agent checkpointer: PostgresSaver")
             return saver
         except Exception as exc:  # noqa: BLE001 - degrade, but never silently
@@ -129,7 +142,8 @@ def build_checkpointer(settings: Settings | None = None) -> Any:
 
     from langgraph.checkpoint.memory import InMemorySaver
 
-    _checkpointer_mode = "memory"
+    with _checkpointer_lock:
+        _checkpointer_mode = "memory"
     logger.info("agent checkpointer: InMemorySaver")
     return InMemorySaver(serde=_build_serde())
 
@@ -146,7 +160,8 @@ def get_checkpointer(settings: Settings | None = None) -> Any:
 
 def get_checkpointer_mode() -> str:
     """Which backend is actually in use (``postgres`` or ``memory``)."""
-    return _checkpointer_mode
+    with _checkpointer_lock:
+        return _checkpointer_mode
 
 
 def close_checkpointer() -> None:

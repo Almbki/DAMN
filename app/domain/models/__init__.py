@@ -24,7 +24,6 @@ from app.domain.models.replan_event import ReplanEvent
 from app.domain.models.task import Task
 from app.domain.models.task_standard import TaskStandard
 from app.domain.models.user import User
-from app.domain.models.user_model import UserModel
 
 __all__ = [
     "AgentMemory",
@@ -48,7 +47,6 @@ __all__ = [
     "TaskStatus",
     "TimeOfDay",
     "User",
-    "UserModel",
     "ViolationSeverity",
     "utcnow",
 ]

@@ -5,7 +5,20 @@ from __future__ import annotations
 from fastapi.testclient import TestClient
 
 from app.ml.base import AdjustmentRoute
-from tests.agent.conftest import override_plan_service, preview_of
+from tests.agent.conftest import override_plan_service, preview_of, run_job
+
+
+def _adjust(client: TestClient, headers: dict, thread_id: str, feedback: str) -> dict:
+    """Submit an async adjust job and return its result payload."""
+    response = client.post(
+        f"/api/v1/plans/preview/{thread_id}/adjust",
+        json={"feedback": feedback},
+        headers=headers,
+    )
+    assert response.status_code == 202, response.text
+    body = run_job(client, headers, response.json()["job_id"])
+    assert body["status"] == "completed", body
+    return body["result"]
 
 
 def test_preview_then_confirm_creates_plan_v1(
@@ -50,13 +63,7 @@ def test_preview_adjust_then_confirm(
     thread_id = body["thread_id"]
     original = [task["estimated_duration"] for task in body["preview"]["tasks"]]
 
-    adjusted = client.post(
-        f"/api/v1/plans/preview/{thread_id}/adjust",
-        json={"thread_id": thread_id, "feedback": "高数一天安排太多，减少一些"},
-        headers=auth_headers,
-    )
-    assert adjusted.status_code == 200, adjusted.text
-    payload = adjusted.json()
+    payload = _adjust(client, auth_headers, thread_id, "高数一天安排太多，减少一些")
     assert payload["budget_exhausted"] is False
     assert payload["preview"]["adjustment_count"] == 1
 
@@ -79,22 +86,11 @@ def test_adjustment_budget_forces_execution(
     body = preview_of(client, auth_headers, preview_payload)
     thread_id = body["thread_id"]
 
-    first = client.post(
-        f"/api/v1/plans/preview/{thread_id}/adjust",
-        json={"thread_id": thread_id, "feedback": "少一点"},
-        headers=auth_headers,
-    )
-    assert first.status_code == 200
-    assert first.json()["budget_exhausted"] is True  # 1 spent of 1
+    first = _adjust(client, auth_headers, thread_id, "少一点")
+    assert first["budget_exhausted"] is True  # 1 spent of 1
 
     # A second adjustment must be refused and the plan finalised instead.
-    second = client.post(
-        f"/api/v1/plans/preview/{thread_id}/adjust",
-        json={"thread_id": thread_id, "feedback": "再少一点"},
-        headers=auth_headers,
-    )
-    assert second.status_code == 200, second.text
-    payload = second.json()
+    payload = _adjust(client, auth_headers, thread_id, "再少一点")
     assert payload["budget_exhausted"] is True
     assert payload["preview"] is None
     assert payload["final_plan"] is not None
@@ -104,3 +100,36 @@ def test_adjustment_budget_forces_execution(
 def test_preview_requires_authentication(client: TestClient, preview_payload: dict) -> None:
     response = client.post("/api/v1/plans/preview", json=preview_payload)
     assert response.status_code == 401
+
+
+def test_preview_job_streams_events_and_result(
+    client: TestClient, auth_headers: dict, preview_payload: dict
+) -> None:
+    """The preview is a real async job: it returns 202 immediately and streams
+    node stages over SSE, ending with a `completed` frame that carries the preview."""
+    import json
+
+    override_plan_service(client)
+
+    accepted = client.post("/api/v1/plans/preview", json=preview_payload, headers=auth_headers)
+    assert accepted.status_code == 202, accepted.text
+    job_id = accepted.json()["job_id"]
+
+    frames: list[tuple[str, str]] = []
+    with client.stream(
+        "GET", f"/api/v1/plans/generation/{job_id}/events", headers=auth_headers
+    ) as response:
+        assert response.status_code == 200, response.status_code
+        name = ""
+        for line in response.iter_lines():
+            if line.startswith("event:"):
+                name = line.split(":", 1)[1].strip()
+            elif line.startswith("data:"):
+                frames.append((name, line.split(":", 1)[1].strip()))
+
+    assert frames, "no SSE frames"
+    assert frames[-1][0] == "completed", frames[-1]
+    assert any(name == "goal_analysis" for name, _ in frames)
+    result = json.loads(frames[-1][1])
+    assert result["status"] == "completed"
+    assert result["result"]["thread_id"]

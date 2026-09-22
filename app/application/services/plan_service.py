@@ -8,6 +8,7 @@ touches a session.
 from __future__ import annotations
 
 import hashlib
+import logging
 from datetime import UTC, date, datetime, timedelta
 from typing import Any
 from uuid import uuid4
@@ -74,6 +75,18 @@ from app.ml.predictors import PredictorSet
 
 DEFAULT_HORIZON_DAYS = 13
 
+logger = logging.getLogger(__name__)
+
+#: ``prediction_logs.model_name`` / ``.source`` are VARCHAR(64). A wider value
+#: used to raise StringDataRightTruncation and abort the confirm transaction.
+_PREDICTION_SOURCE_MAX_LEN = 64
+
+#: Bounded text columns written from LLM output. Over-long free text used to
+#: raise StringDataRightTruncation and abort the confirm transaction.
+_TITLE_MAX_LEN = 255
+_DESCRIPTION_MAX_LEN = 1000
+_STANDARD_MAX_LEN = 500
+
 
 class PlanService:
     def __init__(
@@ -111,6 +124,14 @@ class PlanService:
         )
         self.checkpointer = checkpointer
         self._settings = settings
+
+    def close(self) -> None:
+        """Close the session owned by this service.
+
+        Used by detached workers (background generation jobs) that build their
+        own ``PlanService`` and must release the session when the run is over.
+        """
+        self._session.close()
 
     # -- graph wiring ------------------------------------------------------
     def _planner_context(self, emit=None) -> PlannerContext:
@@ -575,6 +596,10 @@ class PlanService:
         if completed is True:
             self._record_execution(user_id, task, changes)
         self._session.commit()
+        if completed is True:
+            # After the task commit, so a portrait failure can never roll back
+            # the user's own execution record.
+            self._update_profile_from_execution(user_id, task, changes)
         refreshed = self._tasks.get_by_id(task_id)
         if refreshed is None:  # pragma: no cover - defensive
             raise NotFoundError("task not found in plan")
@@ -665,8 +690,8 @@ class PlanService:
             goals.append(
                 Goal(
                     user_id=user_id,
-                    title=goal_input.title,
-                    description=goal_input.description,
+                    title=self._clip(goal_input.title, _TITLE_MAX_LEN),
+                    description=self._clip(goal_input.description, _DESCRIPTION_MAX_LEN),
                     goal_type=goal_input.goal_type,
                     deadline=goal_input.deadline,
                     priority=goal_input.priority,
@@ -717,7 +742,10 @@ class PlanService:
             user_id=user_id,
             version=self._plans.next_version(user_id),
             status=PlanStatus.ACTIVE,
-            title=final.title or (request.plan_title if request else None),
+            title=self._clip(
+                final.title or (request.plan_title if request else None), _TITLE_MAX_LEN
+            )
+            or (request.plan_title if request else None),
             start_date=final.start_date or (request.start_date if request else date.today()),
             end_date=final.end_date
             or (
@@ -738,8 +766,8 @@ class PlanService:
                 Task(
                     plan_id=plan.id,
                     goal_id=goal_id_map.get(draft.goal_id or 0, draft.goal_id),
-                    title=draft.title,
-                    description=draft.description,
+                    title=self._clip(draft.title, _TITLE_MAX_LEN),
+                    description=self._clip(draft.description, _DESCRIPTION_MAX_LEN),
                     estimated_duration=max(draft.estimated_duration, 1),
                     predicted_duration=draft.predicted_duration,
                     cognitive_load=draft.cognitive_load,
@@ -763,7 +791,7 @@ class PlanService:
                 standards.append(
                     TaskStandard(
                         task_id=task.id,
-                        description=description,
+                        description=self._clip(description, _STANDARD_MAX_LEN),
                         estimated_duration=max(task.estimated_duration // per_standard, 5),
                         order_index=std_order,
                     )
@@ -809,6 +837,46 @@ class PlanService:
         )
         return hashlib.sha256(raw.encode("utf-8")).hexdigest()[:16]
 
+    @staticmethod
+    def _short_source(value: str | None) -> str:
+        """Fit a prediction source into ``prediction_logs`` VARCHAR(64).
+
+        Provenance is stamped from the ML predictor by ``PlanDrafterTool``, so
+        this is a last-resort guard: an over-long source must degrade, not abort
+        the whole confirm transaction with a DB truncation error.
+        """
+        source = (value or "unknown").strip() or "unknown"
+        if len(source) <= _PREDICTION_SOURCE_MAX_LEN:
+            return source
+        logger.warning(
+            "prediction source too long (%d chars, max %d); truncating: %.80s",
+            len(source),
+            _PREDICTION_SOURCE_MAX_LEN,
+            source,
+        )
+        return source[:_PREDICTION_SOURCE_MAX_LEN]
+
+    @staticmethod
+    def _clip(value: str | None, limit: int) -> str | None:
+        """Fit free text into a bounded column (``limit`` chars).
+
+        LLM output is unbounded; an over-long title/description must degrade to
+        a truncated prefix rather than abort the confirm transaction with a DB
+        ``StringDataRightTruncation``.
+        """
+        if value is None:
+            return None
+        text = str(value).strip()
+        if len(text) <= limit:
+            return text
+        logger.warning(
+            "text too long (%d chars, max %d); truncating: %.80s",
+            len(text),
+            limit,
+            text,
+        )
+        return text[:limit]
+
     def _log_predictions(self, user_id: int, plan_id: int, pairs: list[tuple[Task, Any]]) -> int:
         """Record every per-task prediction so it can be scored later.
 
@@ -820,7 +888,7 @@ class PlanService:
         for task, draft in pairs:
             if task.id is None:  # pragma: no cover - create_many assigns ids
                 continue
-            source = draft.prediction_source or "unknown"
+            source = self._short_source(draft.prediction_source)
             common = {
                 "user_id": user_id,
                 "plan_id": plan_id,
@@ -872,6 +940,21 @@ class PlanService:
         if entries:
             self._predictions.create_many(entries)
         return len(entries)
+
+    def _update_profile_from_execution(self, user_id: int, task: Task, changes: dict) -> None:
+        """Feed one completed task into the portrait EWMA (best-effort)."""
+        from app.application.services.profile_service import ProfileService
+
+        try:
+            ProfileService(self._session).update_from_feedback(
+                user_id,
+                completed=True,
+                actual_min=changes.get("actual_duration"),
+                theoretical_min=task.predicted_duration or task.estimated_duration,
+                stress_after=changes.get("stress_after"),
+            )
+        except Exception:  # noqa: BLE001 - the TaskExecution row is the record
+            self._session.rollback()
 
     def _record_execution(self, user_id: int, task: Task, changes: dict) -> None:
         """Persist real execution data (ML data asset)."""

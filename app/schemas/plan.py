@@ -28,7 +28,7 @@ class PlanGoalCreate(BaseModel):
     """
 
     title: str = Field(min_length=1, max_length=255)
-    description: str | None = None
+    description: str | None = Field(default=None, max_length=1000)
     goal_type: GoalType = GoalType.SHORT_TERM
     deadline: datetime | None = None
     priority: Priority = Priority.MEDIUM
@@ -62,7 +62,7 @@ class PlanGenerateRequest(BaseModel):
     goals: list[PlanGoalCreate] = Field(min_length=1)
     start_date: date | None = None
     end_date: date | None = None
-    plan_title: str | None = None
+    plan_title: str | None = Field(default=None, max_length=255)
     available_minutes_per_day: int | None = Field(default=None, ge=1, le=1440)
     daily_limit_minutes: int | None = Field(default=None, ge=1, le=1440)
     buffer_minutes: int | None = Field(default=None, ge=0, le=120)
@@ -129,7 +129,6 @@ class ConfirmResponse(BaseModel):
 
 
 class AdjustRequest(BaseModel):
-    thread_id: str = Field(min_length=1)
     feedback: str = Field(min_length=1, max_length=2000)
 
 
@@ -165,10 +164,10 @@ class FeedbackAdjustmentRead(BaseModel):
 class DecomposeGoal(BaseModel):
     """One item from the frontend's "待拆解清单"."""
 
-    title: str = Field(min_length=1)
+    title: str = Field(min_length=1, max_length=255)
     priority: int = Field(default=2, ge=1, le=3)
     deadline: date | None = None
-    notes: str | None = None
+    notes: str | None = Field(default=None, max_length=1000)
 
 
 class DecomposeRequest(BaseModel):
@@ -268,6 +267,35 @@ class PlanGenerateResponse(BaseModel):
     plan: PlanRead | None = None
 
 
+class JobAcceptedResponse(BaseModel):
+    """202 response for an accepted async generation job.
+
+    The heavy work runs in a background worker; use ``status_url`` to poll and
+    ``events_url`` to stream stage-by-stage progress (SSE).
+    """
+
+    job_id: str
+    status: str
+    events_url: str
+    status_url: str
+
+
+class JobStatusResponse(BaseModel):
+    """Polling fallback for an async generation job.
+
+    ``result`` carries the job-specific payload (e.g. a ``PreviewResponse`` or
+    ``AdjustResponse`` shape) once the job status is ``completed``; ``events``
+    is the recorded ``AgentEvent`` list.
+    """
+
+    job_id: str
+    kind: str
+    status: str
+    result: dict | None = None
+    error: str | None = None
+    events: list[dict] = Field(default_factory=list)
+
+
 class ReplanEligibilityRead(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
@@ -280,7 +308,7 @@ class ReplanEligibilityRead(BaseModel):
 
 class ReplanRequest(BaseModel):
     trigger_type: ReplanTriggerType = ReplanTriggerType.MANUAL
-    reason: str | None = None
+    reason: str | None = Field(default=None, max_length=1000)
     from_date: date | None = None
 
 

@@ -56,7 +56,7 @@ class TaskUpdateRequest(BaseModel):
     difficulty_feedback: int | None = Field(default=None, ge=1, le=5)
     stress_before: int | None = Field(default=None, ge=0, le=10)
     stress_after: int | None = Field(default=None, ge=0, le=10)
-    failure_reason: str | None = None
+    failure_reason: str | None = Field(default=None, max_length=500)
     started_at: datetime | None = None
     finished_at: datetime | None = None
     standard_updates: list[TaskStandardUpdate] | None = None

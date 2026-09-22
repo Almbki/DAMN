@@ -34,6 +34,8 @@ from app.schemas.plan import (
     ConfirmResponse,
     DecomposeRequest,
     DecomposeResponse,
+    JobAcceptedResponse,
+    JobStatusResponse,
     PlanChangeRead,
     PlanGenerateRequest,
     PlanGenerateResponse,
@@ -137,6 +139,55 @@ def _decompose_request(user: User, payload: DecomposeRequest) -> GenerationReque
     )
 
 
+def _job_status_value(job) -> str:
+    """Normalise a job status (enum or plain str) to its string value."""
+    status = getattr(job, "status", None)
+    return str(getattr(status, "value", status) or "")
+
+
+def _job_accepted(job) -> JobAcceptedResponse:
+    """Build the 202 payload shared by the async generation routes."""
+    settings = get_settings()
+    return JobAcceptedResponse(
+        job_id=job.job_id,
+        status=_job_status_value(job),
+        events_url=f"{settings.api_v1_prefix}/plans/generation/{job.job_id}/events",
+        status_url=f"{settings.api_v1_prefix}/plans/generation/{job.job_id}",
+    )
+
+
+def preview_response_dict(result) -> dict:
+    """JSON-able job result matching :class:`PreviewResponse`."""
+    return PreviewResponse(
+        thread_id=result.thread_id,
+        preview=preview_read(result.preview),
+        plan_id=None,
+        goals_persisted=result.goals_persisted,
+        degraded=result.degraded,
+        warnings=result.warnings,
+    ).model_dump(mode="json")
+
+
+def adjust_response_dict(result, thread_id: str, final_plan: PlanRead | None = None) -> dict:
+    """JSON-able job result matching :class:`AdjustResponse`."""
+    if result.preview is None:
+        # Budget exhausted: the graph finalised the plan.
+        return AdjustResponse(
+            thread_id=thread_id,
+            budget_exhausted=True,
+            final_plan=final_plan,
+            degraded=result.degraded,
+            warnings=result.warnings,
+        ).model_dump(mode="json")
+    return AdjustResponse(
+        thread_id=thread_id,
+        preview=preview_read(result.preview),
+        budget_exhausted=result.budget_exhausted,
+        degraded=result.degraded,
+        warnings=result.warnings,
+    ).model_dump(mode="json")
+
+
 @router.post(
     "/generate",
     response_model=PlanGenerateResponse,
@@ -175,13 +226,15 @@ def generate_plan(
 
 @router.post(
     "/preview",
-    response_model=PreviewResponse,
+    response_model=JobAcceptedResponse,
     status_code=status.HTTP_202_ACCEPTED,
-    summary="Generate a plan preview and pause for confirmation",
+    summary="Generate a plan preview and pause for confirmation (async job)",
     description=(
-        "Runs the LangGraph preview pipeline (context -> goal analysis -> theoretical "
-        "analysis -> user situation -> plan generation -> rule validation -> preview) "
-        "and PAUSES. Apart from the goals, nothing is persisted yet. Resume with "
+        "Async job. Runs the LangGraph preview pipeline (context -> goal analysis -> "
+        "theoretical analysis -> user situation -> plan generation -> rule validation "
+        "-> preview) and PAUSES. Apart from the goals, nothing is persisted yet. "
+        "Returns 202 with `events_url` (SSE stream) and `status_url` (poll). The job "
+        "result has the `PreviewResponse` shape; resume with "
         "`POST /plans/preview/{thread_id}/confirm` or `/adjust`."
     ),
     responses={**_AUTH, 422: {"model": ErrorResponse, "description": "Invalid goals"}},
@@ -189,18 +242,19 @@ def generate_plan(
 def preview_plan(
     payload: PlanGenerateRequest,
     current_user: User = Depends(get_current_user),
-    plan_service: PlanService = Depends(get_plan_service),
-) -> PreviewResponse:
+    generation_service: GenerationService = Depends(get_generation_service),
+) -> JobAcceptedResponse:
+    user_id = current_user.id or 0
+    # Build the graph input up-front: it must not depend on the request session
+    # once the background worker (own session) takes over.
     request = _to_generation_request(current_user, payload)
-    result = plan_service.generate_preview(current_user.id or 0, request)
-    return PreviewResponse(
-        thread_id=result.thread_id,
-        preview=preview_read(result.preview),
-        plan_id=None,
-        goals_persisted=result.goals_persisted,
-        degraded=result.degraded,
-        warnings=result.warnings,
-    )
+
+    def runner(service: PlanService, emit) -> dict:
+        result = service.generate_preview(user_id, request, emit=emit)
+        return preview_response_dict(result)
+
+    job = generation_service.submit(user_id=user_id, kind="preview", runner=runner)
+    return _job_accepted(job)
 
 
 @router.post(
@@ -228,14 +282,16 @@ def confirm_preview(
 
 @router.post(
     "/preview/{thread_id}/adjust",
-    response_model=AdjustResponse,
-    status_code=status.HTTP_200_OK,
-    summary="Request a bounded preview adjustment",
+    response_model=JobAcceptedResponse,
+    status_code=status.HTTP_202_ACCEPTED,
+    summary="Request a bounded preview adjustment (async job)",
     description=(
-        "Applies ONE user change to the preview and pauses again. The budget is "
-        "limited (AGENT_MAX_PREVIEW_ADJUSTMENTS); once exhausted the plan is "
-        "finalised instead and `budget_exhausted` is true - the user should start "
-        "executing rather than keep regenerating."
+        "Async job. Applies ONE user change to the preview and pauses again. The "
+        "budget is limited (AGENT_MAX_PREVIEW_ADJUSTMENTS); once exhausted the plan "
+        "is finalised instead and the result's `budget_exhausted` is true - the user "
+        "should start executing rather than keep regenerating. Returns 202 with "
+        "`events_url` (SSE stream) and `status_url` (poll); the job result has the "
+        "`AdjustResponse` shape."
     ),
     responses={**_AUTH, **_NOT_FOUND, 403: {"model": ErrorResponse}},
 )
@@ -243,32 +299,24 @@ def adjust_preview(
     thread_id: str,
     payload: AdjustRequest,
     current_user: User = Depends(get_current_user),
-    plan_service: PlanService = Depends(get_plan_service),
-) -> AdjustResponse:
-    result = plan_service.adjust_preview(
-        current_user.id or 0, thread_id, payload.feedback
-    )
-    if result.preview is None:
-        # Budget exhausted: the graph finalised the plan.
+    generation_service: GenerationService = Depends(get_generation_service),
+) -> JobAcceptedResponse:
+    user_id = current_user.id or 0
+    feedback = payload.feedback
+
+    def runner(service: PlanService, emit) -> dict:
+        result = service.adjust_preview(user_id, thread_id, feedback, emit=emit)
         detail = (
-            plan_service.get_plan(current_user.id or 0, result.plan_id)
-            if result.plan_id is not None
+            service.get_plan(user_id, result.plan_id)
+            if result.preview is None and result.plan_id is not None
             else None
         )
-        return AdjustResponse(
-            thread_id=thread_id,
-            budget_exhausted=True,
-            final_plan=plan_read(detail) if detail else None,
-            degraded=result.degraded,
-            warnings=result.warnings,
+        return adjust_response_dict(
+            result, thread_id=thread_id, final_plan=plan_read(detail) if detail else None
         )
-    return AdjustResponse(
-        thread_id=thread_id,
-        preview=preview_read(result.preview),
-        budget_exhausted=result.budget_exhausted,
-        degraded=result.degraded,
-        warnings=result.warnings,
-    )
+
+    job = generation_service.submit(user_id=user_id, kind="preview_adjust", runner=runner)
+    return _job_accepted(job)
 
 
 @router.post(
@@ -346,12 +394,34 @@ def confirm_draft(
 
 
 @router.get(
+    "/generation/{job_id}",
+    response_model=JobStatusResponse,
+    summary="Poll a generation job's status",
+    description=(
+        "Polling fallback for the async generation routes. Returns the job's "
+        "`kind`, `status`, recorded `events` and, once completed, the job-specific "
+        "`result` payload (a `PreviewResponse`/`AdjustResponse` shape) - or `error` "
+        "when it failed. Prefer the `events_url` SSE stream for live progress."
+    ),
+    responses={**_AUTH, **_NOT_FOUND},
+)
+def generation_status(
+    job_id: str,
+    current_user: User = Depends(get_current_user),
+    generation_service: GenerationService = Depends(get_generation_service),
+) -> JobStatusResponse:
+    payload = generation_service.get_status(job_id, current_user.id or 0)
+    return JobStatusResponse.model_validate(payload)
+
+
+@router.get(
     "/generation/{job_id}/events",
     summary="Stream plan generation progress (SSE)",
     description=(
-        "Server-Sent Events stream. Each frame is `event: <stage>` with a JSON body; "
-        "stages are goal_analysis, theoretical_analysis, user_situation_analysis, "
-        "plan_generation, rule_validation, plan_repair and finally completed."
+        "Server-Sent Events stream for a generation job. Each frame is "
+        "`event: <stage>` with a JSON body; stages are goal_analysis, "
+        "theoretical_analysis, user_situation_analysis, plan_generation, "
+        "rule_validation, plan_repair and finally completed."
     ),
     responses={**_AUTH, **_NOT_FOUND},
 )
@@ -466,6 +536,10 @@ def replan(
         plan_id=detail.plan.id or 0,
         old_version=(detail.plan.version - 1),
         new_version=detail.plan.version,
+        # TODO(contract): this returns every task of the new version, not the
+        # changed set. `PlanService.list_changes` only exposes a per-day diff
+        # (and mixes old-version ids for removed tasks), so deriving the true
+        # changed ids needs a small service-level diff - left as-is for now.
         changed_task_ids=[item.task.id or 0 for item in detail.tasks],
         reason=payload.reason or "user requested replan",
         trigger_type=payload.trigger_type,

@@ -38,7 +38,7 @@ class TaskFeatureSet(BaseModel):
 
 
 class UserFeatureSet(BaseModel):
-    """Features derived from ``TaskExecution`` + ``Feedback`` + ``UserModel``."""
+    """Features derived from ``TaskExecution`` + ``Feedback`` + the portrait state."""
 
     user_id: int
     # predicted = theoretical * duration_factor

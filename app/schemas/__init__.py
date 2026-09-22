@@ -32,6 +32,7 @@ from app.schemas.plan import (
     ReplanRequest,
     ReplanResponse,
 )
+from app.schemas.profile import ProfileRead, ProfileUpdate
 from app.schemas.task import (
     TaskRead,
     TaskStandardRead,
@@ -81,6 +82,8 @@ __all__ = [
     "PreviewRead",
     "PreviewResponse",
     "PreviewTaskRead",
+    "ProfileRead",
+    "ProfileUpdate",
     "RegisterRequest",
     "ReplanEligibilityRead",
     "ReplanRequest",

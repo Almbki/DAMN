@@ -40,6 +40,16 @@ def rule_validation_node(state: PlannerState, runtime: object) -> dict:
 
     ctx.publish("tool.completed", {"tool": SCHEDULE_TOOL, "ok": schedule_outcome.ok})
     ctx.publish("tool.completed", {"tool": VALIDATE_TOOL, "ok": validate_outcome.ok})
+    ctx.publish(
+        "node.completed",
+        {
+            "node": NODE,
+            "summary": (
+                f"{len(validation.violations)} hard violation(s), "
+                f"{len(schedule.unscheduled_task_ids)} unscheduled"
+            ),
+        },
+    )
 
     return {
         "candidate_plan": schedule,

@@ -29,6 +29,7 @@ context (:class:`PlannerContext`), never through the state.
 from __future__ import annotations
 
 import dataclasses
+import threading
 import uuid
 from datetime import UTC, datetime
 from typing import Any
@@ -194,13 +195,19 @@ def build_feedback_loop_graph(checkpointer: Any):
 #: Compiled graphs are stateless once built, so cache them per checkpointer.
 #: (Compiling a StateGraph on every request would be wasteful.)
 _GRAPH_CACHE: dict[tuple[int, str], Any] = {}
+_GRAPH_LOCK = threading.Lock()
 
 
 def _cached_graph(kind: str, checkpointer: Any, builder) -> Any:
     key = (id(checkpointer), kind)
-    if key not in _GRAPH_CACHE:
-        _GRAPH_CACHE[key] = builder(checkpointer)
-    return _GRAPH_CACHE[key]
+    graph = _GRAPH_CACHE.get(key)
+    if graph is None:
+        with _GRAPH_LOCK:
+            graph = _GRAPH_CACHE.get(key)
+            if graph is None:
+                graph = builder(checkpointer)
+                _GRAPH_CACHE[key] = graph
+    return graph
 
 
 class PlannerGraph:

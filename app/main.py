@@ -13,6 +13,8 @@ import logging
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, Request
+from fastapi.encoders import jsonable_encoder
+from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
@@ -65,6 +67,28 @@ async def lifespan(app: FastAPI):
         close_checkpointer()
     except Exception as exc:  # noqa: BLE001 - shutdown must never fail on this
         logger.warning("agent checkpointer shutdown failed: %s: %s", type(exc).__name__, exc)
+    # Stop background generation workers (join briefly) and release their DB
+    # sessions before the LLM client and engine pools are torn down.
+    try:
+        from app.api.deps import close_generation_service
+
+        close_generation_service()
+    except Exception as exc:  # noqa: BLE001 - shutdown must never fail on this
+        logger.warning("generation service shutdown failed: %s: %s", type(exc).__name__, exc)
+    # Release the process-wide LLM client's HTTP connection pool.
+    try:
+        from app.infrastructure.llm.client import close_llm_client
+
+        close_llm_client()
+    except Exception as exc:  # noqa: BLE001 - shutdown must never fail on this
+        logger.warning("llm client shutdown failed: %s: %s", type(exc).__name__, exc)
+    # Dispose the SQLAlchemy engine so pooled DB connections are closed cleanly.
+    try:
+        from app.infrastructure.database import engine
+
+        engine.dispose()
+    except Exception as exc:  # noqa: BLE001 - shutdown must never fail on this
+        logger.warning("db engine shutdown failed: %s: %s", type(exc).__name__, exc)
 
 
 def create_app() -> FastAPI:
@@ -92,6 +116,15 @@ def create_app() -> FastAPI:
     async def application_error_handler(_: Request, exc: ApplicationError) -> JSONResponse:
         payload = ErrorResponse(code=exc.code, message=exc.message, detail=exc.detail)
         return JSONResponse(status_code=exc.http_status, content=payload.model_dump(mode="json"))
+
+    @app.exception_handler(RequestValidationError)
+    async def validation_error_handler(_: Request, exc: RequestValidationError) -> JSONResponse:
+        payload = ErrorResponse(
+            code="validation_error",
+            message="request validation failed",
+            detail={"errors": jsonable_encoder(exc.errors())},
+        )
+        return JSONResponse(status_code=422, content=payload.model_dump(mode="json"))
 
     @app.get("/health", response_model=HealthResponse, tags=["system"], summary="Health check")
     def health() -> HealthResponse:

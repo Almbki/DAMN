@@ -9,14 +9,15 @@ from __future__ import annotations
 from statistics import mean
 
 from app.agent.context import MemoryItem, MemoryKind
-from app.domain.models import Feedback, TaskExecution, UserModel
+from app.domain.models import Feedback, TaskExecution
+from app.domain.profile import UserStateData
 
 #: Minimum samples before a pattern is reported at all.
 _MIN_SAMPLES = 3
 
 
 def derive_procedural_memory(
-    user_model: UserModel | None,
+    state: UserStateData | None,
     executions: list[TaskExecution],
     feedbacks: list[Feedback],
 ) -> list[MemoryItem]:
@@ -108,16 +109,22 @@ def derive_procedural_memory(
                 )
             )
 
-    # 4. Reuse the user model's own completion estimates when available.
-    if user_model is not None and user_model.completion_probability:
+    # 4. Reuse the portrait's own completion prior when it has observations.
+    if state is not None and state.update_count > 0:
         items.append(
             MemoryItem(
                 kind=MemoryKind.PROCEDURAL,
-                key="completion_by_load",
-                value={"by_load": dict(user_model.completion_probability)},
-                summary=f"completion by load: {user_model.completion_probability}",
-                confidence=min(0.4 + user_model.sample_size / 50, 0.9),
-                source="user_models.completion_probability",
+                key="completion_prior",
+                value={
+                    "completion_prob": round(state.completion_prob, 4),
+                    "update_count": state.update_count,
+                },
+                summary=(
+                    f"completion prior {state.completion_prob:.2f} "
+                    f"(from {state.update_count} observed update(s))"
+                ),
+                confidence=min(0.4 + state.update_count / 20, 0.9),
+                source="user_states.completion_prob",
             )
         )
     return items

@@ -6,7 +6,9 @@ from app.infrastructure.llm.client import (
     LLMError,
     LLMResponse,
     MockLLMClient,
+    close_llm_client,
     get_llm_client,
+    reset_llm_client,
 )
 
 __all__ = [
@@ -15,5 +17,7 @@ __all__ = [
     "LLMError",
     "LLMResponse",
     "MockLLMClient",
+    "close_llm_client",
     "get_llm_client",
+    "reset_llm_client",
 ]

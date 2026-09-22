@@ -185,6 +185,55 @@ tables were missing until that request happened (observed during verification).
 Postgres is unreachable the factory logs a warning and degrades to in-memory —
 startup never fails.
 
+## P3 — migration `4d1dc7a359da` (user portrait)
+
+| Change | Detail |
+| --- | --- |
+| `users.mbti_type` | `String(4)`, nullable — soft self-report, never a diagnosis |
+| `users.mbti_dims` | `JSON`, nullable — per-dimension weights `{"ie","sn","tf","jp"} → [0,1]` |
+| `users.identity` | `String(200)`, nullable — free-text self description |
+| `user_states` (new table) | one row per user: `duration_factor`, `completion_prob`, `stress_baseline`, `energy_drain_rate`, `proactive_score`, `procrastination_tendency`, `preferred_time_slots` (JSON), `stress_response`, `state_energy`, `state_fatigue`, `self_efficacy`, `update_count`, `updated_at` + unique `user_id` |
+| `user_models` (dropped) | retired: the portrait state is now the single behavioural model (see "Why user_models was retired") |
+
+### ⚠️ Autogenerate trap: LangGraph's checkpoint tables
+
+`alembic revision --autogenerate` **also emitted `op.drop_table` for
+`checkpoints`, `checkpoint_blobs`, `checkpoint_writes` and
+`checkpoint_migrations`** — and recreated them in `downgrade()`.
+
+Those tables belong to **LangGraph** (created by `PostgresSaver.setup()` in
+`app/agent/checkpointer.py`); they are **not** in `Base.metadata`, so
+autogenerate treats them as removed. Applying the migration unedited would have
+**dropped them and broken preview/confirm**.
+
+Every reference to them was removed from both `upgrade()` and `downgrade()`, and
+the migration carries a header comment saying so.
+
+> Rule for the future: after every `--autogenerate`, diff the emitted operations
+> and delete anything touching `checkpoint*`.
+
+Verified round-trip (PostgreSQL 17.11):
+
+```
+after upgrade:    user_states yes | user_models NO  | users.mbti_type/dims/identity yes | checkpoints/blobs/writes/migrations yes
+after downgrade:  user_states NO  | user_models yes | users portrait columns NO        | checkpoint tables yes
+after re-upgrade: user_states yes | user_models NO  | users portrait columns yes      | checkpoint tables yes
+```
+
+### Why `user_models` was retired
+
+It overlapped the portrait state (`duration_factor` / `completion_prob` /
+`stress_response` / `preferred_time_slots`) but with a different shape (per
+load-bucket dicts) and **no caller** — `UserModelService` was dead code. Keeping
+both meant two sources of truth for "the user's behaviour". The portrait state
+(`user_states` + the pure engine in `app/domain/profile/`) is now the only one,
+and it feeds the ML predictors through `ProfileService.build_user_features`.
+
+Removed with it: `app/domain/models/user_model.py`,
+`app/infrastructure/database/models/user_model.py`,
+`app/infrastructure/database/repositories/user_model_repository.py`,
+`app/application/services/user_model_service.py`, `app/ml/user_model.py`.
+
 ## Hardening TODO (recorded, not done)
 
 `app/agent/checkpointer.py::_build_serde()` currently allows all JSON/msgpack

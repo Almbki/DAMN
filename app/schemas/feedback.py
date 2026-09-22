@@ -15,8 +15,8 @@ class FeedbackCreate(BaseModel):
     completion_rate: float = Field(default=0.0, ge=0.0, le=1.0)
     stress_level: int | None = Field(default=None, ge=0, le=10)
     energy_level: int | None = Field(default=None, ge=0, le=10)
-    delay_reason: str | None = None
-    free_text: str | None = None
+    delay_reason: str | None = Field(default=None, max_length=500)
+    free_text: str | None = Field(default=None, max_length=2000)
     sleep_hours: float | None = Field(default=None, ge=0, le=24)
     dominant_time_of_day: TimeOfDay | None = None
 

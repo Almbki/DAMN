@@ -67,6 +67,9 @@ class PlanDrafterInput(BaseModel):
     completed_task_titles: list[str] = Field(default_factory=list)
     #: Truthful origin of the per-task predictions (carried onto every draft).
     prediction_source: str | None = None
+    #: Cold-start portrait block (MBTI priors + EWMA state). Rendered into the
+    #: prompt so the LLM can bias the mix; it is a prior, never a constraint.
+    profile_context: str = ""
 
 
 class PlanDrafterTool(BaseTool[PlanDrafterInput, PlanGenerationResult]):
@@ -94,7 +97,32 @@ class PlanDrafterTool(BaseTool[PlanDrafterInput, PlanGenerationResult]):
             variables=self._prompt_variables(payload),
             fallback=fallback,
         )
-        return result.value
+        return self._with_truthful_source(result.value, payload.prediction_source)
+
+    @staticmethod
+    def _with_truthful_source(
+        generated: PlanGenerationResult, source: str | None
+    ) -> PlanGenerationResult:
+        """Stamp the ML predictor's origin onto LLM-generated drafts.
+
+        ``GeneratedTaskDraft.prediction_source`` is part of the LLM output schema,
+        so a successful call would otherwise let the model invent the provenance
+        of the numbers (observed: a full sentence describing the user-situation
+        inputs). That is untruthful, and it is wider than
+        ``prediction_logs.source`` (VARCHAR(64)), which aborted the whole confirm
+        transaction. The deterministic fallback path already uses the injected
+        source; the LLM path must match it.
+        """
+        if not generated.tasks:
+            return generated
+        return generated.model_copy(
+            update={
+                "tasks": [
+                    task.model_copy(update={"prediction_source": source})
+                    for task in generated.tasks
+                ]
+            }
+        )
 
     # -- prompt variables --------------------------------------------------
     @staticmethod
@@ -122,6 +150,7 @@ class PlanDrafterTool(BaseTool[PlanDrafterInput, PlanGenerationResult]):
             ),
             "progress": payload.progress.model_dump(mode="json") if payload.progress else {},
             "replan_reason": payload.replan_reason or "",
+            "profile": payload.profile_context or "(no portrait available)",
         }
 
     # -- deterministic fallback -------------------------------------------

@@ -6,9 +6,6 @@ they are NOT asserting trained-model quality.
 
 from __future__ import annotations
 
-from datetime import UTC, datetime, timedelta
-
-from app.domain.models import Feedback, TaskExecution
 from app.domain.models.enums import CognitiveLoad, Priority, TimeOfDay
 from app.ml.base import PredictionRequest, TaskFeatureSet, UserFeatureSet
 from app.ml.completion_predictor import StatisticalCompletionPredictor
@@ -16,7 +13,6 @@ from app.ml.duration_predictor import StatisticalDurationPredictor
 from app.ml.predictors import PredictorSet
 from app.ml.stress_predictor import StatisticalStressPredictor
 from app.ml.time_predictor import StatisticalTimeSlotPredictor
-from app.ml.user_model import StatisticalUserModelBuilder
 
 
 def _task(**overrides) -> TaskFeatureSet:
@@ -104,51 +100,3 @@ def test_predictor_set_default_wires_all_four() -> None:
     assert predictors.completion.name.startswith("statistical")
     assert predictors.stress.name.startswith("statistical")
     assert predictors.time_slot.name.startswith("statistical")
-
-
-def test_user_model_builder_derives_duration_factor() -> None:
-    now = datetime.now(UTC)
-    executions = [
-        TaskExecution(
-            task_id=i,
-            user_id=1,
-            planned_duration=60,
-            actual_duration=90,
-            completion_rate=1.0,
-            completed=True,
-            time_of_day=TimeOfDay.MORNING,
-            created_at=now - timedelta(days=1),
-        )
-        for i in range(1, 5)
-    ]
-    model = StatisticalUserModelBuilder().build(
-        executions,
-        [],
-        user_id=1,
-        task_loads={i: CognitiveLoad.HIGH for i in range(1, 5)},
-    )
-    assert model.sample_size == 4
-    assert model.duration_factors["high"] == round(1.5, 3) or model.duration_factors["high"] > 1.0
-    assert model.preferred_time_slots["high"] == "morning"
-
-
-def test_user_model_builder_features_from_feedback() -> None:
-    now = datetime.now(UTC)
-    feedback = [
-        Feedback(
-            user_id=1,
-            plan_id=1,
-            date=(now - timedelta(days=1)).date(),
-            completion_rate=0.5,
-            stress_level=7,
-            energy_level=3,
-            sleep_hours=6.0,
-        )
-    ]
-    features = StatisticalUserModelBuilder().to_features(
-        None, [], feedback, user_id=1, execution_weight=0.4
-    )
-    assert features.avg_stress == 7.0
-    assert features.avg_energy == 3.0
-    assert features.sleep_hours == 6.0
-    assert features.sample_size == 0

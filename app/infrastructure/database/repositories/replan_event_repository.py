@@ -30,7 +30,7 @@ class ReplanEventRepository(RepositoryBase):
         stmt = (
             select(ReplanEventORM)
             .where(ReplanEventORM.plan_id == plan_id)
-            .order_by(ReplanEventORM.id)
+            .order_by(ReplanEventORM.id.desc())
         )
         return [ReplanEvent.model_validate(orm) for orm in self._session.scalars(stmt).all()]
 

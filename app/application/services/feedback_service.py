@@ -29,6 +29,7 @@ class FeedbackService:
         replan_service=None,
         plan_service=None,
         memory_service=None,
+        profile_service=None,
     ) -> None:
         self._session = session
         self._feedback = FeedbackRepository(session)
@@ -37,6 +38,7 @@ class FeedbackService:
         self._replan_service = replan_service
         self._plan_service = plan_service
         self._memory_service = memory_service
+        self._profile_service = profile_service
 
     def submit_feedback(
         self, user_id: int, plan_id: int, feedback: Feedback
@@ -54,6 +56,8 @@ class FeedbackService:
         # Consolidate what we just learned into persisted memory (semantic /
         # episodic / procedural), so the next planning run reads it back.
         self._refresh_memory(user_id)
+        # ... and into the adaptive portrait state (EWMA).
+        self._update_profile_state(user_id, saved)
 
         eligibility = None
         if self._replan_service is not None:
@@ -96,4 +100,23 @@ class FeedbackService:
         try:
             service.refresh(user_id)
         except Exception:  # noqa: BLE001 - memory is best-effort, feedback is the record
+            self._session.rollback()
+
+    def _update_profile_state(self, user_id: int, feedback: Feedback) -> None:
+        """Feed the check-in through the portrait EWMA; best-effort only."""
+        service = self._profile_service
+        if service is None:
+            from app.application.services.profile_service import ProfileService
+
+            service = ProfileService(self._session)
+        try:
+            rate = feedback.completion_rate or 0.0
+            service.update_from_feedback(
+                user_id,
+                completed=rate >= 0.999,
+                partial_pct=rate,
+                energy_after=feedback.energy_level,
+                stress_after=feedback.stress_level,
+            )
+        except Exception:  # noqa: BLE001 - the feedback row is the record of truth
             self._session.rollback()
