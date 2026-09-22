@@ -1,455 +1,460 @@
-"""LangGraph orchestration for the planning pipeline.
+"""LangGraph state machines + the :class:`PlannerGraph` facade.
 
-The graph has six nodes with the exact names below. LangGraph only
-orchestrates: it never touches the database, never imports
-``app.infrastructure`` at runtime and never decides hard constraints - the Rule
-Engine does. Every node returns structured Pydantic schemas (or schedule value
-objects) into the :class:`PlannerState`.
+Two graphs, one responsibility each:
 
-If ``langgraph`` is unavailable (or the graph build fails) :class:`PlannerGraph`
-silently falls back to a deterministic sequential executor implementing the
-same node order and repair loop, so the project always starts.
+**Graph A - initial plan** (``GRAPH_A_VERSION``)
+
+```
+START -> load_context -> classify_request -> goal_analysis
+      -> theoretical_analysis -> user_situation_analysis -> plan_generation
+      -> rule_validation -[repair loop]-> preview (interrupt)
+      -> [adjust -> plan_generation | confirm -> plan_finalization] -> END
+```
+
+**Graph B - feedback loop** (``GRAPH_B_VERSION``)
+
+```
+START -> load_context -> process_feedback -> ml_prediction -> adjustment_router
+      |- NO_CHANGE   -> END
+      |- MICRO_ADJUST -> micro_adjustment -> rule_validation -[repair]-> new_plan -> END
+      |- FULL_REPLAN  -> goal_analysis -> theoretical_analysis -> user_situation_analysis
+                      -> plan_generation -> rule_validation -[repair]-> new_plan -> END
+```
+
+LangGraph orchestrates only: no node opens a session, and the Rule Engine remains
+the sole authority on hard constraints. Dependencies arrive through the run
+context (:class:`PlannerContext`), never through the state.
 """
 
 from __future__ import annotations
 
-from collections.abc import Callable
+import dataclasses
+import uuid
 from datetime import UTC, datetime
-from typing import TYPE_CHECKING, Any
+from typing import Any
 
-from pydantic import BaseModel, Field
-
+from app.agent.checkpointer import get_checkpointer
 from app.agent.nodes import (
+    adjustment_router_node,
+    classify_request_node,
     goal_analysis_node,
+    load_context_node,
+    micro_adjustment_node,
+    ml_prediction_node,
+    new_plan_node,
+    plan_finalization_node,
     plan_generation_node,
     plan_repair_node,
+    preview_node,
+    process_feedback_node,
     rule_validation_node,
     theoretical_analysis_node,
     user_situation_analysis_node,
 )
-from app.agent.state import GenerationRequest, PlannerState
-from app.domain.rules.base import RuleEngine
-from app.domain.scheduling.scheduler import Scheduler
-from app.ml.base import UserFeatureSet
-from app.ml.predictors import PredictorSet
-
-if TYPE_CHECKING:  # pragma: no cover
-    from app.infrastructure.llm.client import LLMClient
-
-#: Fixed node names. Used verbatim by LangGraph AND the fallback executor.
-NODE_ORDER: tuple[str, ...] = (
-    "goal_analysis",
-    "theoretical_analysis",
-    "user_situation_analysis",
-    "plan_generation",
-    "rule_validation",
+from app.agent.router import route_after_adjustment, route_after_preview, should_repair
+from app.agent.schemas import FinalPlanPayload, PreviewPayload
+from app.agent.state import (
+    PlannerContext,
+    PlannerRequest,
+    PlannerState,
+    RunMetadata,
 )
 
-NODE_FUNCTIONS: dict[str, Callable[[dict], dict]] = {
-    "goal_analysis": goal_analysis_node,
-    "theoretical_analysis": theoretical_analysis_node,
-    "user_situation_analysis": user_situation_analysis_node,
-    "plan_generation": plan_generation_node,
-    "rule_validation": rule_validation_node,
-    "plan_repair": plan_repair_node,
-}
+GRAPH_A_VERSION = "initial-plan-v1"
+GRAPH_B_VERSION = "feedback-loop-v1"
 
 
-class GenerationEvent(BaseModel):
-    """One observable step of a plan generation run."""
+@dataclasses.dataclass
+class RunEvents:
+    """Collects agent events for one run (the Service turns them into SSE)."""
 
-    node: str
-    stage: str = "complete"
-    status: str = "ok"
-    summary: str = ""
-    payload: dict[str, Any] = Field(default_factory=dict)
-    progress: float = Field(default=0.0, ge=0.0, le=1.0)
-    timestamp: datetime = Field(default_factory=lambda: datetime.now(UTC))
+    events: list[dict] = dataclasses.field(default_factory=list)
 
+    def sink(self, name: str, payload: dict) -> None:
+        self.events.append({"event": name, **payload})
 
-# --------------------------------------------------------------------------
-# event helpers
-# --------------------------------------------------------------------------
-
-
-def _event_summary(node_name: str, updates: dict) -> str:
-    """Short human-readable summary derived from a node's state updates."""
-    if node_name == "goal_analysis":
-        result = updates.get("goal_analysis")
-        return f"Analyzed {len(result.goals)} goal(s)" if result else "Goal analysis"
-    if node_name == "theoretical_analysis":
-        result = updates.get("theoretical_workload")
-        if result:
-            return (
-                f"Estimated {result.total_theoretical_minutes} min across "
-                f"{len(result.items)} item(s)"
-            )
-        return "Theoretical analysis"
-    if node_name == "user_situation_analysis":
-        result = updates.get("user_situation")
-        if result:
-            return (
-                f"Completion {result.completion_ability:.2f}, stress "
-                f"{result.stress_state:.1f}, load {result.fatigue_state.value}"
-            )
-        return "User situation analysis"
-    if node_name == "plan_generation":
-        result = updates.get("plan_draft")
-        return f"Proposed {len(result.tasks)} task draft(s)" if result else "Plan generation"
-    if node_name == "rule_validation":
-        violations = updates.get("rule_violations") or []
-        return f"{len(violations)} hard violation(s)" if violations else "Schedule valid"
-    if node_name == "plan_repair":
-        result = updates.get("repaired_plan")
-        if result:
-            return (
-                f"Changed {len(result.changed_task_ids)} task(s)"
-                if result.changed_task_ids
-                else "No change needed"
-            )
-        return "Plan repair"
-    return node_name
-
-
-def _normalize_progress(events: list[GenerationEvent]) -> None:
-    """Fill ``progress`` uniformly once the run length is known."""
-    total = max(len(events), 1)
-    for index, event in enumerate(events):
-        event.progress = round((index + 1) / total, 4)
-
-
-def _synthesize_events(state: dict) -> list[GenerationEvent]:
-    """Linear event list reconstructed from a final state (fallback path)."""
-    events: list[GenerationEvent] = []
-    key_by_node = {
-        "goal_analysis": "goal_analysis",
-        "theoretical_analysis": "theoretical_workload",
-        "user_situation_analysis": "user_situation",
-        "plan_generation": "plan_draft",
-        "rule_validation": "rule_validation",
-    }
-    for node_name, state_key in key_by_node.items():
-        value = state.get(state_key)
-        if value is None:
-            continue
-        updates: dict = {state_key: value}
-        if node_name == "rule_validation":
-            violations = getattr(value, "violations", None)
-            updates["rule_violations"] = list(violations) if violations else []
-        events.append(
-            GenerationEvent(
-                node=node_name,
-                stage=node_name,
-                summary=_event_summary(node_name, updates),
-                payload=updates,
-            )
-        )
-    repaired = state.get("repaired_plan")
-    if repaired is not None:
-        events.append(
-            GenerationEvent(
-                node="plan_repair",
-                stage="plan_repair",
-                summary=_event_summary("plan_repair", {"repaired_plan": repaired}),
-                payload={"repaired_plan": repaired},
-            )
-        )
-    return events
-
-
-# --------------------------------------------------------------------------
-# state finalization
-# --------------------------------------------------------------------------
-
-
-def _finalize(state: dict) -> PlannerState:
-    """Fill the output keys a run may leave unset (final plan / confidence)."""
-    state = dict(state)
-
-    if state.get("final_plan") is None:
-        state["final_plan"] = state.get("candidate_plan")
-    if state.get("final_tasks") is None:
-        repaired = state.get("repaired_plan")
-        plan_draft = state.get("plan_draft")
-        if repaired is not None and getattr(repaired, "tasks", None):
-            state["final_tasks"] = list(repaired.tasks)
-        elif plan_draft is not None and getattr(plan_draft, "tasks", None):
-            state["final_tasks"] = list(plan_draft.tasks)
-        else:
-            state["final_tasks"] = []
-
-    if state.get("confidence") is None:
-        confidences = [
-            float(obj.confidence)
-            for key in ("goal_analysis", "theoretical_workload", "user_situation")
-            if (obj := state.get(key)) is not None
-            and getattr(obj, "confidence", None) is not None
+    def stages(self) -> list[str]:
+        return [
+            str(event.get("stage") or event.get("node") or event["event"])
+            for event in self.events
         ]
-        state["confidence"] = round(sum(confidences) / len(confidences), 4) if confidences else 0.5
 
-    if state.get("notes") is None:
-        state["notes"] = []
-    if state.get("events") is None:
-        state["events"] = []
-    return state  # type: ignore[return-value]  # PlannerState is a TypedDict
+    def __len__(self) -> int:
+        return len(self.events)
 
-
-# --------------------------------------------------------------------------
-# runners
-# --------------------------------------------------------------------------
+    def __iter__(self):
+        return iter(self.events)
 
 
-def _should_repair(state: dict, max_repair_attempts: int) -> str:
-    """Conditional edge: repair while hard violations remain and budget allows."""
-    violations = state.get("rule_violations") or []
-    attempts = state.get("repair_attempts") or 0
-    if violations and attempts < max_repair_attempts:
-        return "repair"
-    return "done"
+#: Alias kept for readability in type hints.
+GraphRun = RunEvents
 
 
-class _LangGraphRunner:
-    """StateGraph-backed runner (used when ``langgraph`` is installed)."""
-
-    def __init__(
-        self,
-        *,
-        llm: LLMClient | None,
-        predictors: PredictorSet | None,
-        scheduler: Scheduler | None,
-        rule_engine: RuleEngine | None,
-        max_repair_attempts: int,
-    ) -> None:
-        # Imported lazily so this module is importable without langgraph.
-        from langgraph.graph import END, START, StateGraph
-
-        self.max_repair_attempts = max_repair_attempts
-        graph = StateGraph(PlannerState)
-        for name, func in NODE_FUNCTIONS.items():
-            graph.add_node(name, func)
-        graph.add_edge(START, "goal_analysis")
-        graph.add_edge("goal_analysis", "theoretical_analysis")
-        graph.add_edge("theoretical_analysis", "user_situation_analysis")
-        graph.add_edge("user_situation_analysis", "plan_generation")
-        graph.add_edge("plan_generation", "rule_validation")
-        graph.add_conditional_edges(
-            "rule_validation",
-            lambda state: _should_repair(state, self.max_repair_attempts),
-            {"repair": "plan_repair", "done": END},
-        )
-        graph.add_edge("plan_repair", "rule_validation")
-        self._graph = graph.compile()
-
-    def run(self, state: dict) -> PlannerState:
-        return _finalize(self._graph.invoke(dict(state)))
-
-    def run_with_events(self, state: dict) -> tuple[PlannerState, list[GenerationEvent]]:
-        events: list[GenerationEvent] = []
-        merged = dict(state)
-        try:
-            for chunk in self._graph.stream(dict(state), stream_mode="updates"):
-                for node_name, updates in chunk.items():
-                    merged.update(updates)
-                    events.append(
-                        GenerationEvent(
-                            node=node_name,
-                            stage=node_name,
-                            summary=_event_summary(node_name, updates),
-                            payload=updates,
-                        )
-                    )
-            final = _finalize(merged)
-        except Exception:  # noqa: BLE001 - stream API drift between langgraph versions
-            final = _finalize(self._graph.invoke(dict(state)))
-            events = _synthesize_events(final)
-        _normalize_progress(events)
-        return final, events
-
-
-class _SequentialRunner:
-    """Deterministic fallback executor - same node order + repair loop.
-
-    Used only when ``langgraph`` cannot be imported or the graph build fails.
-    """
-
-    def __init__(
-        self,
-        *,
-        llm: LLMClient | None,
-        predictors: PredictorSet | None,
-        scheduler: Scheduler | None,
-        rule_engine: RuleEngine | None,
-        max_repair_attempts: int,
-    ) -> None:
-        self.max_repair_attempts = max_repair_attempts
-
-    def _step(self, state: dict, node_name: str, events: list[GenerationEvent] | None) -> dict:
-        updates = NODE_FUNCTIONS[node_name](state)
-        state.update(updates)
-        if events is not None:
-            events.append(
-                GenerationEvent(
-                    node=node_name,
-                    stage=node_name,
-                    summary=_event_summary(node_name, updates),
-                    payload=updates,
-                )
-            )
-        return state
-
-    def _pipeline(self, state: dict, events: list[GenerationEvent] | None = None) -> dict:
-        for name in NODE_ORDER:
-            self._step(state, name, events)
-        while True:
-            violations = state.get("rule_violations") or []
-            attempts = state.get("repair_attempts") or 0
-            if not (violations and attempts < self.max_repair_attempts):
-                break
-            self._step(state, "plan_repair", events)
-            self._step(state, "rule_validation", events)
-        return state
-
-    def run(self, state: dict) -> PlannerState:
-        return _finalize(self._pipeline(dict(state)))
-
-    def run_with_events(self, state: dict) -> tuple[PlannerState, list[GenerationEvent]]:
-        events: list[GenerationEvent] = []
-        final = _finalize(self._pipeline(dict(state), events))
-        _normalize_progress(events)
-        return final, events
-
-
-# --------------------------------------------------------------------------
-# public factories
-# --------------------------------------------------------------------------
-
-
-def _build_runner(
-    *,
-    llm: LLMClient | None,
-    predictors: PredictorSet | None,
-    scheduler: Scheduler | None,
-    rule_engine: RuleEngine | None,
-    max_repair_attempts: int,
-):
-    """Pick the LangGraph runner or the deterministic sequential fallback.
-
-    The StateGraph construction is wrapped in ``try/except`` so the project
-    always starts even when ``langgraph`` is missing or a build step fails.
-    """
+def _require_langgraph():
     try:
-        return _LangGraphRunner(
-            llm=llm,
-            predictors=predictors,
-            scheduler=scheduler,
-            rule_engine=rule_engine,
-            max_repair_attempts=max_repair_attempts,
-        )
-    except Exception:  # noqa: BLE001 - ImportError and any graph-build failure
-        return _SequentialRunner(
-            llm=llm,
-            predictors=predictors,
-            scheduler=scheduler,
-            rule_engine=rule_engine,
-            max_repair_attempts=max_repair_attempts,
-        )
+        from langgraph.graph import END, START, StateGraph
+        from langgraph.types import Command  # noqa: F401
+    except Exception as exc:  # pragma: no cover - langgraph is a hard dependency
+        raise RuntimeError(
+            "langgraph is required for the agent graphs; run `uv sync --extra dev`"
+        ) from exc
+    return START, END, StateGraph
 
 
-def build_planner_graph(
-    *,
-    llm: LLMClient | None = None,
-    predictors: PredictorSet | None = None,
-    scheduler: Scheduler | None = None,
-    rule_engine: RuleEngine | None = None,
-    max_repair_attempts: int = 2,
-) -> PlannerGraph:
-    """Build a :class:`PlannerGraph` backed by LangGraph (or the fallback)."""
-    return PlannerGraph(
-        llm=llm,
-        predictors=predictors,
-        scheduler=scheduler,
-        rule_engine=rule_engine,
-        max_repair_attempts=max_repair_attempts,
+# ---------------------------------------------------------------------------
+# Graph A
+# ---------------------------------------------------------------------------
+def build_initial_plan_graph(checkpointer: Any):
+    """Compile the preview/confirm/adjust state machine."""
+    START, END, StateGraph = _require_langgraph()
+
+    builder = StateGraph(PlannerState, context_schema=PlannerContext)
+    builder.add_node("load_context", load_context_node)
+    builder.add_node("classify_request", classify_request_node)
+    builder.add_node("goal_analysis", goal_analysis_node)
+    builder.add_node("theoretical_analysis", theoretical_analysis_node)
+    builder.add_node("user_situation_analysis", user_situation_analysis_node)
+    builder.add_node("plan_generation", plan_generation_node)
+    builder.add_node("rule_validation", rule_validation_node)
+    builder.add_node("plan_repair", plan_repair_node)
+    builder.add_node("preview", preview_node)
+    builder.add_node("plan_finalization", plan_finalization_node)
+
+    builder.add_edge(START, "load_context")
+    builder.add_edge("load_context", "classify_request")
+    builder.add_edge("classify_request", "goal_analysis")
+    builder.add_edge("goal_analysis", "theoretical_analysis")
+    builder.add_edge("theoretical_analysis", "user_situation_analysis")
+    builder.add_edge("user_situation_analysis", "plan_generation")
+    builder.add_edge("plan_generation", "rule_validation")
+    builder.add_conditional_edges(
+        "rule_validation", should_repair, {"repair": "plan_repair", "continue": "preview"}
     )
+    builder.add_edge("plan_repair", "rule_validation")
+    builder.add_conditional_edges(
+        "preview",
+        route_after_preview,
+        {"revise": "plan_generation", "finalize": "plan_finalization"},
+    )
+    builder.add_edge("plan_finalization", END)
+    return builder.compile(checkpointer=checkpointer)
 
 
-def create_planner_graph(*args: Any, **kwargs: Any) -> PlannerGraph:
-    """Alias of :func:`build_planner_graph`."""
-    return build_planner_graph(*args, **kwargs)
+# ---------------------------------------------------------------------------
+# Graph B
+# ---------------------------------------------------------------------------
+def build_feedback_loop_graph(checkpointer: Any):
+    """Compile the feedback -> route -> adjust/replan state machine."""
+    START, END, StateGraph = _require_langgraph()
+
+    builder = StateGraph(PlannerState, context_schema=PlannerContext)
+    builder.add_node("load_context", load_context_node)
+    builder.add_node("process_feedback", process_feedback_node)
+    builder.add_node("ml_prediction", ml_prediction_node)
+    builder.add_node("adjustment_router", adjustment_router_node)
+    builder.add_node("micro_adjustment", micro_adjustment_node)
+    builder.add_node("goal_analysis", goal_analysis_node)
+    builder.add_node("theoretical_analysis", theoretical_analysis_node)
+    builder.add_node("user_situation_analysis", user_situation_analysis_node)
+    builder.add_node("plan_generation", plan_generation_node)
+    builder.add_node("rule_validation", rule_validation_node)
+    builder.add_node("plan_repair", plan_repair_node)
+    builder.add_node("new_plan", new_plan_node)
+
+    builder.add_edge(START, "load_context")
+    builder.add_edge("load_context", "process_feedback")
+    builder.add_edge("process_feedback", "ml_prediction")
+    builder.add_edge("ml_prediction", "adjustment_router")
+    builder.add_conditional_edges(
+        "adjustment_router",
+        route_after_adjustment,
+        {
+            "no_change": END,
+            "micro_adjust": "micro_adjustment",
+            "full_replan": "goal_analysis",
+        },
+    )
+    builder.add_edge("micro_adjustment", "rule_validation")
+
+    builder.add_edge("goal_analysis", "theoretical_analysis")
+    builder.add_edge("theoretical_analysis", "user_situation_analysis")
+    builder.add_edge("user_situation_analysis", "plan_generation")
+    builder.add_edge("plan_generation", "rule_validation")
+    builder.add_conditional_edges(
+        "rule_validation", should_repair, {"repair": "plan_repair", "continue": "new_plan"}
+    )
+    builder.add_edge("plan_repair", "rule_validation")
+    builder.add_edge("new_plan", END)
+    return builder.compile(checkpointer=checkpointer)
+
+
+# ---------------------------------------------------------------------------
+# Facade
+# ---------------------------------------------------------------------------
+#: Compiled graphs are stateless once built, so cache them per checkpointer.
+#: (Compiling a StateGraph on every request would be wasteful.)
+_GRAPH_CACHE: dict[tuple[int, str], Any] = {}
+
+
+def _cached_graph(kind: str, checkpointer: Any, builder) -> Any:
+    key = (id(checkpointer), kind)
+    if key not in _GRAPH_CACHE:
+        _GRAPH_CACHE[key] = builder(checkpointer)
+    return _GRAPH_CACHE[key]
 
 
 class PlannerGraph:
-    """Public entry point of the agent planning pipeline.
+    """Stable entry point used by the application layer.
 
-    ``invoke`` runs the full pipeline synchronously and returns the final
-    :class:`PlannerState`. ``run_with_events`` additionally returns a
-    :class:`GenerationEvent` per executed node.
+    The Service never touches LangGraph internals: it calls the high level
+    methods below and receives plain :class:`PlannerState` dictionaries plus
+    :class:`PreviewPayload` objects.
     """
 
     def __init__(
         self,
-        llm: LLMClient | None = None,
-        predictors: PredictorSet | None = None,
-        scheduler: Scheduler | None = None,
-        rule_engine: RuleEngine | None = None,
-        max_repair_attempts: int = 2,
+        context: PlannerContext,
+        *,
+        checkpointer: Any | None = None,
     ) -> None:
-        self.llm = llm
-        self.predictors = predictors if predictors is not None else PredictorSet.default()
-        self.scheduler = scheduler if scheduler is not None else Scheduler()
-        self.rule_engine = rule_engine if rule_engine is not None else RuleEngine()
-        self.max_repair_attempts = max_repair_attempts
-        self._runner = _build_runner(
-            llm=self.llm,
-            predictors=self.predictors,
-            scheduler=self.scheduler,
-            rule_engine=self.rule_engine,
-            max_repair_attempts=self.max_repair_attempts,
+        self.context = context
+        self.checkpointer = checkpointer if checkpointer is not None else get_checkpointer()
+        self.initial_graph = _cached_graph(
+            "initial", self.checkpointer, build_initial_plan_graph
+        )
+        self.feedback_graph = _cached_graph(
+            "feedback", self.checkpointer, build_feedback_loop_graph
         )
 
+    # -- helpers -----------------------------------------------------------
+    def _with_emit(self, sink) -> PlannerContext:
+        """Per-call context copy carrying this call's event sink.
+
+        ``sink=None`` falls back to the sink already installed on the context, so
+        a Service that wires the sink once (``self._graph(emit)``) does not have
+        to pass it to every graph call.
+        """
+        return dataclasses.replace(self.context, emit=sink or self.context.emit)
+
+    def _seed_state(
+        self,
+        request: PlannerRequest,
+        *,
+        graph_version: str,
+        run_id: str,
+        goal_id_map: dict[int, int] | None = None,
+        replan_reason: str | None = None,
+        user_adjustment: str | None = None,
+    ) -> PlannerState:
+        # Budgets come from AgentConfig (Settings) - never hardcode them here,
+        # otherwise AGENT_MAX_REPAIR_ATTEMPTS is silently ignored.
+        config = self.context.config
+        return {
+            "request": request,
+            "user_id": request.user_id,
+            "goals": list(request.goals),
+            "goal_id_map": dict(goal_id_map or {}),
+            "adjustment_count": 0,
+            "adjustment_rejected": False,
+            "repair_attempts": 0,
+            "max_repair_attempts": config.max_repair_attempts,
+            "limit_factor": 1.0,
+            "replan_reason": replan_reason,
+            "user_adjustment": user_adjustment,
+            "notes": [],
+            "errors": [],
+            "tool_results": [],
+            "metadata": RunMetadata(
+                run_id=run_id,
+                user_id=request.user_id,
+                trigger_type=request.trigger_type.value,
+                graph_version=graph_version,
+                prompt_version=config.prompt_version,
+                started_at=datetime.now(UTC),
+            ),
+        }
+
+    @staticmethod
+    def _config(thread_id: str) -> dict:
+        return {"configurable": {"thread_id": thread_id}}
+
+    @staticmethod
+    def extract_preview(result: Any) -> PreviewPayload | None:
+        """Pull the paused preview out of an interrupted run, if any."""
+        interrupts = result.get("__interrupt__") if isinstance(result, dict) else None
+        if not interrupts:
+            return None
+        interrupt = interrupts[0]
+        value = getattr(interrupt, "value", interrupt)
+        payload = PreviewPayload.model_validate(value)
+        return payload
+
+    @staticmethod
+    def extract_final_plan(result: Any) -> FinalPlanPayload | None:
+        if not isinstance(result, dict):
+            return None
+        final = result.get("final_plan")
+        return final if isinstance(final, FinalPlanPayload) else None
+
+    def pending_state(self, thread_id: str) -> PlannerState | None:
+        """State of a paused preview, or ``None`` when the thread is finished.
+
+        Used by the Service to authorise a confirm/adjust *before* resuming.
+        """
+        snapshot = self.initial_graph.get_state(self._config(thread_id))
+        if snapshot is None or not getattr(snapshot, "next", None):
+            return None
+        return dict(snapshot.values)
+
+    # -- high level API ----------------------------------------------------
+    def generate_preview(
+        self,
+        request: PlannerRequest,
+        *,
+        run_id: str | None = None,
+        thread_id: str | None = None,
+        goal_id_map: dict[int, int] | None = None,
+        emit=None,
+    ) -> tuple[PlannerState, PreviewPayload | None]:
+        """Run graph A until it pauses for confirmation."""
+        run_id = run_id or uuid.uuid4().hex
+        thread_id = thread_id or run_id
+        ctx = self._with_emit(emit)
+        state = self._seed_state(
+            request, graph_version=GRAPH_A_VERSION, run_id=run_id, goal_id_map=goal_id_map
+        )
+        ctx.publish("agent.started", {"run_id": run_id, "graph": GRAPH_A_VERSION})
+        result = self.initial_graph.invoke(state, self._config(thread_id), context=ctx)
+        ctx.publish("agent.completed", {"run_id": run_id, "thread_id": thread_id})
+        preview = self.extract_preview(result)
+        if preview is not None:
+            preview = preview.model_copy(update={"thread_id": thread_id})
+        return result, preview
+
+    def resume_preview(
+        self,
+        *,
+        thread_id: str,
+        action: str,
+        feedback: str | None = None,
+        emit=None,
+    ) -> tuple[PlannerState, PreviewPayload | None]:
+        """Resume a paused preview with ``confirm`` or ``adjust``."""
+        from langgraph.types import Command
+
+        ctx = self._with_emit(emit)
+        ctx.publish("agent.started", {"thread_id": thread_id, "action": action})
+        result = self.initial_graph.invoke(
+            Command(resume={"action": action, "feedback": feedback}),
+            self._config(thread_id),
+            context=ctx,
+        )
+        ctx.publish("agent.completed", {"thread_id": thread_id, "action": action})
+        preview = self.extract_preview(result)
+        if preview is not None:
+            preview = preview.model_copy(update={"thread_id": thread_id})
+        return result, preview
+
+    def process_feedback(
+        self,
+        request: PlannerRequest,
+        *,
+        run_id: str | None = None,
+        thread_id: str | None = None,
+        emit=None,
+    ) -> PlannerState:
+        """Run graph B: feedback -> prediction -> route -> adjust/replan."""
+        run_id = run_id or uuid.uuid4().hex
+        thread_id = thread_id or run_id
+        ctx = self._with_emit(emit)
+        state = self._seed_state(request, graph_version=GRAPH_B_VERSION, run_id=run_id)
+        ctx.publish("agent.started", {"run_id": run_id, "graph": GRAPH_B_VERSION})
+        result = self.feedback_graph.invoke(state, self._config(thread_id), context=ctx)
+        ctx.publish("agent.completed", {"run_id": run_id, "thread_id": thread_id})
+        return result
+
+    def replan(
+        self,
+        request: PlannerRequest,
+        *,
+        reason: str | None = None,
+        run_id: str | None = None,
+        thread_id: str | None = None,
+        emit=None,
+    ) -> PlannerState:
+        """Explicit replan: graph B with a forced replan reason."""
+        run_id = run_id or uuid.uuid4().hex
+        thread_id = thread_id or run_id
+        ctx = self._with_emit(emit)
+        state = self._seed_state(
+            request,
+            graph_version=GRAPH_B_VERSION,
+            run_id=run_id,
+            replan_reason=reason or "user requested replan",
+        )
+        state["route"] = None
+        ctx.publish("replanning.started", {"run_id": run_id, "reason": reason})
+        result = self.feedback_graph.invoke(state, self._config(thread_id), context=ctx)
+        ctx.publish("replanning.completed", {"run_id": run_id})
+        return result
+
+    # -- low level (kept for compatibility) --------------------------------
     def invoke(
         self,
-        request: GenerationRequest,
+        request: PlannerRequest,
         *,
-        user_features: UserFeatureSet,
+        user_features: Any = None,
         goal_id_map: dict[int, int] | None = None,
     ) -> PlannerState:
-        """Run the pipeline and return the final planner state."""
-        return self._runner.run(self._initial_state(request, user_features, goal_id_map))
+        """Non-interactive run of graph A (no preview pause).
+
+        Used by tests and by callers that do not need user confirmation.
+        """
+        state = self._seed_state(
+            request,
+            graph_version=GRAPH_A_VERSION,
+            run_id=uuid.uuid4().hex,
+            goal_id_map=goal_id_map,
+        )
+        ctx = self._with_emit(None)
+        return self.initial_graph.invoke(state, self._config(uuid.uuid4().hex), context=ctx)
 
     def run_with_events(
         self,
-        request: GenerationRequest,
+        request: PlannerRequest,
         *,
-        user_features: UserFeatureSet,
+        user_features: Any = None,
         goal_id_map: dict[int, int] | None = None,
-    ) -> tuple[PlannerState, list[GenerationEvent]]:
-        """Run the pipeline and return ``(final state, generation events)``."""
-        return self._runner.run_with_events(
-            self._initial_state(request, user_features, goal_id_map)
-        )
+    ) -> tuple[PlannerState, list[dict]]:
+        """Non-interactive run that also returns the emitted event list."""
+        events: list[dict] = []
 
-    def _initial_state(
-        self,
-        request: GenerationRequest,
-        user_features: UserFeatureSet,
-        goal_id_map: dict[int, int] | None = None,
-    ) -> dict:
-        """Seed the state with the request and the injected collaborators."""
-        return {
-            "user_id": request.user_id,
-            "goals": list(request.goals),
-            "user_profile": dict(request.user_profile),
-            "request": request,
-            "user_features": user_features,
-            # goal_key (1-based goal index) -> persisted goal id, so drafts can
-            # reference real Goal rows without the graph touching the database.
-            "goal_id_map": dict(goal_id_map or {}),
-            "llm": self.llm,
-            "predictors": self.predictors,
-            "scheduler": self.scheduler,
-            "rule_engine": self.rule_engine,
-            "repair_attempts": 0,
-            "notes": [],
-            "events": [],
-        }
+        def sink(name: str, payload: dict) -> None:
+            events.append({"event": name, **payload})
+
+        state = self._seed_state(
+            request,
+            graph_version=GRAPH_A_VERSION,
+            run_id=uuid.uuid4().hex,
+            goal_id_map=goal_id_map,
+        )
+        ctx = self._with_emit(sink)
+        result = self.initial_graph.invoke(
+            state, self._config(uuid.uuid4().hex), context=ctx
+        )
+        return result, events
+
+
+def create_planner_graph(context: PlannerContext, **kwargs: Any) -> PlannerGraph:
+    """Convenience factory used by the Service layer."""
+    return PlannerGraph(context, **kwargs)
+
+
+__all__ = [
+    "GRAPH_A_VERSION",
+    "GRAPH_B_VERSION",
+    "PlannerGraph",
+    "build_feedback_loop_graph",
+    "build_initial_plan_graph",
+    "create_planner_graph",
+]

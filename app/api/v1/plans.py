@@ -14,16 +14,21 @@ from app.api.deps import (
     get_plan_service,
     get_replan_service,
 )
-from app.api.v1.mappers import plan_list_item, plan_read
+from app.api.v1.mappers import plan_list_item, plan_read, preview_read
+from app.application.exceptions import ConflictError, ReplanNotEligibleError
 from app.application.services import GenerationService, PlanService, ReplanService
 from app.core.config import get_settings
 from app.domain.models import User
 from app.schemas.common import ErrorResponse
 from app.schemas.plan import (
+    AdjustRequest,
+    AdjustResponse,
+    ConfirmResponse,
     PlanGenerateRequest,
     PlanGenerateResponse,
     PlanListItem,
     PlanRead,
+    PreviewResponse,
     ReplanEligibilityRead,
     ReplanRequest,
     ReplanResponse,
@@ -103,6 +108,104 @@ def generate_plan(
         plan_id=job.plan_id,
         events_url=f"{settings.api_v1_prefix}/plans/generation/{job.job_id}/events",
         plan=plan_read(detail) if detail else None,
+    )
+
+
+@router.post(
+    "/preview",
+    response_model=PreviewResponse,
+    status_code=status.HTTP_202_ACCEPTED,
+    summary="Generate a plan preview and pause for confirmation",
+    description=(
+        "Runs the LangGraph preview pipeline (context -> goal analysis -> theoretical "
+        "analysis -> user situation -> plan generation -> rule validation -> preview) "
+        "and PAUSES. Apart from the goals, nothing is persisted yet. Resume with "
+        "`POST /plans/preview/{thread_id}/confirm` or `/adjust`."
+    ),
+    responses={**_AUTH, 422: {"model": ErrorResponse, "description": "Invalid goals"}},
+)
+def preview_plan(
+    payload: PlanGenerateRequest,
+    current_user: User = Depends(get_current_user),
+    plan_service: PlanService = Depends(get_plan_service),
+) -> PreviewResponse:
+    request = _to_generation_request(current_user, payload)
+    result = plan_service.generate_preview(current_user.id or 0, request)
+    return PreviewResponse(
+        thread_id=result.thread_id,
+        preview=preview_read(result.preview),
+        plan_id=None,
+        goals_persisted=result.goals_persisted,
+        degraded=result.degraded,
+        warnings=result.warnings,
+    )
+
+
+@router.post(
+    "/preview/{thread_id}/confirm",
+    response_model=ConfirmResponse,
+    status_code=status.HTTP_201_CREATED,
+    summary="Confirm the preview and create the first plan version",
+    description="Resumes the paused graph and persists plan v1.",
+    responses={**_AUTH, **_NOT_FOUND, 403: {"model": ErrorResponse}},
+)
+def confirm_preview(
+    thread_id: str,
+    current_user: User = Depends(get_current_user),
+    plan_service: PlanService = Depends(get_plan_service),
+) -> ConfirmResponse:
+    result = plan_service.confirm_plan(current_user.id or 0, thread_id)
+    if result.pending_preview is not None:  # pragma: no cover - confirm finalises
+        raise ConflictError("preview is still pending; adjust or confirm again")
+    return ConfirmResponse(
+        plan=plan_read(result.detail),
+        degraded=result.degraded,
+        warnings=result.warnings,
+    )
+
+
+@router.post(
+    "/preview/{thread_id}/adjust",
+    response_model=AdjustResponse,
+    status_code=status.HTTP_200_OK,
+    summary="Request a bounded preview adjustment",
+    description=(
+        "Applies ONE user change to the preview and pauses again. The budget is "
+        "limited (AGENT_MAX_PREVIEW_ADJUSTMENTS); once exhausted the plan is "
+        "finalised instead and `budget_exhausted` is true - the user should start "
+        "executing rather than keep regenerating."
+    ),
+    responses={**_AUTH, **_NOT_FOUND, 403: {"model": ErrorResponse}},
+)
+def adjust_preview(
+    thread_id: str,
+    payload: AdjustRequest,
+    current_user: User = Depends(get_current_user),
+    plan_service: PlanService = Depends(get_plan_service),
+) -> AdjustResponse:
+    result = plan_service.adjust_preview(
+        current_user.id or 0, thread_id, payload.feedback
+    )
+    if result.preview is None:
+        # Budget exhausted: the graph finalised the plan.
+        detail = (
+            plan_service.get_plan(current_user.id or 0, result.plan_id)
+            if result.plan_id is not None
+            else None
+        )
+        return AdjustResponse(
+            thread_id=thread_id,
+            budget_exhausted=True,
+            final_plan=plan_read(detail) if detail else None,
+            degraded=result.degraded,
+            warnings=result.warnings,
+        )
+    return AdjustResponse(
+        thread_id=thread_id,
+        preview=preview_read(result.preview),
+        budget_exhausted=result.budget_exhausted,
+        degraded=result.degraded,
+        warnings=result.warnings,
     )
 
 
@@ -190,21 +293,26 @@ def replan(
     payload: ReplanRequest,
     current_user: User = Depends(get_current_user),
     replan_service: ReplanService = Depends(get_replan_service),
+    plan_service: PlanService = Depends(get_plan_service),
 ) -> ReplanResponse:
-    result = replan_service.replan(
-        current_user.id or 0,
-        plan_id,
-        reason=payload.reason,
-        trigger_type=payload.trigger_type,
-        from_date=payload.from_date,
+    user_id = current_user.id or 0
+    # Cooldown is policy, checked before any agent work is done.
+    eligibility = replan_service.check_eligibility(user_id, plan_id)
+    if not eligibility.eligible:
+        raise ReplanNotEligibleError(
+            eligibility.reason, detail=eligibility.model_dump(mode="json")
+        )
+
+    detail = plan_service.replan_with_agent(
+        user_id, plan_id, reason=payload.reason or "user requested replan"
     )
     return ReplanResponse(
-        plan_id=result.plan.id or 0,
-        old_version=result.old_version,
-        new_version=result.new_version,
-        changed_task_ids=result.changed_task_ids,
-        reason=result.reason,
-        trigger_type=result.trigger_type,
+        plan_id=detail.plan.id or 0,
+        old_version=(detail.plan.version - 1),
+        new_version=detail.plan.version,
+        changed_task_ids=[item.task.id or 0 for item in detail.tasks],
+        reason=payload.reason or "user requested replan",
+        trigger_type=payload.trigger_type,
     )
 
 

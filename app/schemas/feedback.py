@@ -7,7 +7,7 @@ from datetime import date, datetime
 from pydantic import BaseModel, ConfigDict, Field
 
 from app.domain.models.enums import TimeOfDay
-from app.schemas.plan import ReplanEligibilityRead
+from app.schemas.plan import FeedbackAdjustmentRead, ReplanEligibilityRead
 
 
 class FeedbackCreate(BaseModel):
@@ -43,3 +43,5 @@ class FeedbackSubmitResponse(BaseModel):
     replan_triggered: bool = False
     replan_plan_id: int | None = None
     replan_eligibility: ReplanEligibilityRead | None = None
+    #: Agent decision from the feedback loop (route / severity / reasons).
+    adjustment: FeedbackAdjustmentRead | None = None

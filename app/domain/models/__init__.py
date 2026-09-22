@@ -1,5 +1,7 @@
 """Domain models package - import surface for the whole domain layer."""
 
+from app.domain.models.agent_memory import AgentMemory
+from app.domain.models.agent_run import AgentRun
 from app.domain.models.base import DomainModel, utcnow
 from app.domain.models.enums import (
     CognitiveLoad,
@@ -17,6 +19,7 @@ from app.domain.models.execution import TaskExecution
 from app.domain.models.feedback import Feedback
 from app.domain.models.goal import Goal
 from app.domain.models.plan import Plan
+from app.domain.models.prediction_log import PredictionLog
 from app.domain.models.replan_event import ReplanEvent
 from app.domain.models.task import Task
 from app.domain.models.task_standard import TaskStandard
@@ -24,6 +27,8 @@ from app.domain.models.user import User
 from app.domain.models.user_model import UserModel
 
 __all__ = [
+    "AgentMemory",
+    "AgentRun",
     "CognitiveLoad",
     "DomainModel",
     "Feedback",
@@ -33,6 +38,7 @@ __all__ = [
     "LoadLevel",
     "Plan",
     "PlanStatus",
+    "PredictionLog",
     "Priority",
     "ReplanEvent",
     "ReplanTriggerType",

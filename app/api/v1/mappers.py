@@ -8,14 +8,52 @@ from __future__ import annotations
 from app.application.dto.insight import InsightReport
 from app.application.dto.plan import PlanDetail
 from app.domain.models import Plan
+from app.schemas.common import ViolationRead
 from app.schemas.plan import (
     DailyCompletionRead,
     GoalRead,
     InsightRead,
     PlanListItem,
     PlanRead,
+    PreviewRead,
+    PreviewTaskRead,
 )
 from app.schemas.task import TaskRead, TaskStandardRead
+
+
+def preview_read(payload) -> PreviewRead:
+    """Map the agent's PreviewPayload onto the API schema."""
+    return PreviewRead(
+        thread_id=payload.thread_id,
+        title=payload.title,
+        start_date=payload.start_date,
+        end_date=payload.end_date,
+        tasks=[
+            PreviewTaskRead(
+                order_index=task.order_index,
+                title=task.title,
+                description=task.description,
+                goal_id=task.goal_id,
+                subject=task.subject,
+                cognitive_load=task.cognitive_load,
+                priority=task.priority,
+                estimated_duration=task.estimated_duration,
+                predicted_duration=task.predicted_duration,
+                completion_probability=task.completion_probability,
+                recommended_time_slot=task.recommended_time_slot,
+                standards=list(task.standards),
+                scheduled_date=task.scheduled_date,
+                start_time=task.start_time,
+                end_time=task.end_time,
+            )
+            for task in payload.tasks
+        ],
+        confidence=payload.confidence,
+        adjustment_count=payload.adjustment_count,
+        max_adjustments=payload.max_adjustments,
+        can_adjust=payload.can_adjust,
+        violations=[ViolationRead.model_validate(v) for v in payload.rule_violations],
+    )
 
 
 def task_read(task_with_standards) -> TaskRead:

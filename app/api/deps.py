@@ -46,7 +46,18 @@ def get_user_model_service(db: Session = Depends(get_db)) -> UserModelService:
 
 
 def get_plan_service(db: Session = Depends(get_db)) -> PlanService:
-    return PlanService(db)
+    from app.agent.checkpointer import get_checkpointer
+    from app.agent.llm import StructuredLLM
+    from app.core.config import get_settings
+    from app.infrastructure.llm.client import get_llm_client
+
+    settings = get_settings()
+    llm = StructuredLLM(
+        get_llm_client(settings),
+        max_retries=settings.agent_llm_max_retries,
+        prompt_version=settings.agent_prompt_version,
+    )
+    return PlanService(db, llm=llm, checkpointer=get_checkpointer(settings))
 
 
 def get_replan_service(db: Session = Depends(get_db)) -> ReplanService:
@@ -56,8 +67,9 @@ def get_replan_service(db: Session = Depends(get_db)) -> ReplanService:
 def get_feedback_service(
     db: Session = Depends(get_db),
     replan_service: ReplanService = Depends(get_replan_service),
+    plan_service: PlanService = Depends(get_plan_service),
 ) -> FeedbackService:
-    return FeedbackService(db, replan_service=replan_service)
+    return FeedbackService(db, replan_service=replan_service, plan_service=plan_service)
 
 
 def get_insight_service(db: Session = Depends(get_db)) -> InsightService:

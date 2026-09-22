@@ -4,8 +4,12 @@ from app.schemas.auth import LoginRequest, RegisterRequest, TokenResponse
 from app.schemas.common import ErrorResponse, HealthResponse, ViolationRead
 from app.schemas.feedback import FeedbackCreate, FeedbackRead, FeedbackSubmitResponse
 from app.schemas.plan import (
+    AdjustRequest,
+    AdjustResponse,
+    ConfirmRequest,
+    ConfirmResponse,
     DailyCompletionRead,
-    GenerationEventRead,
+    FeedbackAdjustmentRead,
     GoalCreate,
     GoalRead,
     InsightRead,
@@ -13,6 +17,9 @@ from app.schemas.plan import (
     PlanGenerateResponse,
     PlanListItem,
     PlanRead,
+    PreviewRead,
+    PreviewResponse,
+    PreviewTaskRead,
     ReplanEligibilityRead,
     ReplanRequest,
     ReplanResponse,
@@ -26,12 +33,16 @@ from app.schemas.task import (
 from app.schemas.user import UserRead, UserUpdate
 
 __all__ = [
+    "AdjustRequest",
+    "AdjustResponse",
+    "ConfirmRequest",
+    "ConfirmResponse",
     "DailyCompletionRead",
     "ErrorResponse",
+    "FeedbackAdjustmentRead",
     "FeedbackCreate",
     "FeedbackRead",
     "FeedbackSubmitResponse",
-    "GenerationEventRead",
     "GoalCreate",
     "GoalRead",
     "HealthResponse",
@@ -41,6 +52,9 @@ __all__ = [
     "PlanGenerateResponse",
     "PlanListItem",
     "PlanRead",
+    "PreviewRead",
+    "PreviewResponse",
+    "PreviewTaskRead",
     "RegisterRequest",
     "ReplanEligibilityRead",
     "ReplanRequest",

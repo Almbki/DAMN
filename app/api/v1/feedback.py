@@ -9,7 +9,7 @@ from app.application.services import FeedbackService
 from app.domain.models import Feedback, User
 from app.schemas.common import ErrorResponse
 from app.schemas.feedback import FeedbackCreate, FeedbackRead, FeedbackSubmitResponse
-from app.schemas.plan import ReplanEligibilityRead
+from app.schemas.plan import FeedbackAdjustmentRead, ReplanEligibilityRead
 
 router = APIRouter()
 
@@ -48,6 +48,16 @@ def submit_feedback(
         dominant_time_of_day=payload.dominant_time_of_day,
     )
     result = service.submit_feedback(current_user.id or 0, plan_id, feedback)
+    adjustment = None
+    if result.adjustment is not None:
+        adjustment = FeedbackAdjustmentRead(
+            route=result.adjustment.route.value,
+            severity=result.adjustment.severity.value,
+            reasons=result.adjustment.reasons,
+            source=result.adjustment.source,
+            new_plan_id=result.adjustment.new_plan_id,
+            degraded=result.adjustment.degraded,
+        )
     return FeedbackSubmitResponse(
         feedback=FeedbackRead.model_validate(result.feedback),
         replan_triggered=result.replan_triggered,
@@ -57,6 +67,7 @@ def submit_feedback(
             if result.replan_eligibility
             else None
         ),
+        adjustment=adjustment,
     )
 
 

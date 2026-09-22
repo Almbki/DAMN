@@ -2,17 +2,20 @@
 
 from __future__ import annotations
 
-from datetime import date, datetime
+from datetime import date, datetime, time
 
 from pydantic import BaseModel, ConfigDict, Field
 
 from app.domain.models.enums import (
+    CognitiveLoad,
     GoalStatus,
     GoalType,
     PlanStatus,
     Priority,
     ReplanTriggerType,
+    TimeOfDay,
 )
+from app.schemas.common import ViolationRead
 from app.schemas.task import TaskRead
 
 
@@ -55,14 +58,92 @@ class PlanGenerateRequest(BaseModel):
     execution_weight: float | None = Field(default=None, ge=0.0, le=1.0)
 
 
-class GenerationEventRead(BaseModel):
-    node: str
-    stage: str
-    status: str
-    summary: str = ""
-    payload: dict = Field(default_factory=dict)
-    progress: float = 0.0
-    timestamp: datetime
+class PreviewTaskRead(BaseModel):
+    """One task as shown in a plan preview."""
+
+    order_index: int
+    title: str
+    description: str | None = None
+    goal_id: int | None = None
+    subject: str | None = None
+    cognitive_load: CognitiveLoad = CognitiveLoad.MEDIUM
+    priority: Priority = Priority.MEDIUM
+    estimated_duration: int = 60
+    predicted_duration: int | None = None
+    completion_probability: float | None = None
+    recommended_time_slot: TimeOfDay | None = None
+    standards: list[str] = Field(default_factory=list)
+    scheduled_date: date | None = None
+    start_time: time | None = None
+    end_time: time | None = None
+
+
+class PreviewRead(BaseModel):
+    """The paused preview returned to the client."""
+
+    thread_id: str
+    title: str = ""
+    start_date: date | None = None
+    end_date: date | None = None
+    tasks: list[PreviewTaskRead] = Field(default_factory=list)
+    confidence: float = 0.5
+    adjustment_count: int = 0
+    max_adjustments: int = 2
+    can_adjust: bool = True
+    violations: list[ViolationRead] = Field(default_factory=list)
+
+
+class PreviewResponse(BaseModel):
+    thread_id: str
+    preview: PreviewRead
+    plan_id: int | None = None
+    goals_persisted: int = 0
+    #: True when the run continued with a fallback (no history, LLM unavailable,
+    #: context build failure). `warnings` says why - never silent.
+    degraded: bool = False
+    warnings: list[str] = Field(default_factory=list)
+
+
+class ConfirmRequest(BaseModel):
+    thread_id: str = Field(min_length=1)
+
+
+class ConfirmResponse(BaseModel):
+    plan: PlanRead
+    adjustment_count: int = 0
+    degraded: bool = False
+    warnings: list[str] = Field(default_factory=list)
+
+
+class AdjustRequest(BaseModel):
+    thread_id: str = Field(min_length=1)
+    feedback: str = Field(min_length=1, max_length=2000)
+
+
+class AdjustResponse(BaseModel):
+    """Result of a bounded preview adjustment.
+
+    When ``budget_exhausted`` is true the user must start executing: the graph
+    refused to call the LLM again and finalised the plan instead.
+    """
+
+    thread_id: str
+    preview: PreviewRead | None = None
+    budget_exhausted: bool = False
+    final_plan: PlanRead | None = None
+    degraded: bool = False
+    warnings: list[str] = Field(default_factory=list)
+
+
+class FeedbackAdjustmentRead(BaseModel):
+    """Agent decision attached to a feedback submission."""
+
+    route: str
+    severity: str = "NONE"
+    reasons: list[str] = Field(default_factory=list)
+    source: str = "fallback"
+    new_plan_id: int | None = None
+    degraded: bool = False
 
 
 class PlanRead(BaseModel):

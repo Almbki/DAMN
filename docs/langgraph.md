@@ -1,5 +1,19 @@
 # LangGraph Planning State Machine
 
+> **SUPERSEDED (agent P0).** This document describes the first 6-node prototype.
+> The agent layer now runs **two graphs** with preview/confirm/adjust, a feedback
+> router and a run-scoped context. See:
+> [`docs/agent/state-machine.md`](agent/state-machine.md) (graphs, nodes, edges)
+> and [`docs/agent/README.md`](agent/README.md) (module map).
+>
+> What changed at a glance: nodes are now `load_context`, `classify_request`,
+> `goal_analysis`, `theoretical_analysis`, `user_situation_analysis`,
+> `plan_generation`, `rule_validation` (`nodes/validation.py`), `plan_repair`
+> (`nodes/repair.py`), `preview`, `plan_finalization`, plus the feedback-graph
+> nodes `process_feedback`, `ml_prediction`, `adjustment_router`,
+> `micro_adjustment`, `new_plan`. Dependencies moved out of `PlannerState` into
+> `PlannerContext` (LangGraph `context_schema`), so state is now checkpointable.
+
 Code: `app/agent/graph.py`, `app/agent/state.py`, `app/agent/schemas.py`,
 `app/agent/nodes/*`, orchestrated by `PlanService.generate_plan_with_events`.
 

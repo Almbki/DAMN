@@ -9,11 +9,12 @@ Single package (`app/`) at the repo root — no monorepo. Windows-first.
 ## Commands (verified)
 
 - Install: `uv sync --extra dev` (creates `.venv`; requires Python 3.12)
-- All tests: `uv run pytest` → 43 tests
+- All tests: `uv run pytest` → 94 tests
 - One file / one test: `uv run pytest tests/unit/test_rules.py -q` · `uv run pytest -k scheduler -v`
 - Lint: `uv run ruff check .` (line length 100, target py312)
 - Run API: `uv run uvicorn app.main:app --reload` → http://localhost:8000/docs
 - Migrations: `uv run alembic upgrade head` · `uv run alembic revision --autogenerate -m "..."`
+- Predictor scoring: `uv run python scripts/evaluate_predictors.py [--user-id N]`
 - If a dev tool reports "program not found", install/run with `uv run --extra dev <tool>`.
 
 Use port **8000**. Some Windows ports are OS-reserved and uvicorn fails with
@@ -85,7 +86,11 @@ generation runs synchronously (events are stored then replayed over SSE).
 
 - **中文模块详解（含调用链与调试清单）：`docs/modules.md`** — start here when
   adding/debugging a module.
+- **Agent layer (P0+P1): `docs/agent/`** — state-machine, data-flow, prompts,
+  tools, ml-interface, memory, testing, development.
 - Design docs: `docs/architecture.md`, `docs/api.md`, `docs/langgraph.md`,
   `docs/ml.md`, `docs/domain.md`, `docs/development.md`.
+- Schema history: `docs/database/agent-migration.md` (P1 added `agent_runs`,
+  `prediction_logs`, `agent_memories` via revision `7f9ae3f96ba3`).
 - `ideas and structures/` holds the original Chinese design notes/prompts — reference
   material, not code.

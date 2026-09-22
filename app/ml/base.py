@@ -12,7 +12,8 @@ Contract rules
 
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import date, datetime
+from enum import StrEnum
 from typing import Protocol, runtime_checkable
 
 from pydantic import BaseModel, Field
@@ -117,3 +118,79 @@ class TimeSlotPredictor(Protocol):
     name: str
 
     def predict(self, request: PredictionRequest) -> TimeSlotPrediction: ...
+
+
+# ---------------------------------------------------------------------------
+# Adjustment prediction (feedback -> route)
+# ---------------------------------------------------------------------------
+class AdjustmentRoute(StrEnum):
+    """What the system should do after a feedback cycle."""
+
+    NO_CHANGE = "NO_CHANGE"
+    MICRO_ADJUST = "MICRO_ADJUST"
+    FULL_REPLAN = "FULL_REPLAN"
+
+
+class AdjustmentSeverity(StrEnum):
+    NONE = "NONE"
+    LOW = "LOW"
+    MEDIUM = "MEDIUM"
+    HIGH = "HIGH"
+
+
+class FeedbackSignal(BaseModel):
+    """One recent daily feedback, as consumed by the predictors."""
+
+    date: date
+    completion_rate: float = Field(default=0.0, ge=0.0, le=1.0)
+    stress_level: int | None = Field(default=None, ge=0, le=10)
+    energy_level: int | None = Field(default=None, ge=0, le=10)
+    delay_reason: str | None = None
+
+
+class PlanProgress(BaseModel):
+    """Execution progress of the current plan version."""
+
+    plan_id: int | None = None
+    version: int = 1
+    total_tasks: int = 0
+    completed_tasks: int = 0
+    skipped_tasks: int = 0
+    completion_rate: float = Field(default=0.0, ge=0.0, le=1.0)
+    days_elapsed: int = 0
+    days_remaining: int = 0
+
+
+class AdjustmentRequest(BaseModel):
+    """Uniform input of the adjustment predictor."""
+
+    user: UserFeatureSet
+    progress: PlanProgress | None = None
+    recent_feedback: list[FeedbackSignal] = Field(default_factory=list)
+    task_features: list[TaskFeatureSet] = Field(default_factory=list)
+    current_daily_load_minutes: int = 0
+    available_minutes_per_day: int = 480
+    user_note: str | None = None
+
+
+class AdjustmentPrediction(BaseModel):
+    """Structured ML decision: how far the plan should deviate.
+
+    ``route`` values are ``NO_CHANGE`` / ``MICRO_ADJUST`` / ``FULL_REPLAN``.
+    ``source`` must be truthful - ``fallback`` means no real model was used.
+    """
+
+    route: AdjustmentRoute = AdjustmentRoute.NO_CHANGE
+    severity: AdjustmentSeverity = AdjustmentSeverity.NONE
+    confidence: float = Field(default=0.0, ge=0.0, le=1.0)
+    predicted_parameters: dict[str, float] = Field(default_factory=dict)
+    reasons: list[str] = Field(default_factory=list)
+    recommended_action: str | None = None
+    source: str = "fallback"
+
+
+@runtime_checkable
+class AdjustmentPredictor(Protocol):
+    name: str
+
+    def predict_adjustment(self, request: AdjustmentRequest) -> AdjustmentPrediction: ...

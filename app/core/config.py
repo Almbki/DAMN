@@ -54,6 +54,20 @@ class Settings(BaseSettings):
     # --- Generation jobs / SSE --------------------------------------------
     generation_job_ttl_seconds: int = Field(default=1800, ge=60)
 
+    # --- Agent layer -------------------------------------------------------
+    # "auto" -> Postgres checkpointer when DATABASE_URL is Postgres, else memory.
+    agent_checkpointer: str = "auto"
+    # Maximum user-requested preview adjustments before the user is pushed to
+    # execution (no more LLM regeneration).
+    agent_max_preview_adjustments: int = Field(default=2, ge=0)
+    # Maximum plan_repair rounds before the graph gives up.
+    agent_max_repair_attempts: int = Field(default=2, ge=1)
+    agent_llm_max_retries: int = Field(default=2, ge=0)
+    agent_llm_timeout_seconds: float = 30.0
+    agent_graph_version: str = "planner-v1"
+    agent_prompt_version: str = "v1"
+    agent_trace_enabled: bool = True
+
     @field_validator("cors_origins")
     @classmethod
     def _strip_origins(cls, value: str) -> str:
@@ -73,6 +87,18 @@ class Settings(BaseSettings):
     @property
     def is_development(self) -> bool:
         return self.environment.lower() in {"development", "dev", "local"}
+
+    @property
+    def checkpointer_mode(self) -> str:
+        """Resolved checkpointer backend: ``postgres`` or ``memory``."""
+        if self.agent_checkpointer != "auto":
+            return self.agent_checkpointer
+        return "postgres" if self.database_url.startswith("postgresql") else "memory"
+
+    @property
+    def checkpointer_dsn(self) -> str:
+        """libpq DSN for the LangGraph checkpointer (no SQLAlchemy driver suffix)."""
+        return self.database_url.replace("+psycopg", "").replace("+psycopg2", "")
 
 
 @lru_cache(maxsize=1)

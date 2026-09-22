@@ -6,11 +6,19 @@ swapped for LightGBM / XGBoost / sklearn / PyTorch without touching the
 Service or API layers.
 """
 
+from app.ml.adjustment import MockAdjustmentPredictor, RuleBasedAdjustmentPredictor
 from app.ml.base import (
+    AdjustmentPrediction,
+    AdjustmentPredictor,
+    AdjustmentRequest,
+    AdjustmentRoute,
+    AdjustmentSeverity,
     CompletionPrediction,
     CompletionPredictor,
     DurationPrediction,
     DurationPredictor,
+    FeedbackSignal,
+    PlanProgress,
     PredictionRequest,
     StressPrediction,
     StressPredictor,
@@ -21,11 +29,20 @@ from app.ml.base import (
 )
 
 __all__ = [
+    "AdjustmentPrediction",
+    "AdjustmentPredictor",
+    "AdjustmentRequest",
+    "AdjustmentRoute",
+    "AdjustmentSeverity",
     "CompletionPrediction",
     "CompletionPredictor",
     "DurationPrediction",
     "DurationPredictor",
+    "FeedbackSignal",
+    "MockAdjustmentPredictor",
+    "PlanProgress",
     "PredictionRequest",
+    "RuleBasedAdjustmentPredictor",
     "StressPrediction",
     "StressPredictor",
     "TaskFeatureSet",
