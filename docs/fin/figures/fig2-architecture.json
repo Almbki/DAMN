@@ -1,0 +1,45 @@
+{
+  "schema_version": 1,
+  "diagram_type": "architecture",
+  "meta": {
+    "title": "系统总体架构",
+    "locale": "zh-CN",
+    "quality_profile": "showcase",
+    "viewBox": [1360, 540]
+  },
+  "components": [
+    { "id": "users", "type": "external", "label": "用户", "sublabel": "移动端 / Web", "pos": [30, 173], "size": [95, 54] },
+    { "id": "frontend", "type": "frontend", "label": "前端 App", "sublabel": "Expo / react-native-web", "pos": [165, 167], "size": [150, 66] },
+    { "id": "api", "type": "backend", "label": "API 层 · app/api + app/schemas", "pos": [355, 167], "size": [205, 66] },
+    { "id": "app_services", "type": "backend", "label": "应用服务层 · app/application", "sublabel": "PlanService / FeedbackService / ReplanService / UserModelService", "pos": [600, 158], "size": [370, 84] },
+    { "id": "domain", "type": "backend", "label": "领域与核心 · app/domain + app/core", "sublabel": "Scheduler 确定性排期（不调 LLM）", "pos": [1010, 162], "size": [275, 76] },
+    { "id": "infra", "type": "backend", "label": "基础设施 · app/infrastructure", "sublabel": "SQLAlchemy 2 仓储（只 flush）· LLM 客户端", "pos": [830, 332], "size": [250, 76] },
+    { "id": "db", "type": "database", "label": "数据库", "sublabel": "PostgreSQL（Alembic 迁移）", "pos": [875, 450], "size": [160, 66] },
+    { "id": "ml", "type": "backend", "label": "AI 侧车 · app/ml", "sublabel": "画像与四路预测器（Protocol）", "pos": [590, 40], "size": [175, 80] },
+    { "id": "agent", "type": "backend", "label": "AI 侧车 · app/agent", "sublabel": "LangGraph 图编排", "pos": [795, 40], "size": [140, 80] },
+    { "id": "llm", "type": "external", "label": "LLM 提供商", "sublabel": "OpenAI 兼容 HTTP", "pos": [1210, 337], "size": [110, 66] }
+  ],
+  "connections": [
+    { "id": "users-to-frontend", "from": "users", "to": "frontend", "label": "使用", "fromSide": "right", "toSide": "left" },
+    { "id": "frontend-to-api", "from": "frontend", "to": "api", "label": "HTTP + SSE", "fromSide": "right", "toSide": "left", "labelDy": 70 },
+    { "id": "api-to-services", "from": "api", "to": "app_services", "label": "调用服务（校验后）", "fromSide": "right", "toSide": "left", "labelDy": 70 },
+    { "id": "services-to-agent", "from": "app_services", "to": "agent", "label": "注入 PlannerState", "fromSide": "top", "toSide": "bottom" },
+    { "id": "services-to-ml", "from": "app_services", "to": "ml", "label": "注入 UserFeatureSet", "fromSide": "top", "toSide": "bottom" },
+    { "id": "services-to-domain", "from": "app_services", "to": "domain", "label": "调用规则与排程", "fromSide": "right", "toSide": "left", "labelDy": 70 },
+    { "id": "agent-to-domain", "from": "agent", "to": "domain", "label": "候选任务与排期", "fromSide": "right", "toSide": "top" },
+    { "id": "domain-to-infra", "from": "domain", "to": "infra", "label": "仓储与 LLM 客户端", "fromSide": "bottom", "toSide": "top" },
+    { "id": "infra-to-db", "from": "infra", "to": "db", "label": "SQLAlchemy", "fromSide": "bottom", "toSide": "top", "labelDy": 24 },
+    { "id": "infra-to-llm", "from": "infra", "to": "llm", "label": "HTTPS（OpenAI 兼容）", "fromSide": "right", "toSide": "left" }
+  ],
+  "cards": [
+    {
+      "dot": "cyan",
+      "title": "依赖方向",
+      "items": [
+        "API → Application → Domain/Core → Infrastructure 严格单向",
+        "app/agent 与 app/ml 是应用层驱动的侧车，不反向依赖",
+        "排程由确定性代码完成，LLM 不参与排期合法性判定"
+      ]
+    }
+  ]
+}
