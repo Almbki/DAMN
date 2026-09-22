@@ -57,6 +57,14 @@ async def lifespan(app: FastAPI):
     except Exception as exc:  # noqa: BLE001 - startup must never fail on this
         logger.warning("agent checkpointer warm-up failed: %s: %s", type(exc).__name__, exc)
     yield
+    # Release the checkpointer's connection pool so shutdown leaves no open
+    # Postgres sockets behind (no-op when running on the in-memory saver).
+    try:
+        from app.agent.checkpointer import close_checkpointer
+
+        close_checkpointer()
+    except Exception as exc:  # noqa: BLE001 - shutdown must never fail on this
+        logger.warning("agent checkpointer shutdown failed: %s: %s", type(exc).__name__, exc)
 
 
 def create_app() -> FastAPI:

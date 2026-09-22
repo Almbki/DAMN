@@ -15,6 +15,7 @@ from app.agent.nodes._shared import compute_confidence
 from app.agent.nodes.prediction import _task_features
 from app.agent.schemas import GoalAnalysisResult, PlanGenerationResult, UserSituationResult
 from app.agent.state import AgentConfig, PlannerContext, PlannerRequest
+from app.core.config import Settings
 from app.domain.models.enums import TaskStatus
 from app.domain.rules.base import RuleEngine
 from app.domain.scheduling.scheduler import Scheduler
@@ -170,3 +171,102 @@ def test_no_feedback_is_no_change() -> None:
     prediction = RuleBasedAdjustmentPredictor().predict_adjustment(_adjustment_request([]))
     assert prediction.route is AdjustmentRoute.NO_CHANGE
     assert prediction.source == "fallback:rule"
+
+
+# ---------------------------------------------------------------------------
+# D1 - the Postgres checkpointer must own a live pool, not a dropped Connection
+# ---------------------------------------------------------------------------
+class _FakePool:
+    def __init__(self, conninfo, **kwargs):  # noqa: ANN003
+        self.conninfo = conninfo
+        self.kwargs = kwargs
+        self.opened = False
+        self.closed = False
+
+    def open(self, **kwargs):  # noqa: ANN003
+        self.opened = True
+        self.open_kwargs = kwargs
+
+    def close(self):
+        self.closed = True
+
+
+def test_postgres_checkpointer_uses_a_pool_that_outlives_the_factory(monkeypatch) -> None:
+    """Regression guard for ``psycopg.OperationalError: the connection is closed``.
+
+    The old code called ``PostgresSaver.from_conn_string(dsn).__enter__()`` and
+    dropped the generator-based context manager, so the connection closed as soon
+    as it was collected. The factory must instead retain an open pool.
+    """
+    import gc
+
+    # Import the real module first: its _internal submodule subscripts
+    # ConnectionPool at import time, so the fake pool must be installed after.
+    import langgraph.checkpoint.postgres  # noqa: F401
+    from langgraph.checkpoint.memory import InMemorySaver
+
+    from app.agent import checkpointer as cp
+
+    recorded: dict = {}
+
+    class _FakeSaver:
+        def __init__(self, conn, serde=None):
+            self.conn = conn
+            self.serde = serde
+
+        def setup(self):
+            recorded["setup_called"] = True
+
+    monkeypatch.setattr("psycopg_pool.ConnectionPool", _FakePool)
+    monkeypatch.setattr("langgraph.checkpoint.postgres.PostgresSaver", _FakeSaver)
+
+    settings = Settings(
+        database_url="postgresql+psycopg://planner:planner@127.0.0.1:5432/planner",
+        agent_checkpointer="postgres",
+    )
+    try:
+        saver = cp.build_checkpointer(settings)
+        gc.collect()  # would have closed the old generator-held connection
+
+        assert not isinstance(saver, InMemorySaver)
+        assert isinstance(saver.conn, _FakePool)
+        assert saver.conn.opened is True
+        assert saver.conn.closed is False  # must survive the factory returning
+        assert recorded.get("setup_called") is True
+        assert saver.conn.conninfo == "postgresql://planner:planner@127.0.0.1:5432/planner"
+    finally:
+        cp.close_checkpointer()
+
+    assert saver.conn.closed is True
+    assert cp.get_checkpointer_mode() == "memory"
+
+
+def test_postgres_checkpointer_degrades_to_memory_when_pool_cannot_open(
+    monkeypatch,
+) -> None:
+    """An unreachable database must not block startup - it degrades, loudly."""
+    import langgraph.checkpoint.postgres  # noqa: F401
+    from langgraph.checkpoint.memory import InMemorySaver
+
+    from app.agent import checkpointer as cp
+
+    class _BoomPool:
+        def __init__(self, *args, **kwargs):  # noqa: ANN002, ANN003
+            pass
+
+        def open(self, **kwargs):  # noqa: ANN003
+            raise RuntimeError("simulated database outage")
+
+        def close(self):
+            pass
+
+    monkeypatch.setattr("psycopg_pool.ConnectionPool", _BoomPool)
+
+    saver = cp.build_checkpointer(
+        Settings(
+            database_url="postgresql+psycopg://planner:planner@127.0.0.1:5432/planner",
+            agent_checkpointer="postgres",
+        )
+    )
+    assert isinstance(saver, InMemorySaver)
+    assert cp.get_checkpointer_mode() == "memory"
