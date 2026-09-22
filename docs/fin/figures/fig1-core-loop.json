@@ -1,0 +1,79 @@
+{
+  "schema_version": 2,
+  "diagram_type": "workflow",
+  "meta": {
+    "title": "核心闭环：基础画像 → 目标拆解 → 执行反馈重排",
+    "locale": "zh-CN",
+    "quality_profile": "showcase"
+  },
+  "lanes": [
+    { "id": "intake", "label": "环节 1 · 基础画像" },
+    { "id": "planning", "label": "环节 2 · 目标拆解" },
+    { "id": "execution", "label": "环节 3 · 执行与反馈" },
+    { "id": "replan", "label": "环节 3 · 预测与重排" }
+  ],
+  "mainPath": [
+    "user_info",
+    "base_profile",
+    "state_eval",
+    "goal_breakdown",
+    "task_list",
+    "todo_exec",
+    "feedback_quiz",
+    "update_profile",
+    "predict_p"
+  ],
+  "nodes": [
+    { "id": "user_info", "lane": "intake", "col": 0, "type": "external", "label": "用户基础信息", "sublabel": "MBTI / 四维 / 身份 / 作息", "width": 132 },
+    { "id": "base_profile", "lane": "intake", "col": 1, "type": "database", "label": "基础画像", "sublabel": "MBTI 刻板印象 + 大众均值", "width": 132 },
+    { "id": "state_eval", "lane": "intake", "col": 2, "type": "backend", "label": "画像评估用户状态", "sublabel": "精力 / 压力 / 疲劳 / 时段", "width": 132 },
+    { "id": "goal_breakdown", "lane": "planning", "col": 2, "type": "backend", "label": "目标拆解", "sublabel": "LangGraph 图编排", "tag": "三段提示词", "width": 132 },
+    { "id": "task_list", "lane": "planning", "col": 3, "type": "backend", "label": "任务清单", "sublabel": "判据 / 耗时 / 完成概率", "width": 132 },
+    { "id": "todo_exec", "lane": "execution", "col": 3, "type": "frontend", "label": "用户执行 Todo", "sublabel": "按计划逐条完成", "width": 132 },
+    { "id": "feedback_quiz", "lane": "execution", "col": 4, "type": "backend", "label": "LLM 生成反馈选择题", "sublabel": "每题选项带系数 c", "width": 132 },
+    { "id": "update_profile", "lane": "execution", "col": 5, "type": "database", "label": "更新用户画像", "sublabel": "EWMA α = α_base × c", "width": 132 },
+    { "id": "predict_p", "lane": "replan", "col": 5, "type": "backend", "label": "画像预测完成概率 P", "sublabel": "completion_prob", "width": 132 },
+    { "id": "replan_trigger", "lane": "replan", "col": 4, "type": "backend", "label": "触发重排", "sublabel": "保留未完成任务", "width": 132 },
+    { "id": "new_plan", "lane": "replan", "col": 3, "type": "backend", "label": "新版本计划 v(n+1)", "sublabel": "回到用户执行 Todo", "width": 132 }
+  ],
+  "edges": [
+    { "id": "e1", "from": "user_info", "to": "base_profile", "role": "main" },
+    { "id": "e2", "from": "base_profile", "to": "state_eval", "role": "main" },
+    { "id": "e3", "from": "state_eval", "to": "goal_breakdown", "label": "画像 JSON（画像提示词）", "variant": "emphasis", "role": "main" },
+    { "id": "e4", "from": "goal_breakdown", "to": "task_list", "role": "main" },
+    { "id": "e5", "from": "task_list", "to": "todo_exec", "role": "main" },
+    { "id": "e6", "from": "todo_exec", "to": "feedback_quiz", "role": "main" },
+    { "id": "e7", "from": "feedback_quiz", "to": "update_profile", "role": "main" },
+    { "id": "e8", "from": "update_profile", "to": "predict_p", "role": "main" },
+    { "id": "e9", "from": "predict_p", "to": "replan_trigger", "label": "P < 0.5", "variant": "emphasis", "role": "branch" },
+    { "id": "e10", "from": "replan_trigger", "to": "new_plan", "role": "branch" },
+    { "id": "e11", "from": "new_plan", "to": "todo_exec", "label": "回到执行", "role": "return" },
+    { "id": "e12", "from": "predict_p", "to": "todo_exec", "label": "P ≥ 0.5：继续执行", "variant": "dashed", "role": "return" }
+  ],
+  "cards": [
+    {
+      "dot": "cyan",
+      "title": "三段提示词（目标拆解）",
+      "items": [
+        "① 基础提示词：系统内置",
+        "② 画像提示词 + ③ 用户提示词"
+      ]
+    },
+    {
+      "dot": "violet",
+      "title": "反馈驱动画像更新",
+      "items": [
+        "LLM 生成反馈选择题，每题选项带系数 c",
+        "EWMA 更新：α = α_base × c"
+      ]
+    },
+    {
+      "dot": "amber",
+      "title": "完成概率分流",
+      "items": [
+        "P < 0.5：触发重排，保留未完成任务",
+        "P ≥ 0.5：继续执行"
+      ]
+    }
+  ]
+}

@@ -1,0 +1,31 @@
+{
+  "schema_version": 1,
+  "diagram_type": "architecture",
+  "meta": {
+    "title": "部署拓扑 · 本地与云端",
+    "locale": "zh-CN",
+    "quality_profile": "showcase",
+    "viewBox": [1180, 620]
+  },
+  "components": [
+    { "id": "mobile_app", "type": "frontend", "label": "移动端 App", "sublabel": "Expo / React Native", "pos": [40, 170], "size": [190, 68] },
+    { "id": "web_frontend", "type": "frontend", "label": "Web 前端", "sublabel": "react-native-web 静态站点", "pos": [40, 340], "size": [190, 68] },
+    { "id": "proxy", "type": "security", "label": "反向代理", "sublabel": "Nginx / Caddy · HTTPS + SSE", "pos": [320, 255], "size": [190, 74] },
+    { "id": "api", "type": "backend", "label": "FastAPI 服务", "sublabel": "uvicorn :8000 · 容器化", "pos": [610, 255], "size": [200, 74] },
+    { "id": "postgres", "type": "database", "label": "PostgreSQL", "sublabel": "生产数据库", "pos": [920, 110], "size": [180, 68] },
+    { "id": "llm", "type": "external", "label": "LLM 提供商", "sublabel": "OpenAI 兼容 HTTPS", "pos": [920, 445], "size": [180, 68] },
+    { "id": "secrets", "type": "security", "label": "环境变量与密钥", "sublabel": ".env / 密钥管理", "pos": [610, 455], "size": [200, 68] }
+  ],
+  "connections": [
+    { "from": "mobile_app", "to": "proxy", "label": "HTTPS" },
+    { "from": "web_frontend", "to": "proxy", "label": "HTTPS（静态资源）" },
+    { "from": "proxy", "to": "api", "label": "HTTP · SSE 关闭缓冲" },
+    { "from": "api", "to": "postgres", "label": "DATABASE_URL · Alembic", "fromSide": "top", "toSide": "left" },
+    { "from": "api", "to": "llm", "label": "HTTPS · LLM_API_BASE", "fromSide": "bottom", "toSide": "left" },
+    { "from": "secrets", "to": "api", "label": "注入 JWT_SECRET_KEY", "variant": "dashed" }
+  ],
+  "cards": [
+    { "dot": "cyan", "title": "探活与启动", "items": ["探活 GET /health（根路径，不在 /api/v1 下）", "uv sync --extra dev", "uv run alembic upgrade head", "uv run uvicorn app.main:app --port 8000"] },
+    { "dot": "emerald", "title": "部署要点", "items": ["生产 PostgreSQL 一律走 Alembic 迁移", "上线前执行 uv run alembic upgrade head", "反向代理对 SSE 路径关闭缓冲"] }
+  ]
+}

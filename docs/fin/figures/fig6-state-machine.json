@@ -1,0 +1,41 @@
+{
+  "schema_version": 1,
+  "diagram_type": "lifecycle",
+  "meta": {
+    "title": "执行-反馈-调整有环图（状态机）",
+    "locale": "zh-CN",
+    "quality_profile": "showcase",
+    "viewBox": [1040, 566]
+  },
+  "lanes": [
+    { "id": "main", "label": "主轨 · 四阶段" },
+    { "id": "cycle", "label": "反馈-调整环" },
+    { "id": "terminal", "label": "终止 / 可恢复" }
+  ],
+  "states": [
+    { "id": "idle", "type": "start", "label": "Idle", "sublabel": "初始", "lane": "main", "col": 0, "step": "01", "tag": "start" },
+    { "id": "draft", "type": "active", "label": "Drafting", "sublabel": "录入目标·任务", "lane": "main", "col": 1, "step": "02", "tag": "draft" },
+    { "id": "decompose", "type": "active", "label": "Decomposing", "sublabel": "LangGraph 拆解", "lane": "main", "col": 2, "step": "03", "tag": "decompose" },
+    { "id": "executing", "type": "active", "label": "Executing", "sublabel": "in_progress ⇄ paused", "lane": "main", "col": 3, "step": "04", "tag": "execute" },
+    { "id": "replanning", "type": "active", "label": "Replanning", "sublabel": "生成 v(n+1)", "lane": "main", "col": 4, "step": "05", "tag": "replan" },
+    { "id": "prompting", "type": "active", "label": "Prompting", "sublabel": "LLM 带系数选择题", "lane": "cycle", "col": 0, "width": 108, "step": "06", "tag": "feedback" },
+    { "id": "answering", "type": "active", "label": "Answering", "sublabel": "≤5 题/天·疲劳降级", "lane": "cycle", "col": 1, "width": 108, "step": "07", "tag": "feedback" },
+    { "id": "predicting", "type": "decision", "label": "Predicting", "sublabel": "画像预测完成概率 P", "lane": "cycle", "col": 2, "width": 108, "step": "08", "tag": "decide" },
+    { "id": "cooldown", "type": "failure", "label": "Cooldown 409", "sublabel": "per-user 24h 冷却", "lane": "terminal", "col": 2, "yOffset": -60, "step": "09", "tag": "recoverable" },
+    { "id": "achieved", "type": "success", "label": "Achieved", "sublabel": "计划完成 · 终止", "lane": "terminal", "col": 0, "yOffset": -60, "step": "10", "tag": "terminal" }
+  ],
+  "transitions": [
+    { "id": "idle-draft", "from": "idle", "to": "draft", "label": "创建目标/任务", "route": "straight", "fromSide": "right", "toSide": "left", "labelAt": [171, 104] },
+    { "id": "draft-decompose", "from": "draft", "to": "decompose", "label": "触发拆解", "route": "straight", "fromSide": "right", "toSide": "left", "labelAt": [325, 104] },
+    { "id": "decompose-executing", "from": "decompose", "to": "executing", "label": "确认 → Scheduled", "route": "straight", "fromSide": "right", "toSide": "left", "labelAt": [479, 104] },
+    { "id": "replan-loopback", "from": "replanning", "to": "executing", "label": "回到执行 v(n+1)", "variant": "emphasis", "route": "straight", "fromSide": "left", "toSide": "right", "labelAt": [633, 104] },
+    { "id": "execute-prompt", "from": "executing", "to": "prompting", "label": "触发反馈", "fromSide": "top", "toSide": "left", "via": [[556, 96], [20, 96], [20, 307], [348, 307]], "labelAt": [48, 200] },
+    { "id": "prompt-answer", "from": "prompting", "to": "answering", "label": "生成选择题", "route": "straight", "fromSide": "right", "toSide": "left", "labelAt": [479, 390] },
+    { "id": "answer-predict", "from": "answering", "to": "predicting", "label": "更新画像", "route": "straight", "fromSide": "right", "toSide": "left", "labelAt": [633, 390] },
+    { "id": "predict-replan", "from": "predicting", "to": "replanning", "label": "P < 0.5", "route": "straight", "fromSide": "top", "toSide": "bottom", "labelAt": [742, 228] },
+    { "id": "predict-hold", "from": "predicting", "to": "executing", "label": "P ≥ 0.5", "fromSide": "top", "toSide": "bottom", "via": [[710, 233], [556, 233]], "labelAt": [633, 213] },
+    { "id": "predict-cooling", "from": "predicting", "to": "cooldown", "label": "命中冷却", "variant": "security", "route": "straight", "fromSide": "bottom", "toSide": "top", "labelAt": [742, 360] },
+    { "id": "cooling-hold", "from": "cooldown", "to": "executing", "label": "409 · 停留执行", "variant": "security", "fromSide": "right", "toSide": "top", "via": [[820, 419], [820, 88], [556, 88]], "labelAt": [820, 300] },
+    { "id": "execute-achieved", "from": "executing", "to": "achieved", "label": "completed / skipped", "variant": "emphasis", "fromSide": "bottom", "toSide": "left", "via": [[556, 210], [290, 210], [290, 419]], "labelAt": [423, 210] }
+  ]
+}

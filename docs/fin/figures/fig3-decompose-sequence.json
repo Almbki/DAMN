@@ -1,0 +1,73 @@
+{
+  "schema_version": 1,
+  "diagram_type": "sequence",
+  "meta": {
+    "title": "图 3 · 环节二「目标 → 拆解」时序",
+    "locale": "zh-CN",
+    "quality_profile": "showcase",
+    "column_fit": "spread",
+    "viewBox": [1560, 900]
+  },
+  "participants": [
+    { "id": "user", "type": "external", "label": "用户" },
+    { "id": "app", "type": "frontend", "label": "前端 App" },
+    { "id": "api", "type": "backend", "label": "API（plans）" },
+    { "id": "plan", "type": "backend", "label": "PlanService" },
+    { "id": "graph", "type": "backend", "label": "LangGraph（图编排）" },
+    { "id": "llm", "type": "external", "label": "LLM" },
+    { "id": "sched", "type": "backend", "label": "Scheduler" },
+    { "id": "db", "type": "database", "label": "数据库" }
+  ],
+  "messages": [
+    { "id": "input-goal", "from": "user", "to": "app", "y": 185, "label": "输入目标 + 本次拆解要求", "variant": "default" },
+    { "id": "decompose-req", "from": "app", "to": "api", "y": 228, "label": "POST /plans/decompose（目标列表 + 用户提示词）", "variant": "emphasis" },
+    { "id": "invoke-pipeline", "from": "api", "to": "plan", "y": 271, "label": "鉴权通过后调用拆解流程", "variant": "default" },
+    { "id": "assemble-prompt", "from": "plan", "to": "graph", "y": 314, "label": "组装三段提示词（基础提示词 + 画像 JSON 提示词 + 用户提示词）", "variant": "default" },
+    { "id": "llm-request", "from": "graph", "to": "llm", "y": 357, "label": "请求结构化任务清单（JSON 契约）", "variant": "emphasis" },
+    { "id": "llm-candidates", "from": "llm", "to": "graph", "y": 398, "label": "返回任务候选（标题 / 预估耗时 / 认知负荷 / 优先级 / 完成判据）", "variant": "return" },
+    { "id": "draft-tasks", "from": "graph", "to": "plan", "y": 439, "label": "候选任务清单（含预测完成概率）", "variant": "return" },
+    { "id": "schedule-req", "from": "plan", "to": "sched", "y": 486, "label": "按画像与排程偏好排出具体日期与时段", "variant": "default" },
+    { "id": "schedule-result", "from": "sched", "to": "plan", "y": 527, "label": "返回候选排期", "variant": "return" },
+    { "id": "draft-preview", "from": "plan", "to": "app", "y": 568, "label": "草案预览（可「重新生成」）", "variant": "return" },
+    { "id": "user-confirm", "from": "user", "to": "app", "y": 615, "label": "确认「就先这样」（或「重新生成」→ 回到第 2 步，同一 draft_id 带反馈）", "variant": "default" },
+    { "id": "confirm-req", "from": "app", "to": "api", "y": 658, "label": "POST /plans/confirm", "variant": "emphasis" },
+    { "id": "persist-v1", "from": "plan", "to": "db", "y": 705, "label": "落库计划版本 + 任务 + 完成判据：写入 plans / tasks / task_standards", "variant": "default" },
+    { "id": "planread", "from": "plan", "to": "app", "y": 748, "label": "返回 PlanRead", "variant": "return" }
+  ],
+  "activations": [
+    { "participant": "app", "from": 220, "to": 754, "type": "frontend" },
+    { "participant": "api", "from": 228, "to": 275, "type": "backend" },
+    { "participant": "plan", "from": 265, "to": 748, "type": "backend" },
+    { "participant": "graph", "from": 308, "to": 444, "type": "backend" },
+    { "participant": "llm", "from": 352, "to": 403, "type": "external" },
+    { "participant": "sched", "from": 481, "to": 532, "type": "backend" },
+    { "participant": "db", "from": 700, "to": 750, "type": "database" }
+  ],
+  "cards": [
+    {
+      "dot": "cyan",
+      "title": "三段提示词",
+      "items": [
+        "① 基础提示词：系统内置，锁定 JSON 输出契约",
+        "② 画像提示词：画像模块产出的 JSON 字段",
+        "③ 用户提示词：本次手动输入的粒度 / 截止 / 偏好"
+      ]
+    },
+    {
+      "dot": "amber",
+      "title": "确定性排期",
+      "items": [
+        "Scheduler 只做确定性排期，自身不调用 LLM",
+        "排期依据画像与用户排程偏好，输出具体日期与时段"
+      ]
+    },
+    {
+      "dot": "emerald",
+      "title": "两段式落库",
+      "items": [
+        "decompose 返回不落库草稿，可原 draft_id 重新生成",
+        "confirm 才写入 v1 并返回 PlanRead；前端直接应用"
+      ]
+    }
+  ]
+}

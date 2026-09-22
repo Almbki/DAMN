@@ -15,6 +15,28 @@ Single package (`app/`) at the repo root — no monorepo. Windows-first.
 - Document shorthand must be expanded to its full path on first use:
   `docs/research/RO-5-RuleEngine与决策架构.md`, not "RO-5".
 
+## Document authority (read before changing docs or code)
+
+`docs/fin/` is the **final consensus** — the single source of truth for this
+project. Priority order:
+
+| Priority | Source | Notes |
+| --- | --- | --- |
+| **1 (highest)** | `docs/fin/` (including `docs/fin/核心闭环.md` and `docs/fin/比赛规则-AIC-AI+软件创新.md`) | Final consensus. Any conflict is resolved in its favour |
+| **2** | `ideas and structures/` | Early design notes/prompts (e.g. `ideas and structures/Prompts/画像.md`); may be absorbed or overridden by `docs/fin/` |
+| **3 (lowest)** | Everything else — code, other `docs/` files, `docs/research/` | Implementation evidence only |
+
+Rules:
+
+- `docs/fin/核心闭环.md` defines the **only** core loop (环节 1 基础画像 / 环节 2
+  目标拆解 / 环节 3 反馈-重排). Frontend, backend, the technical report and
+  `docs/fin/graph.drawio` must all follow it.
+- On conflict: **change the code or the older doc, not `docs/fin/`**. If a
+  `docs/fin/` file genuinely must change, append an entry to the
+  「冲突登记」 table in `docs/fin/核心闭环.md` so the change is traceable.
+- The competition report and its chapter outline must match
+  `docs/fin/比赛规则-AIC-AI+软件创新.md` §五「技术方案参考大纲」.
+
 ## Commands (verified)
 
 - Install: `uv sync --extra dev` (creates `.venv`; requires Python 3.12)

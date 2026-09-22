@@ -1,0 +1,250 @@
+{
+  "schema_version": 1,
+  "diagram_type": "dataflow",
+  "meta": {
+    "title": "图 4 · 环节三：执行反馈 → 画像更新 → 预测 → 重排数据流",
+    "locale": "zh-CN",
+    "quality_profile": "showcase",
+    "output": "docs/fin/figures/fig4-feedback-dataflow.html",
+    "viewBox": [1080, 520]
+  },
+  "stages": [
+    { "label": "数据源" },
+    { "label": "特征派生" },
+    { "label": "画像更新与预测" },
+    { "label": "存储" },
+    { "label": "消费方" }
+  ],
+  "nodes": [
+    {
+      "id": "exec",
+      "type": "frontend",
+      "label": "任务执行记录",
+      "sublabel": "计划/实际耗时·压力·时段",
+      "stage": 0,
+      "row": 0,
+      "tag": "执行数据"
+    },
+    {
+      "id": "feedback",
+      "type": "frontend",
+      "label": "每日反馈作答",
+      "sublabel": "选择题 + 选项系数 c",
+      "stage": 0,
+      "row": 2,
+      "tag": "≤5 题/天"
+    },
+    {
+      "id": "features",
+      "type": "backend",
+      "label": "特征派生",
+      "sublabel": "完成率·耗时比·启动延迟",
+      "stage": 1,
+      "row": 0
+    },
+    {
+      "id": "ewma",
+      "type": "backend",
+      "label": "EWMA 更新画像",
+      "sublabel": "x_new = (1-α)·x_old + α·x_observed",
+      "stage": 2,
+      "row": 0,
+      "width": 164,
+      "tag": "α = α_base × c"
+    },
+    {
+      "id": "predict",
+      "type": "backend",
+      "label": "预测完成概率 P",
+      "sublabel": "0.5·MBTI先验 + 0.5·近7天完成率",
+      "stage": 2,
+      "row": 1,
+      "width": 160,
+      "tag": "clamp [0.05, 0.98]"
+    },
+    {
+      "id": "detect",
+      "type": "backend",
+      "label": "重排判定",
+      "sublabel": "P < 0.5 且不在 24h 冷却内",
+      "stage": 2,
+      "row": 2,
+      "width": 124
+    },
+    {
+      "id": "user_models",
+      "type": "database",
+      "label": "user_models",
+      "sublabel": "画像参数 + update_count",
+      "stage": 3,
+      "row": 0
+    },
+    {
+      "id": "plans",
+      "type": "database",
+      "label": "plans",
+      "sublabel": "旧版 superseded / 新版 v(n+1)",
+      "stage": 3,
+      "row": 1,
+      "width": 140
+    },
+    {
+      "id": "replan_events",
+      "type": "database",
+      "label": "replan_events",
+      "sublabel": "触发原因 + 改动清单",
+      "stage": 3,
+      "row": 2
+    },
+    {
+      "id": "profile_page",
+      "type": "frontend",
+      "label": "画像页",
+      "sublabel": "状态 / 趋势 / 数据充足度",
+      "stage": 4,
+      "row": 0,
+      "width": 120
+    },
+    {
+      "id": "schedule",
+      "type": "backend",
+      "label": "次日计划排程",
+      "sublabel": "拆解与排期读取画像",
+      "stage": 4,
+      "row": 1
+    },
+    {
+      "id": "insight",
+      "type": "backend",
+      "label": "洞察与归因",
+      "sublabel": "归因回写画像",
+      "stage": 4,
+      "row": 2
+    }
+  ],
+  "flows": [
+    {
+      "id": "exec-to-features",
+      "from": "exec",
+      "to": "features",
+      "label": "执行数据",
+      "classification": "execution"
+    },
+    {
+      "id": "feedback-to-ewma",
+      "from": "feedback",
+      "to": "ewma",
+      "label": "按系数折算学习率",
+      "classification": "coefficient",
+      "fromSide": "left",
+      "toSide": "top",
+      "via": [[30, 385], [30, 104], [530, 104]],
+      "labelSegment": 2
+    },
+    {
+      "id": "features-to-ewma",
+      "from": "features",
+      "to": "ewma",
+      "label": "派生特征",
+      "classification": "derived"
+    },
+    {
+      "id": "ewma-to-predict",
+      "from": "ewma",
+      "to": "predict",
+      "label": "画像参数",
+      "classification": "profile",
+      "fromSide": "bottom",
+      "toSide": "top",
+      "labelAt": [530, 214]
+    },
+    {
+      "id": "predict-to-detect",
+      "from": "predict",
+      "to": "detect",
+      "label": "完成概率 P",
+      "classification": "score",
+      "fromSide": "bottom",
+      "toSide": "top",
+      "labelAt": [530, 328]
+    },
+    {
+      "id": "ewma-to-usermodels",
+      "from": "ewma",
+      "to": "user_models",
+      "label": "写入画像",
+      "classification": "persist"
+    },
+    {
+      "id": "detect-to-replan",
+      "from": "detect",
+      "to": "replan_events",
+      "label": "触发重排",
+      "classification": "event",
+      "fromSide": "bottom",
+      "toSide": "left",
+      "via": [[530, 440], [660, 440], [660, 385]],
+      "labelAt": [595, 434]
+    },
+    {
+      "id": "detect-to-plans",
+      "from": "detect",
+      "to": "plans",
+      "label": "生成 v(n+1)",
+      "classification": "version",
+      "fromSide": "right",
+      "toSide": "left",
+      "via": [[634.5, 385], [634.5, 271]],
+      "labelSegment": 1
+    },
+    {
+      "id": "usermodels-to-schedule",
+      "from": "user_models",
+      "to": "schedule",
+      "label": "画像回流",
+      "classification": "feedback-loop",
+      "fromSide": "bottom",
+      "toSide": "top",
+      "via": [[745, 214], [960, 214]],
+      "labelSegment": 1
+    },
+    {
+      "id": "plans-to-schedule",
+      "from": "plans",
+      "to": "schedule",
+      "label": "新任务清单",
+      "classification": "tasks"
+    },
+    {
+      "id": "usermodels-to-profile",
+      "from": "user_models",
+      "to": "profile_page",
+      "label": "状态与趋势",
+      "classification": "read"
+    },
+    {
+      "id": "plans-to-insight",
+      "from": "plans",
+      "to": "insight",
+      "label": "计划与实际",
+      "classification": "read",
+      "fromSide": "bottom",
+      "toSide": "left",
+      "via": [[745, 320], [880, 320], [880, 385]],
+      "labelAt": [812.5, 322]
+    },
+    {
+      "id": "insight-to-usermodels",
+      "from": "insight",
+      "to": "user_models",
+      "label": "predicted_vs_actual_ratio 回写",
+      "classification": "backflow",
+      "variant": "dashed",
+      "fromSide": "right",
+      "toSide": "top",
+      "via": [[1040, 385], [1040, 88], [745, 88]],
+      "labelSegment": 2,
+      "labelDy": 12
+    }
+  ]
+}
