@@ -1,7 +1,16 @@
 import { hhmm } from '@/api/format';
-import type { PreviewTaskRead, TaskRead, TaskUpdateRequest } from '@/api/types';
+import type {
+  GoalDetailRead,
+  PlanChangeRead,
+  PreviewTaskRead,
+  SituationTrendRead,
+  TaskRead,
+  TaskUpdateRequest,
+} from '@/api/types';
 import { todayISO } from '@/domain/date';
-import type { DraftTask } from '@/domain/decompose';
+import type { DraftTask, PendingTask } from '@/domain/decompose';
+import type { PlanChange } from '@/domain/plan-change';
+import type { Situation, SituationPoint } from '@/domain/situation';
 import { NO_REPEAT, type CognitiveLoad, type Task } from '@/domain/task';
 
 function mapCognitiveLoad(value: string): CognitiveLoad {
@@ -66,4 +75,64 @@ export function patchDone(done: boolean): TaskUpdateRequest {
 
 export function patchSkipped(): TaskUpdateRequest {
   return { status: 'skipped' };
+}
+
+/** Backend `GoalDetailRead` → the 待拆解 `PendingTask` the goal screen edits. */
+export function pendingTaskFromGoal(goal: GoalDetailRead): PendingTask {
+  return {
+    id: goal.id,
+    title: goal.title,
+    priority: Math.min(3, Math.max(1, goal.priority || 2)),
+    dueDate: goal.deadline ? goal.deadline.slice(0, 10) : null,
+    notes: goal.description ?? '',
+  };
+}
+
+/**
+ * Backend `PlanChangeRead` (snake_case, one entry per replan) → the app's
+ * `PlanChange` notice shape. The backend's per-day `task_ids` are dropped: the
+ * notice only reads the counts + summary.
+ */
+export function planChangeFromApi(raw: PlanChangeRead): PlanChange {
+  return {
+    id: raw.id,
+    triggerType: raw.trigger_type,
+    reason: raw.reason,
+    oldVersion: raw.old_version,
+    newVersion: raw.new_version,
+    createdAt: raw.created_at,
+    days: raw.days.map((day) => ({
+      date: day.date,
+      added: day.added,
+      moved: day.moved,
+      removed: day.removed,
+      summary: day.summary,
+    })),
+  };
+}
+
+/**
+ * `SituationTrendRead` → the profile's `Situation`. The latest point carries the
+ * headline numbers; `drivers` become the "why" lines. Mock mode still derives
+ * its value with `buildSituation` from local feedback.
+ */
+export function situationFromTrends(raw: SituationTrendRead): Situation {
+  const points: SituationPoint[] = raw.points.map((point) => ({
+    date: point.date,
+    energy: point.energy,
+    stress: point.stress,
+    efficacy: point.efficacy,
+  }));
+  const latest = points.length > 0 ? points[points.length - 1] : null;
+  const lastEfficacy = [...points].reverse().find((point) => point.efficacy != null)?.efficacy;
+  return {
+    energy: latest?.energy ?? null,
+    stress: latest?.stress ?? null,
+    efficacy: lastEfficacy ?? 0,
+    points,
+    samples: raw.samples,
+    minSamples: raw.min_samples,
+    sufficient: raw.sufficient,
+    reasons: raw.drivers,
+  };
 }

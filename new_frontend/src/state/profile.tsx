@@ -76,8 +76,33 @@ function ApiProfileProvider({ children }: { children: React.ReactNode }) {
   /** 404 is not an error here — it means 尚未设置画像. */
   const fetchProfile = useCallback(async (): Promise<ProfileSnapshot> => {
     try {
-      const response = await getMyProfile();
-      return { profile: response.profile, state: response.state, error: null };
+      // `GET /users/me/profile` is FLAT: the static portrait and the adaptive
+      // state live on one object. Re-nest it for the context's `{ profile,
+      // state }` consumers.
+      const flat = await getMyProfile();
+      return {
+        profile: {
+          mbti_type: flat.mbti_type,
+          mbti_dims: flat.mbti_dims,
+          identity: flat.identity,
+        },
+        state: {
+          duration_factor: flat.duration_factor,
+          completion_prob: flat.completion_prob,
+          stress_baseline: flat.stress_baseline,
+          energy_drain_rate: flat.energy_drain_rate,
+          proactive_score: flat.proactive_score,
+          procrastination_tendency: flat.procrastination_tendency,
+          preferred_time_slots: flat.preferred_time_slots,
+          stress_response: flat.stress_response,
+          state_energy: flat.state_energy,
+          state_fatigue: flat.state_fatigue,
+          self_efficacy: flat.self_efficacy,
+          update_count: flat.update_count,
+          degraded: flat.degraded,
+        },
+        error: null,
+      };
     } catch (caught) {
       if (isApiError(caught) && caught.status === 404) return NO_PROFILE;
       return {

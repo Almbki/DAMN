@@ -14,6 +14,9 @@ export type TaskStatus =
 /** Backend `CognitiveLoad` also includes `restorative`. */
 export type CognitiveLoad = 'low' | 'medium' | 'high' | 'restorative';
 
+/** Backend `GoalStatus`; `draft` marks a not-yet-decomposed item (待拆解). */
+export type GoalStatus = 'draft' | 'active' | 'completed' | 'archived' | 'cancelled';
+
 export interface StandardRead {
   id: number;
   description: string;
@@ -46,9 +49,12 @@ export interface TaskRead {
 export interface GoalRead {
   id: number;
   title: string;
+  description: string | null;
   goal_type: string;
   priority: number;
   status: string;
+  deadline: string | null;
+  estimated_minutes: number | null;
 }
 
 export interface PlanRead {
@@ -72,6 +78,10 @@ export interface UserRead {
   display_name: string | null;
   execution_weight: number;
   profile: Record<string, unknown>;
+  /** Portrait fields (see `ProfileRead`); absent/`null` when unset. */
+  mbti_type?: string | null;
+  mbti_dims?: MbtiDims | null;
+  identity?: string | null;
   created_at: string;
 }
 
@@ -116,10 +126,30 @@ export interface UserStateRead {
   degraded: boolean;
 }
 
-/** `GET /users/me/profile`; 404 when the user has no profile yet. */
-export interface UserProfileResponse {
-  profile: UserProfileRead;
-  state: UserStateRead;
+/**
+ * `GET /users/me/profile` response (backend `ProfileRead`); 404 when the user has
+ * no profile yet. This is a **flat** object: the static portrait fields are
+ * merged with the adaptive state, the backend does NOT nest `{ profile, state }`.
+ */
+export interface ProfileRead {
+  mbti_type: string | null;
+  mbti_dims: MbtiDims | null;
+  identity: string | null;
+  // --- adaptive state (EWMA-updated by feedback) ---
+  duration_factor: number;
+  completion_prob: number;
+  stress_baseline: number;
+  energy_drain_rate: number;
+  proactive_score: number;
+  procrastination_tendency: number;
+  preferred_time_slots: Record<string, string>;
+  stress_response: number;
+  state_energy: number;
+  state_fatigue: number;
+  self_efficacy: number;
+  update_count: number;
+  /** True while `update_count < 3` (冷启动校准中). */
+  degraded: boolean;
 }
 
 /** Body for `PATCH /users/me`; sending any field re-initialises the state. */
@@ -137,6 +167,13 @@ export interface DailyCompletionRead {
   planned_minutes: number;
 }
 
+/** Backend `DataSufficiency` - is there enough history to trust a signal. */
+export interface DataSufficiency {
+  samples: number;
+  min_samples: number;
+  sufficient: boolean;
+}
+
 /** Mirrors `InsightRead` from the backend (`GET /plans/{plan_id}/insights`). */
 export interface InsightRead {
   plan_id: number;
@@ -152,6 +189,10 @@ export interface InsightRead {
   cognitive_load_breakdown: Record<string, number>;
   daily: DailyCompletionRead[];
   recommendations: string[];
+  /** Whether there is enough recorded history to trust the numbers above. */
+  data_sufficiency?: DataSufficiency | null;
+  /** Human-readable reasons behind the summary (Chinese UI copy). */
+  drivers?: string[] | null;
 }
 
 export interface TaskUpdateRequest {
@@ -209,6 +250,32 @@ export interface GoalCreate {
   task_type?: string | null;
 }
 
+/** Body for `POST /goals` (backend `GoalCreate`). */
+export interface GoalCreateRequest {
+  title: string;
+  description?: string | null;
+  goal_type?: string;
+  deadline?: string | null;
+  priority?: number;
+  estimated_minutes?: number | null;
+  subject?: string | null;
+  task_type?: string | null;
+  /** `draft` creates a 待拆解 item; `active` a real goal. */
+  status?: GoalStatus;
+}
+
+/** Body for `PATCH /goals/{goalId}` (backend `GoalUpdate`; all optional). */
+export interface UpdateGoalRequest {
+  title?: string | null;
+  description?: string | null;
+  status?: GoalStatus | null;
+  deadline?: string | null;
+  priority?: number | null;
+  estimated_minutes?: number | null;
+  subject?: string | null;
+  task_type?: string | null;
+}
+
 export interface PlanGenerateRequest {
   goals: GoalCreate[];
   start_date?: string | null;
@@ -257,11 +324,23 @@ export interface ReplanEligibilityRead {
   cooldown_hours: number;
 }
 
+/** Backend `FeedbackAdjustmentRead` - the agent's decision on a submission. */
+export interface FeedbackAdjustmentRead {
+  route: string;
+  severity: string;
+  reasons: string[];
+  source: string;
+  new_plan_id: number | null;
+  degraded: boolean;
+}
+
 export interface FeedbackSubmitResponse {
   feedback: FeedbackRead;
   replan_triggered: boolean;
   replan_plan_id: number | null;
   replan_eligibility: ReplanEligibilityRead | null;
+  /** Agent decision from the feedback loop (route / severity / reasons). */
+  adjustment: FeedbackAdjustmentRead | null;
 }
 
 export type ReplanTriggerType = 'manual' | 'feedback_triggered' | 'scheduled' | 'system';
@@ -291,14 +370,11 @@ export interface GoalDetailRead {
   title: string;
   description: string | null;
   goal_type: string;
-  status: 'active' | 'draft' | 'completed' | 'archived' | 'cancelled';
+  status: GoalStatus;
   deadline: string | null;
   priority: number;
   estimated_minutes: number | null;
   created_at: string;
-  completed_minutes?: number;
-  total_minutes?: number;
-  progress?: number;
 }
 
 export interface SituationTrendPoint {
@@ -322,6 +398,7 @@ export interface PlanChangeDayRead {
   moved: number;
   removed: number;
   summary: string;
+  task_ids: number[];
 }
 
 export interface PlanChangeRead {
@@ -334,13 +411,14 @@ export interface PlanChangeRead {
   days: PlanChangeDayRead[];
 }
 
-export interface SchedulingPreferencesRead {
+/** `GET`/`PUT /users/me/preferences` (backend `SchedulingPreferences`). */
+export interface SchedulingPreferences {
   available_minutes_per_day: number;
   daily_limit_minutes: number;
   buffer_minutes: number;
   high_cognitive_max_per_day: number;
-  sleep_start?: string;
-  sleep_end?: string;
+  sleep_start?: string | null;
+  sleep_end?: string | null;
 }
 
 /** `POST /plans/preview` — a not-yet-persisted plan the user can adjust. */

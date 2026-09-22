@@ -23,10 +23,72 @@ export function isApiError(error: unknown): error is ApiError {
   return error instanceof ApiError;
 }
 
-let authToken: string | null = null;
+/**
+ * In-memory bearer token. On web it is mirrored to `localStorage` so a reload
+ * keeps the session; on native there is no `localStorage`, so it stays
+ * in-memory only. Persistence is best-effort and never throws.
+ */
+const AUTH_TOKEN_STORAGE_KEY = 'damn.authToken';
+
+type TokenStorage = {
+  getItem: (key: string) => string | null;
+  setItem: (key: string, value: string) => void;
+  removeItem: (key: string) => void;
+};
+
+/** `globalThis.localStorage` only exists on web, hence the existence check. */
+function getStorage(): TokenStorage | null {
+  return (globalThis as { localStorage?: TokenStorage }).localStorage ?? null;
+}
+
+function readStoredToken(): string | null {
+  try {
+    return getStorage()?.getItem(AUTH_TOKEN_STORAGE_KEY) ?? null;
+  } catch {
+    return null;
+  }
+}
+
+function writeStoredToken(token: string | null): void {
+  try {
+    const storage = getStorage();
+    if (!storage) return;
+    if (token) storage.setItem(AUTH_TOKEN_STORAGE_KEY, token);
+    else storage.removeItem(AUTH_TOKEN_STORAGE_KEY);
+  } catch {
+    // Persistence is best-effort; the in-memory token is still authoritative.
+  }
+}
+
+let authToken: string | null = readStoredToken();
+
+/** Notified at most once per auth failure so the owner can re-authenticate. */
+let onUnauthorized: (() => void) | null = null;
+let unauthorizedNotified = false;
+
+export function setUnauthorizedHandler(handler: (() => void) | null) {
+  onUnauthorized = handler;
+  if (!handler) unauthorizedNotified = false;
+}
+
+/** Drop the dead token and let the owner re-authenticate (best-effort, once). */
+function notifyUnauthorized(): void {
+  authToken = null;
+  writeStoredToken(null);
+  if (unauthorizedNotified || !onUnauthorized) return;
+  unauthorizedNotified = true;
+  const handler = onUnauthorized;
+  try {
+    handler();
+  } catch {
+    // Best-effort: never mask the original 401.
+  }
+}
 
 export function setAuthToken(token: string | null) {
   authToken = token;
+  unauthorizedNotified = false;
+  writeStoredToken(token);
 }
 
 export function getAuthToken(): string | null {
@@ -38,6 +100,7 @@ type RequestOptions = {
   body?: unknown;
   auth?: boolean;
   timeoutMs?: number;
+  signal?: AbortSignal;
 };
 
 function parseJson(text: string): unknown {
@@ -53,9 +116,14 @@ function parseJson(text: string): unknown {
  * timeout, and normalises the backend error envelope `{code, message, detail}`.
  */
 export async function apiRequest<T>(path: string, options: RequestOptions = {}): Promise<T> {
-  const { method = 'GET', body, auth = true, timeoutMs = requestTimeoutMs } = options;
+  const { method = 'GET', body, auth = true, timeoutMs = requestTimeoutMs, signal } = options;
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), timeoutMs);
+  const abortFromCaller = () => controller.abort();
+  if (signal) {
+    if (signal.aborted) controller.abort();
+    else signal.addEventListener('abort', abortFromCaller, { once: true });
+  }
 
   try {
     const headers: Record<string, string> = { Accept: 'application/json' };
@@ -73,6 +141,7 @@ export async function apiRequest<T>(path: string, options: RequestOptions = {}):
     const data = text ? parseJson(text) : null;
 
     if (!response.ok) {
+      if (response.status === 401) notifyUnauthorized();
       const envelope = (data ?? {}) as { code?: string; message?: string; detail?: unknown };
       throw new ApiError(
         response.status,
@@ -86,11 +155,13 @@ export async function apiRequest<T>(path: string, options: RequestOptions = {}):
   } catch (error) {
     if (error instanceof ApiError) throw error;
     if (error instanceof Error && error.name === 'AbortError') {
+      if (signal?.aborted) throw abortError();
       throw new ApiError(0, 'timeout', '请求超时，后端没有响应。');
     }
     throw new ApiError(0, 'network_error', '连不上后端，检查网络或后端地址。');
   } finally {
     clearTimeout(timer);
+    signal?.removeEventListener('abort', abortFromCaller);
   }
 }
 
@@ -163,6 +234,7 @@ export async function apiStream(
   if (!response.ok) {
     const text = await response.text().catch(() => '');
     const data = text ? parseJson(text) : null;
+    if (response.status === 401) notifyUnauthorized();
     const envelope = (data ?? {}) as { code?: string; message?: string; detail?: unknown };
     throw new ApiError(
       response.status,
@@ -241,7 +313,7 @@ export async function apiPollJob(
 
   for (;;) {
     if (signal?.aborted) throw abortError();
-    const status = await apiRequest<JobStatus>(statusPath);
+    const status = await apiRequest<JobStatus>(statusPath, { signal });
     if (status.status === 'completed' || status.status === 'failed') return status;
     if (Date.now() - startedAt >= timeoutMs) {
       throw new ApiError(0, 'timeout', '生成超时，请稍后重试。');

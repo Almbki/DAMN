@@ -1,27 +1,32 @@
 import { apiPollJob, apiRequest, apiStream, isApiError } from '@/api/client';
 import type {
-  AdjustResponse,
   ConfirmPlanResponse,
   FeedbackCreate,
   FeedbackRead,
   FeedbackSubmitResponse,
+  GoalCreateRequest,
+  GoalDetailRead,
+  GoalStatus,
   InsightRead,
   JobAccepted,
   JobStatus,
+  PlanChangeRead,
   PlanGenerateRequest,
   PlanGenerateResponse,
   PlanListItem,
   PlanRead,
-  PreviewResponse,
+  ProfileRead,
   ProfileUpdateRequest,
   RegisterRequest,
   ReplanEligibilityRead,
   ReplanRequest,
   ReplanResponse,
+  SchedulingPreferences,
+  SituationTrendRead,
   TaskRead,
   TaskUpdateRequest,
   TokenResponse,
-  UserProfileResponse,
+  UpdateGoalRequest,
   UserRead,
 } from '@/api/types';
 
@@ -45,14 +50,57 @@ export function updateMe(body: { display_name?: string; execution_weight?: numbe
   return apiRequest<UserRead>('/users/me', { method: 'PATCH', body });
 }
 
-/** 基础画像 + adaptive state; the caller treats a 404 as "no profile yet". */
+/**
+ * 基础画像 + adaptive state (flat `ProfileRead`); the caller treats a 404 as
+ * "no profile yet".
+ */
 export function getMyProfile() {
-  return apiRequest<UserProfileResponse>('/users/me/profile');
+  return apiRequest<ProfileRead>('/users/me/profile');
 }
 
 /** Sending any field re-initialises the backend state from the new profile. */
 export function updateMyProfile(body: ProfileUpdateRequest) {
   return apiRequest<UserRead>('/users/me', { method: 'PATCH', body });
+}
+
+/** Scheduling preferences in effect (`GET /users/me/preferences`). */
+export function getPreferences() {
+  return apiRequest<SchedulingPreferences>('/users/me/preferences');
+}
+
+/** Full overwrite of the scheduling preferences (`PUT /users/me/preferences`). */
+export function putPreferences(body: SchedulingPreferences) {
+  // `apiRequest`'s RequestOptions method union predates PUT; the runtime is fine.
+  return apiRequest<SchedulingPreferences>('/users/me/preferences', {
+    method: 'PUT' as unknown as 'POST',
+    body,
+  });
+}
+
+/** Energy / stress / efficacy trend for the profile page. */
+export function getSituationTrends(days = 14) {
+  return apiRequest<SituationTrendRead>(`/users/me/situation/trends?days=${days}`);
+}
+
+/** List goals; pass `status='draft'` for the 待拆解清单. */
+export function listGoals(status?: GoalStatus) {
+  const query = status ? `?status=${encodeURIComponent(status)}` : '';
+  return apiRequest<GoalDetailRead[]>(`/goals${query}`);
+}
+
+/** Create a goal (or a draft item with `status: 'draft'`). */
+export function createGoal(body: GoalCreateRequest) {
+  return apiRequest<GoalDetailRead>('/goals', { method: 'POST', body });
+}
+
+/** Edit a goal (title / description / status / deadline / priority). */
+export function updateGoal(goalId: number, body: UpdateGoalRequest) {
+  return apiRequest<GoalDetailRead>(`/goals/${goalId}`, { method: 'PATCH', body });
+}
+
+/** Delete a goal (204 on success). */
+export function deleteGoal(goalId: number) {
+  return apiRequest<void>(`/goals/${goalId}`, { method: 'DELETE' });
 }
 
 export function listPlans() {
@@ -63,21 +111,13 @@ export function getPlan(planId: number) {
   return apiRequest<PlanRead>(`/plans/${planId}`);
 }
 
+/** What the system changed, day by day, for this plan version. */
+export function getPlanChanges(planId: number) {
+  return apiRequest<PlanChangeRead[]>(`/plans/${planId}/changes`);
+}
+
 export function generatePlan(body: PlanGenerateRequest) {
   return apiRequest<PlanGenerateResponse>('/plans/generate', { method: 'POST', body });
-}
-
-/** 拆解：先出一版**不落库**的草稿（`POST /plans/preview`）。 */
-export function previewPlan(body: PlanGenerateRequest) {
-  return apiRequest<PreviewResponse>('/plans/preview', { method: 'POST', body });
-}
-
-/** 对同一 `thread_id` 带反馈再拆一版；预算耗尽时会直接返回 `final_plan`。 */
-export function adjustPreview(threadId: string, feedback: string) {
-  return apiRequest<AdjustResponse>(`/plans/preview/${threadId}/adjust`, {
-    method: 'POST',
-    body: { thread_id: threadId, feedback },
-  });
 }
 
 /** 落库：草稿 → 正式计划（`POST /plans/preview/{thread_id}/confirm`）。 */
@@ -127,11 +167,6 @@ export function submitAdjustPreview(threadId: string, feedback: string) {
   });
 }
 
-/** One-shot status fetch for a generation job. */
-export function fetchJobStatus(jobId: string) {
-  return apiRequest<JobStatus>(`/plans/generation/${jobId}`);
-}
-
 /** Errors that mean "the stream cannot carry this", so polling is safe. */
 const FALLBACK_CODES = new Set(['no_stream', 'network_error', 'stream_error']);
 
@@ -155,7 +190,10 @@ export async function runJob(
   } catch (error) {
     // Re-throw real failures (401/404/aborted); only recover from stream gaps.
     if (!(isApiError(error) && FALLBACK_CODES.has(error.code))) throw error;
-    return apiPollJob(statusPath, { signal });
   }
-  return fetchJobStatus(job.job_id);
+  // ALWAYS resolve on a terminal status: the stream can end before the worker
+  // finishes (platform buffering, proxy, early close), and returning a
+  // still-`running` status makes every caller read `result.thread_id` off null.
+  // `apiPollJob` returns immediately when the job is already terminal.
+  return apiPollJob(statusPath, { signal });
 }

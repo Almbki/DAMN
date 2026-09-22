@@ -1,12 +1,17 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
 import { isApiError } from '@/api/client';
 import {
   confirmPreview as confirmPreviewApi,
+  createGoal,
+  deleteGoal,
   generatePlan,
   getInsights,
   getPlan,
+  getPlanChanges,
+  getSituationTrends,
   listFeedback,
+  listGoals,
   listPlans,
   patchTask,
   replan as replanApi,
@@ -17,7 +22,15 @@ import {
   submitPreview,
   updateMe,
 } from '@/api/endpoints';
-import { patchDone, patchSkipped, previewToDrafts, taskFromApi } from '@/api/mapper';
+import {
+  patchDone,
+  patchSkipped,
+  pendingTaskFromGoal,
+  planChangeFromApi,
+  previewToDrafts,
+  situationFromTrends,
+  taskFromApi,
+} from '@/api/mapper';
 import type {
   AdjustResponse,
   FeedbackRead,
@@ -25,12 +38,13 @@ import type {
   PlanGenerateRequest,
   PlanRead,
   PreviewResponse,
+  SituationTrendRead,
   UserRead,
 } from '@/api/types';
-import { mockFeedback, mockPlanChanges } from '@/data/mock';
 import { addDays, todayISO } from '@/domain/date';
 import type { PendingTask } from '@/domain/decompose';
 import type { Goal } from '@/domain/goal';
+import type { PlanChange } from '@/domain/plan-change';
 import type { SchedulingPreferences } from '@/domain/preferences';
 import { buildLists, buildRuler, countLists, pickCurrentTask } from '@/domain/selectors';
 import { buildSituation } from '@/domain/situation';
@@ -44,7 +58,11 @@ import {
   type PendingTaskInput,
   type PlanContextValue,
 } from '@/state/plan-context';
-import { loadPreferences, savePreferences } from '@/state/preferences-store';
+import {
+  loadPreferences,
+  loadPreferencesRemote,
+  savePreferencesRemote,
+} from '@/state/preferences-store';
 import { useSession } from '@/state/session';
 
 const ENERGY_LEVELS: ('low' | 'medium' | 'high')[] = ['low', 'medium', 'high', 'high'];
@@ -91,6 +109,8 @@ function emptyInsight(planId: number): InsightRead {
     cognitive_load_breakdown: {},
     daily: [],
     recommendations: [],
+    data_sufficiency: null,
+    drivers: null,
   };
 }
 
@@ -167,6 +187,45 @@ export function ApiPlanProvider({ children }: { children: React.ReactNode }) {
   const [pendingTasks, setPendingTasks] = useState<PendingTask[]>([]);
   const [preferences, setPreferences] = useState<SchedulingPreferences>(() => loadPreferences());
   const [feedbackHistory, setFeedbackHistory] = useState<FeedbackRead[]>([]);
+  const [planChanges, setPlanChanges] = useState<PlanChange[]>([]);
+  const [situationTrend, setSituationTrend] = useState<SituationTrendRead | null>(null);
+  // Negative ids mark pending items that are not (yet) persisted server-side.
+  const tempIdRef = useRef(0);
+
+  // `GET /plans/{id}/changes` — the replan notice. Callers load it whenever a
+  // plan is applied (initial load, replan, feedback-triggered replan).
+  const loadPlanChanges = useCallback(async (id: number | null) => {
+    if (id == null) {
+      setPlanChanges([]);
+      return;
+    }
+    try {
+      setPlanChanges((await getPlanChanges(id)).map(planChangeFromApi));
+    } catch {
+      setPlanChanges([]);
+    }
+  }, []);
+
+  // 待拆解 drafts live on the backend as `draft` goals; the local list stays the
+  // UI source of truth so a failed fetch never blanks the screen.
+  const loadDraftGoals = useCallback(async () => {
+    try {
+      setPendingTasks((await listGoals('draft')).map(pendingTaskFromGoal));
+    } catch {
+      // Keep whatever is already in state.
+    }
+  }, []);
+
+  /** Best-effort cleanup of persisted 待拆解 goals once they are no longer pending. */
+  const discardDraftGoals = useCallback((ids: number[]) => {
+    ids
+      .filter((id) => id > 0)
+      .forEach((id) => {
+        void deleteGoal(id).catch(() => {
+          // The local list is already cleared; nothing to surface.
+        });
+      });
+  }, []);
 
   const refreshFeedbackHistory = useCallback(async () => {
     if (planId == null) {
@@ -202,7 +261,8 @@ export function ApiPlanProvider({ children }: { children: React.ReactNode }) {
       ...planGoals,
       ...prev.filter((goal) => goal.status === 'draft' && goal.id < 0),
     ]);
-  }, []);
+    void loadPlanChanges(plan.id);
+  }, [loadPlanChanges]);
 
   const load = useCallback(async () => {
     try {
@@ -212,6 +272,7 @@ export function ApiPlanProvider({ children }: { children: React.ReactNode }) {
         setPlanId(null);
         setStore((prev) => ({ ...prev, tasks: [] }));
         setInsight(emptyInsight(0));
+        setPlanChanges([]);
         setError(null);
         setLoading(false);
         return;
@@ -233,9 +294,16 @@ export function ApiPlanProvider({ children }: { children: React.ReactNode }) {
   }, [applyPlan]);
 
   useEffect(() => {
+    if (session.status !== 'ready') return;
     // eslint-disable-next-line react-hooks/set-state-in-effect -- async fetch once the session is ready
-    if (session.status === 'ready') void load();
-  }, [session.status, load]);
+    void load();
+    void loadDraftGoals();
+    // Prefer the server's stored preferences over the local cache once loaded.
+    void loadPreferencesRemote().then(setPreferences);
+    void getSituationTrends(14)
+      .then(setSituationTrend)
+      .catch(() => setSituationTrend(null));
+  }, [session.status, load, loadDraftGoals]);
 
   const refresh = useCallback(() => {
     setLoading(true);
@@ -261,25 +329,42 @@ export function ApiPlanProvider({ children }: { children: React.ReactNode }) {
 
   const situation = useMemo(
     () =>
-      buildSituation(
-        mockFeedback,
-        (session.user ?? FALLBACK_USER).execution_weight,
-        stats.rate,
-      ),
-    [session.user, stats.rate],
+      situationTrend
+        ? situationFromTrends(situationTrend)
+        : // Fall back to the local derivation if the trend fetch failed.
+          buildSituation([], (session.user ?? FALLBACK_USER).execution_weight, stats.rate),
+    [situationTrend, session.user, stats.rate],
   );
 
   const addPendingTask = useCallback((input: PendingTaskInput) => {
+    const tempId = -(tempIdRef.current += 1);
     setPendingTasks((prev) => [
       ...prev,
       {
-        id: Math.max(0, ...prev.map((item) => item.id)) + 1,
+        id: tempId,
         title: input.title,
         priority: input.priority,
         dueDate: input.dueDate,
         notes: input.notes,
       },
     ]);
+    // Persist best-effort; swap the temp id for the real one so a later remove
+    // can delete it. A failure leaves the item local-only.
+    void createGoal({
+      title: input.title,
+      description: input.notes || null,
+      status: 'draft',
+      deadline: input.dueDate ? `${input.dueDate}T00:00:00` : null,
+      priority: input.priority,
+    })
+      .then((goal) => {
+        setPendingTasks((prev) =>
+          prev.map((item) => (item.id === tempId ? { ...item, id: goal.id } : item)),
+        );
+      })
+      .catch(() => {
+        // Draft persistence is best-effort; the local item still renders.
+      });
   }, []);
 
   const updatePendingTask = useCallback((id: number, patch: Partial<PendingTask>) => {
@@ -288,6 +373,11 @@ export function ApiPlanProvider({ children }: { children: React.ReactNode }) {
 
   const removePendingTask = useCallback((id: number) => {
     setPendingTasks((prev) => prev.filter((item) => item.id !== id));
+    if (id > 0) {
+      void deleteGoal(id).catch(() => {
+        // Best-effort; the local list is already correct.
+      });
+    }
   }, []);
 
   const [previewThread, setPreviewThread] = useState<string | null>(null);
@@ -331,11 +421,19 @@ export function ApiPlanProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   const decomposePreview = useCallback(async () => {
-    setLoading(true);
+    // NOTE: do NOT toggle the global `loading` here. `_layout` renders a
+    // full-screen "正在连接后端…" while it is true, which unmounts the goal
+    // screen and looks like "点击就断开后端". The screen owns its own busy flag.
     try {
       const job = await submitPreview(buildGenerateRequest());
       const status = await runJob(job, onPreviewStage);
-      const response = status.result as unknown as PreviewResponse;
+      const response = status.result as unknown as PreviewResponse | null;
+      if (!response?.preview) {
+        setError(status.error ?? '拆解没有返回结果，请重试。');
+        setPreviewThread(null);
+        setPreviewMeta(null);
+        return [];
+      }
       setPreviewThread(response.thread_id);
       setPreviewMeta({
         canAdjust: response.preview.can_adjust,
@@ -351,7 +449,6 @@ export function ApiPlanProvider({ children }: { children: React.ReactNode }) {
       setPreviewMeta(null);
       return [];
     } finally {
-      setLoading(false);
       setPreviewStage(null);
     }
   }, [buildGenerateRequest, onPreviewStage]);
@@ -361,13 +458,13 @@ export function ApiPlanProvider({ children }: { children: React.ReactNode }) {
       if (!previewThread) {
         return { drafts: null, applied: false, message: '预览已失效，请重新拆解。' };
       }
-      setLoading(true);
       try {
         const job = await submitAdjustPreview(previewThread, feedback);
         const status = await runJob(job, onPreviewStage);
         const response = status.result as unknown as AdjustResponse;
         // 预算耗尽时后端会直接给最终计划：应用它并关掉预览。
         if (response.final_plan) {
+          discardDraftGoals(pendingTasks.map((item) => item.id));
           applyPlan(response.final_plan);
           setPendingTasks([]);
           setPreviewThread(null);
@@ -392,18 +489,17 @@ export function ApiPlanProvider({ children }: { children: React.ReactNode }) {
         setError(isApiError(caught) ? caught.message : '重新生成失败');
         return { drafts: null, applied: false, message: '重新生成失败。' };
       } finally {
-        setLoading(false);
         setPreviewStage(null);
       }
     },
-    [previewThread, applyPlan, onPreviewStage],
+    [previewThread, applyPlan, onPreviewStage, pendingTasks, discardDraftGoals],
   );
 
   const confirmPreview = useCallback(async () => {
     if (!previewThread) return;
-    setLoading(true);
     try {
       const response = await confirmPreviewApi(previewThread);
+      discardDraftGoals(pendingTasks.map((item) => item.id));
       applyPlan(response.plan);
       setPendingTasks([]);
       setPreviewThread(null);
@@ -411,10 +507,8 @@ export function ApiPlanProvider({ children }: { children: React.ReactNode }) {
       setError(null);
     } catch (caught) {
       setError(isApiError(caught) ? caught.message : '确认失败');
-    } finally {
-      setLoading(false);
     }
-  }, [previewThread, applyPlan]);
+  }, [previewThread, applyPlan, pendingTasks, discardDraftGoals]);
 
   /** 手动重排：先查冷却，可用则生成新版本并切过去。返回一句给用户看的结果。 */
   const replanNow = useCallback(async () => {
@@ -449,13 +543,12 @@ export function ApiPlanProvider({ children }: { children: React.ReactNode }) {
 
   const updatePreferences = useCallback(
     async (patch: Partial<SchedulingPreferences>) => {
-      setPreferences((prev) => {
-        const next = { ...prev, ...patch };
-        savePreferences(next);
-        return next;
-      });
+      const next = { ...preferences, ...patch };
+      setPreferences(next);
+      // Updates the offline cache and write-throughs to the API (api mode).
+      await savePreferencesRemote(next);
     },
-    [],
+    [preferences],
   );
 
   /** Optimistic local change, reverted by a reload if the server rejects it. */
@@ -604,7 +697,7 @@ export function ApiPlanProvider({ children }: { children: React.ReactNode }) {
       situation,
       preferences,
       updatePreferences,
-      planChanges: mockPlanChanges,
+      planChanges,
       replanNow,
       feedbackHistory,
       refreshFeedbackHistory,
@@ -655,6 +748,7 @@ export function ApiPlanProvider({ children }: { children: React.ReactNode }) {
     situation,
     preferences,
     updatePreferences,
+    planChanges,
     goals,
     pendingTasks,
     addPendingTask,

@@ -1,6 +1,6 @@
-import { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react';
+import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
 
-import { isApiError, setAuthToken } from '@/api/client';
+import { isApiError, setAuthToken, setUnauthorizedHandler } from '@/api/client';
 import { dataSource, devEmail, devPassword } from '@/api/config';
 import { getMe, login as loginRequest, register } from '@/api/endpoints';
 import type { UserRead } from '@/api/types';
@@ -41,9 +41,12 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
   const [status, setStatus] = useState<SessionStatus>(dataSource === 'api' ? 'loading' : 'idle');
   const [user, setUserState] = useState<UserRead | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const signingInRef = useRef(false);
 
   const signIn = useCallback(async () => {
     if (dataSource !== 'api') return;
+    if (signingInRef.current) return;
+    signingInRef.current = true;
     try {
       await acquireToken();
       const me = await getMe();
@@ -54,8 +57,21 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
       setAuthToken(null);
       setError(isApiError(caught) ? caught.message : '登录失败');
       setStatus('error');
+    } finally {
+      signingInRef.current = false;
     }
   }, []);
+
+  useEffect(() => {
+    // A 401 from any request drops the token; re-authenticate exactly once.
+    setUnauthorizedHandler(() => {
+      if (signingInRef.current) return;
+      setStatus('loading');
+      setError(null);
+      void signIn();
+    });
+    return () => setUnauthorizedHandler(null);
+  }, [signIn]);
 
   useEffect(() => {
     // eslint-disable-next-line react-hooks/set-state-in-effect -- sign in once on mount

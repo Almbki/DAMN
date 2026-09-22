@@ -53,6 +53,10 @@ export function DecomposePreviewDialog({
   const { colors } = useTheme();
   const [feedback, setFeedback] = useState('');
 
+  const trimmedFeedback = feedback.trim();
+  // The backend requires `feedback` to be non-empty (422 otherwise).
+  const canRegenerate = canAdjust && !busy && trimmedFeedback.length > 0;
+
   const days = Array.from(new Set(tasks.map((task) => task.dueDate))).sort();
 
   return (
@@ -66,8 +70,8 @@ export function DecomposePreviewDialog({
         {
           label: canAdjust ? '重新生成' : '不能再调整',
           variant: 'tonal',
-          disabled: busy || !canAdjust,
-          onPress: () => onRegenerate(feedback),
+          disabled: !canRegenerate,
+          onPress: () => onRegenerate(trimmedFeedback),
         },
         {
           label: busy ? '处理中…' : '就先这样',
