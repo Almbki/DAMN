@@ -1,0 +1,1179 @@
+{
+  "openapi": "3.0.3",
+  "info": {
+    "title": "DAMN 前端所需的后端 API",
+    "version": "0.2.0",
+    "description": "自适应任务规划器前端（frontend/）当前依赖与将要依赖的全部 HTTP 接口。\n\n约定：\n- API 前缀 `/api/v1`，健康检查在根路径 `/health`，**不在** `/api/v1` 下。\n- 除 `/health`、`/auth/*` 外都需要 `Authorization: Bearer <JWT>`。\n- 所有错误统一返回 `{ code, message, detail }`。\n- 每个操作带 `x-implementation-status`：`existing` = 后端已有；`to-add` = 需要后端新增。\n- 日期用 `YYYY-MM-DD`；时间用 `HH:MM:SS`；时间戳用 ISO 8601。",
+    "contact": { "name": "前端 | docs/design/backend-api-gaps.md" }
+  },
+  "servers": [
+    {
+      "url": "http://192.168.9.67:8000",
+      "description": "开发环境（局域网）"
+    }
+  ],
+  "tags": [
+    { "name": "system", "description": "健康检查" },
+    { "name": "auth", "description": "注册 / 登录" },
+    { "name": "users", "description": "用户、排程偏好、用户状态趋势" },
+    { "name": "plans", "description": "计划、生成、拆解、重排、变更" },
+    { "name": "tasks", "description": "任务状态更新" },
+    { "name": "feedback", "description": "每日反馈" },
+    { "name": "insights", "description": "计划分析" },
+    { "name": "goals", "description": "目标 / 待拆解草稿（待新增）" }
+  ],
+  "security": [{ "bearerAuth": [] }],
+  "paths": {
+    "/health": {
+      "get": {
+        "tags": ["system"],
+        "summary": "健康检查",
+        "description": "根路径。前端启动时用来确认后端是否在线。",
+        "security": [],
+        "x-implementation-status": "existing",
+        "responses": {
+          "200": {
+            "description": "服务正常",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HealthResponse" }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/auth/register": {
+      "post": {
+        "tags": ["auth"],
+        "summary": "注册",
+        "description": "邮箱+密码注册。邮箱已存在返回 409。",
+        "security": [],
+        "x-implementation-status": "existing",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": { "schema": { "$ref": "#/components/schemas/RegisterRequest" } }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "注册成功",
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/UserRead" } }
+            }
+          },
+          "409": { "$ref": "#/components/responses/Conflict" },
+          "422": { "$ref": "#/components/responses/Validation" }
+        }
+      }
+    },
+    "/api/v1/auth/login": {
+      "post": {
+        "tags": ["auth"],
+        "summary": "登录",
+        "description": "返回 JWT。前端用它做后续所有请求的 Bearer Token。",
+        "security": [],
+        "x-implementation-status": "existing",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": { "schema": { "$ref": "#/components/schemas/LoginRequest" } }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "登录成功",
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/TokenResponse" } }
+            }
+          },
+          "401": { "$ref": "#/components/responses/Unauthorized" }
+        }
+      }
+    },
+    "/api/v1/users/me": {
+      "get": {
+        "tags": ["users"],
+        "summary": "读取当前用户",
+        "description": "头像/昵称/执行权重/自由 profile。",
+        "x-implementation-status": "existing",
+        "responses": {
+          "200": {
+            "description": "当前用户",
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/UserRead" } }
+            }
+          },
+          "401": { "$ref": "#/components/responses/Unauthorized" }
+        }
+      },
+      "patch": {
+        "tags": ["users"],
+        "summary": "更新当前用户",
+        "description": "设置页改执行权重、昵称、profile。注意 profile 是全量覆盖语义，前端会先合并整份再提交。",
+        "x-implementation-status": "existing",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": { "schema": { "$ref": "#/components/schemas/UserUpdate" } }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "更新后的用户",
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/UserRead" } }
+            }
+          },
+          "401": { "$ref": "#/components/responses/Unauthorized" }
+        }
+      }
+    },
+    "/api/v1/users/me/preferences": {
+      "get": {
+        "tags": ["users"],
+        "summary": "读取排程偏好",
+        "description": "设置页「排程偏好」+ 画像二级页「作息」。让「设一次就一直生效」跨设备成立。",
+        "x-implementation-status": "to-add",
+        "responses": {
+          "200": {
+            "description": "排程偏好",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/SchedulingPreferences" }
+              }
+            }
+          },
+          "401": { "$ref": "#/components/responses/Unauthorized" }
+        }
+      },
+      "put": {
+        "tags": ["users"],
+        "summary": "保存排程偏好",
+        "description": "整体覆盖保存。保存后 `POST /plans/generate` 在请求未显式传这些字段时应回退读取本偏好。",
+        "x-implementation-status": "to-add",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": { "$ref": "#/components/schemas/SchedulingPreferences" }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "保存后的偏好",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/SchedulingPreferences" }
+              }
+            }
+          },
+          "401": { "$ref": "#/components/responses/Unauthorized" },
+          "422": { "$ref": "#/components/responses/Validation" }
+        }
+      }
+    },
+    "/api/v1/users/me/situation/trends": {
+      "get": {
+        "tags": ["users"],
+        "summary": "用户状态趋势（画像）",
+        "description": "画像页一级页的曲线：近 N 天的精力/压力/效能，以及数据是否足够、系统判断的理由。",
+        "x-implementation-status": "to-add",
+        "parameters": [
+          {
+            "name": "days",
+            "in": "query",
+            "required": false,
+            "description": "取最近多少天，默认 14",
+            "schema": { "type": "integer", "minimum": 2, "maximum": 90, "default": 14 }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "趋势",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/SituationTrendRead" }
+              }
+            }
+          },
+          "401": { "$ref": "#/components/responses/Unauthorized" }
+        }
+      }
+    },
+    "/api/v1/plans": {
+      "get": {
+        "tags": ["plans"],
+        "summary": "计划列表",
+        "description": "返回当前用户的所有计划版本；前端取 `status=active` 的那一版。",
+        "x-implementation-status": "existing",
+        "responses": {
+          "200": {
+            "description": "计划列表",
+            "content": {
+              "application/json": {
+                "schema": { "type": "array", "items": { "$ref": "#/components/schemas/PlanListItem" } }
+              }
+            }
+          },
+          "401": { "$ref": "#/components/responses/Unauthorized" }
+        }
+      }
+    },
+    "/api/v1/plans/generate": {
+      "post": {
+        "tags": ["plans"],
+        "summary": "生成计划（同步）",
+        "description": "由目标直接生成并落库。前端的「拆解确认」在后端 draft 接口就绪前会回退到这里。同步返回完整 plan，不要做 SSE 假进度。",
+        "x-implementation-status": "existing",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": { "schema": { "$ref": "#/components/schemas/PlanGenerateRequest" } }
+          }
+        },
+        "responses": {
+          "202": {
+            "description": "生成完成（含 plan）",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/PlanGenerateResponse" }
+              }
+            }
+          },
+          "401": { "$ref": "#/components/responses/Unauthorized" },
+          "422": { "$ref": "#/components/responses/Validation" }
+        }
+      }
+    },
+    "/api/v1/plans/decompose": {
+      "post": {
+        "tags": ["plans"],
+        "summary": "批量拆解（目标页「拆解」）",
+        "description": "把前端攒好的多条待拆解任务交给后端智能体，先返回一份**不落库**的草稿（按天分组），供只读预览。同一 draft_id 带新的 feedback 再次调用即「重新生成」。核心拆解由后端接智能体完成。",
+        "x-implementation-status": "to-add",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": { "schema": { "$ref": "#/components/schemas/DecomposeRequest" } }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "拆解草稿",
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/DecomposeResponse" } }
+            }
+          },
+          "401": { "$ref": "#/components/responses/Unauthorized" },
+          "422": { "$ref": "#/components/responses/Validation" }
+        }
+      }
+    },
+    "/api/v1/plans/confirm": {
+      "post": {
+        "tags": ["plans"],
+        "summary": "确认拆解草稿（落库）",
+        "description": "用户在预览里点「就先这样」时调用，把草稿落成正式计划并返回 PlanRead，前端直接应用。",
+        "x-implementation-status": "to-add",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": { "schema": { "$ref": "#/components/schemas/ConfirmDraftRequest" } }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "新计划",
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/PlanRead" } }
+            }
+          },
+          "401": { "$ref": "#/components/responses/Unauthorized" },
+          "404": { "$ref": "#/components/responses/NotFound" },
+          "409": { "$ref": "#/components/responses/Conflict" }
+        }
+      }
+    },
+    "/api/v1/plans/{plan_id}": {
+      "get": {
+        "tags": ["plans"],
+        "summary": "计划详情",
+        "description": "含该版本的全部任务与该计划涉及的目标。前端据此渲染待办时间轴。",
+        "x-implementation-status": "existing",
+        "parameters": [{ "$ref": "#/components/parameters/PlanId" }],
+        "responses": {
+          "200": {
+            "description": "计划详情",
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/PlanRead" } }
+            }
+          },
+          "403": { "$ref": "#/components/responses/Forbidden" },
+          "404": { "$ref": "#/components/responses/NotFound" }
+        }
+      }
+    },
+    "/api/v1/plans/{plan_id}/changes": {
+      "get": {
+        "tags": ["plans"],
+        "summary": "计划变更记录（待办右上「计划变更」）",
+        "description": "返回每次重排改了**未来哪几天**、每天新增/移动/移除几条、以及原因。触发者可能是反馈自动重排或手动重排。需后端在 `ReplanService.replan` 时把旧/新 `(scheduled_date, start_time, end_time)` 的 date diff 一起写入 ReplanEvent。",
+        "x-implementation-status": "to-add",
+        "parameters": [{ "$ref": "#/components/parameters/PlanId" }],
+        "responses": {
+          "200": {
+            "description": "变更记录（按时间倒序）",
+            "content": {
+              "application/json": {
+                "schema": { "type": "array", "items": { "$ref": "#/components/schemas/PlanChangeRead" } }
+              }
+            }
+          },
+          "403": { "$ref": "#/components/responses/Forbidden" },
+          "404": { "$ref": "#/components/responses/NotFound" }
+        }
+      }
+    },
+    "/api/v1/plans/{plan_id}/tasks/{task_id}": {
+      "patch": {
+        "tags": ["tasks"],
+        "summary": "更新任务状态/执行信息",
+        "description": "勾选完成用 `{completed:true}`；取消完成必须用 `{status:'scheduled'}`（`{completed:false}` 是 no-op）；跳过用 `{status:'skipped'}`；记录实际用时可传 `actual_duration`。",
+        "x-implementation-status": "existing",
+        "parameters": [
+          { "$ref": "#/components/parameters/PlanId" },
+          {
+            "name": "task_id",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "integer" }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": { "schema": { "$ref": "#/components/schemas/TaskUpdateRequest" } }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "更新后的任务",
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/TaskRead" } }
+            }
+          },
+          "403": { "$ref": "#/components/responses/Forbidden" },
+          "404": { "$ref": "#/components/responses/NotFound" }
+        }
+      }
+    },
+    "/api/v1/plans/{plan_id}/feedback": {
+      "get": {
+        "tags": ["feedback"],
+        "summary": "反馈历史",
+        "description": "当前计划的每日反馈列表，可用于画像趋势兜底。",
+        "x-implementation-status": "existing",
+        "parameters": [{ "$ref": "#/components/parameters/PlanId" }],
+        "responses": {
+          "200": {
+            "description": "反馈列表",
+            "content": {
+              "application/json": {
+                "schema": { "type": "array", "items": { "$ref": "#/components/schemas/FeedbackRead" } }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "tags": ["feedback"],
+        "summary": "提交每日反馈",
+        "description": "待办底部「写今日反馈」。当 `completion_rate < 0.5` 且不在 24h 冷却内时，后端自动重排并返回 `replan_triggered=true` 与新 `replan_plan_id`；冷却中则 `replan_eligibility.eligible=false` 并给 `next_eligible_at`。",
+        "x-implementation-status": "existing",
+        "parameters": [{ "$ref": "#/components/parameters/PlanId" }],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": { "schema": { "$ref": "#/components/schemas/FeedbackCreate" } }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "反馈结果",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/FeedbackSubmitResponse" }
+              }
+            }
+          },
+          "403": { "$ref": "#/components/responses/Forbidden" },
+          "404": { "$ref": "#/components/responses/NotFound" }
+        }
+      }
+    },
+    "/api/v1/plans/{plan_id}/replan": {
+      "post": {
+        "tags": ["plans"],
+        "summary": "手动重排",
+        "description": "创建新版本（不可变，旧版标 superseded），复制未完成任务并重新排期。冷却中返回 409。",
+        "x-implementation-status": "existing",
+        "parameters": [{ "$ref": "#/components/parameters/PlanId" }],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": { "schema": { "$ref": "#/components/schemas/ReplanRequest" } }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "重排结果",
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/ReplanResponse" } }
+            }
+          },
+          "409": { "$ref": "#/components/responses/Conflict" }
+        }
+      }
+    },
+    "/api/v1/plans/{plan_id}/replan/eligibility": {
+      "get": {
+        "tags": ["plans"],
+        "summary": "重排资格（冷却）",
+        "description": "per-user 24h 冷却；前端用它决定是否允许再次重排并提示 `next_eligible_at`。",
+        "x-implementation-status": "existing",
+        "parameters": [{ "$ref": "#/components/parameters/PlanId" }],
+        "responses": {
+          "200": {
+            "description": "资格",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/ReplanEligibilityRead" }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/plans/{plan_id}/insights": {
+      "get": {
+        "tags": ["insights"],
+        "summary": "计划分析",
+        "description": "完成率、计划/实际时长、认知负荷、每日完成、建议等。建议额外补充 `data_sufficiency` 与 `drivers` 供画像使用。",
+        "x-implementation-status": "existing",
+        "parameters": [{ "$ref": "#/components/parameters/PlanId" }],
+        "responses": {
+          "200": {
+            "description": "分析结果",
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/InsightRead" } }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/plans/generation/{job_id}/events": {
+      "get": {
+        "tags": ["plans"],
+        "summary": "生成进度（SSE）",
+        "description": "事件名与图节点同名：`goal_analysis` / `theoretical_analysis` / `user_situation_analysis` / `plan_generation` / `rule_validation` / `plan_repair`，外加 `completed`。注意：当前前端不用 SSE（generate 同步返回）。",
+        "x-implementation-status": "existing",
+        "parameters": [
+          { "name": "job_id", "in": "path", "required": true, "schema": { "type": "string" } }
+        ],
+        "responses": {
+          "200": {
+            "description": "事件流",
+            "content": { "text/event-stream": { "schema": { "type": "string" } } }
+          }
+        }
+      }
+    },
+    "/api/v1/goals": {
+      "get": {
+        "tags": ["goals"],
+        "summary": "目标列表 / 待拆解草稿",
+        "description": "目标页「待拆解清单」跨设备保留。`status=draft` 为待拆解项。不传 status 返回全部。",
+        "x-implementation-status": "to-add",
+        "parameters": [
+          {
+            "name": "status",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "enum": ["active", "draft", "completed", "archived", "cancelled"]
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "目标列表",
+            "content": {
+              "application/json": {
+                "schema": { "type": "array", "items": { "$ref": "#/components/schemas/GoalDetailRead" } }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "tags": ["goals"],
+        "summary": "新建目标 / 待拆解项",
+        "description": "`status=draft` 表示一条等待拆解的任务；`active` 表示已确认进行中的目标。",
+        "x-implementation-status": "to-add",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": { "schema": { "$ref": "#/components/schemas/GoalCreate" } }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "新目标",
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/GoalDetailRead" } }
+            }
+          },
+          "409": { "$ref": "#/components/responses/Conflict" },
+          "422": { "$ref": "#/components/responses/Validation" }
+        }
+      }
+    },
+    "/api/v1/goals/{goal_id}": {
+      "patch": {
+        "tags": ["goals"],
+        "summary": "更新目标 / 待拆解项",
+        "description": "编辑待拆解项的名称、优先级、截止日期、补充。",
+        "x-implementation-status": "to-add",
+        "parameters": [{ "$ref": "#/components/parameters/GoalId" }],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": { "schema": { "$ref": "#/components/schemas/GoalUpdate" } }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "更新后的目标",
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/GoalDetailRead" } }
+            }
+          },
+          "404": { "$ref": "#/components/responses/NotFound" }
+        }
+      },
+      "delete": {
+        "tags": ["goals"],
+        "summary": "删除目标 / 待拆解项",
+        "x-implementation-status": "to-add",
+        "parameters": [{ "$ref": "#/components/parameters/GoalId" }],
+        "responses": {
+          "204": { "description": "已删除" },
+          "404": { "$ref": "#/components/responses/NotFound" }
+        }
+      }
+    }
+  },
+  "components": {
+    "securitySchemes": {
+      "bearerAuth": { "type": "http", "scheme": "bearer", "bearerFormat": "JWT" }
+    },
+    "parameters": {
+      "PlanId": {
+        "name": "plan_id",
+        "in": "path",
+        "required": true,
+        "schema": { "type": "integer" }
+      },
+      "GoalId": {
+        "name": "goal_id",
+        "in": "path",
+        "required": true,
+        "schema": { "type": "integer" }
+      }
+    },
+    "responses": {
+      "Unauthorized": {
+        "description": "未认证（401）",
+        "content": {
+          "application/json": { "schema": { "$ref": "#/components/schemas/ErrorEnvelope" } }
+        }
+      },
+      "Forbidden": {
+        "description": "无权访问该资源（403）",
+        "content": {
+          "application/json": { "schema": { "$ref": "#/components/schemas/ErrorEnvelope" } }
+        }
+      },
+      "NotFound": {
+        "description": "资源不存在（404）",
+        "content": {
+          "application/json": { "schema": { "$ref": "#/components/schemas/ErrorEnvelope" } }
+        }
+      },
+      "Conflict": {
+        "description": "冲突（409）",
+        "content": {
+          "application/json": { "schema": { "$ref": "#/components/schemas/ErrorEnvelope" } }
+        }
+      },
+      "Validation": {
+        "description": "参数校验失败（422）",
+        "content": {
+          "application/json": { "schema": { "$ref": "#/components/schemas/ErrorEnvelope" } }
+        }
+      }
+    },
+    "schemas": {
+      "ErrorEnvelope": {
+        "type": "object",
+        "description": "统一错误体",
+        "required": ["code", "message"],
+        "properties": {
+          "code": {
+            "type": "string",
+            "description": "机器可读错误码，如 `not_found` / `conflict` / `replan_not_eligible` / `validation_error`"
+          },
+          "message": { "type": "string", "description": "给人看的说明" },
+          "detail": { "nullable": true, "description": "可选的补充信息（对象或数组）" }
+        }
+      },
+      "HealthResponse": {
+        "type": "object",
+        "required": ["status", "app", "version", "environment"],
+        "properties": {
+          "status": { "type": "string", "example": "ok" },
+          "app": { "type": "string", "example": "DAMN" },
+          "version": { "type": "string", "example": "0.1.0" },
+          "environment": { "type": "string", "example": "development" }
+        }
+      },
+      "RegisterRequest": {
+        "type": "object",
+        "required": ["email", "password"],
+        "properties": {
+          "email": { "type": "string", "format": "email" },
+          "password": { "type": "string", "minLength": 8, "maxLength": 128 },
+          "display_name": { "type": "string", "nullable": true },
+          "execution_weight": { "type": "number", "minimum": 0, "maximum": 1, "default": 0.5 },
+          "profile": { "type": "object", "additionalProperties": true, "default": {} }
+        }
+      },
+      "LoginRequest": {
+        "type": "object",
+        "required": ["email", "password"],
+        "properties": {
+          "email": { "type": "string", "format": "email" },
+          "password": { "type": "string" }
+        }
+      },
+      "TokenResponse": {
+        "type": "object",
+        "required": ["access_token", "token_type", "expires_in"],
+        "properties": {
+          "access_token": { "type": "string" },
+          "token_type": { "type": "string", "example": "bearer" },
+          "expires_in": { "type": "integer", "example": 604800 }
+        }
+      },
+      "UserRead": {
+        "type": "object",
+        "required": ["id", "email", "execution_weight", "profile", "created_at"],
+        "properties": {
+          "id": { "type": "integer" },
+          "email": { "type": "string", "format": "email" },
+          "display_name": { "type": "string", "nullable": true },
+          "execution_weight": {
+            "type": "number",
+            "minimum": 0,
+            "maximum": 1,
+            "description": "执行权重，前端设置页可调；用于预估与画像「效能」"
+          },
+          "profile": {
+            "type": "object",
+            "additionalProperties": true,
+            "description": "自由 JSON；建议存放 scheduling_preferences（见下）"
+          },
+          "created_at": { "type": "string", "format": "date-time" }
+        }
+      },
+      "UserUpdate": {
+        "type": "object",
+        "properties": {
+          "display_name": { "type": "string", "nullable": true },
+          "execution_weight": { "type": "number", "minimum": 0, "maximum": 1 },
+          "profile": {
+            "type": "object",
+            "additionalProperties": true,
+            "description": "全量覆盖语义：请提交完整 profile"
+          }
+        }
+      },
+      "SchedulingPreferences": {
+        "type": "object",
+        "description": "设置页「排程偏好」与画像二级页「基础档案」共用的数据",
+        "required": [
+          "available_minutes_per_day",
+          "daily_limit_minutes",
+          "buffer_minutes",
+          "high_cognitive_max_per_day"
+        ],
+        "properties": {
+          "available_minutes_per_day": { "type": "integer", "minimum": 30, "maximum": 1440, "default": 480 },
+          "daily_limit_minutes": { "type": "integer", "minimum": 30, "maximum": 1440, "default": 300 },
+          "buffer_minutes": { "type": "integer", "minimum": 0, "maximum": 120, "default": 15 },
+          "high_cognitive_max_per_day": { "type": "integer", "minimum": 1, "maximum": 10, "default": 2 },
+          "sleep_start": { "type": "string", "example": "23:30", "description": "本地时间 HH:MM" },
+          "sleep_end": { "type": "string", "example": "07:30", "description": "本地时间 HH:MM" }
+        }
+      },
+      "TaskStatus": {
+        "type": "string",
+        "enum": ["pending", "scheduled", "in_progress", "completed", "skipped", "failed"]
+      },
+      "CognitiveLoad": {
+        "type": "string",
+        "enum": ["low", "medium", "high", "restorative"]
+      },
+      "StandardRead": {
+        "type": "object",
+        "required": ["id", "description", "completed", "order_index"],
+        "properties": {
+          "id": { "type": "integer" },
+          "description": { "type": "string" },
+          "estimated_duration": { "type": "integer", "nullable": true },
+          "completed": { "type": "boolean" },
+          "order_index": { "type": "integer" }
+        }
+      },
+      "TaskRead": {
+        "type": "object",
+        "description": "前端时间轴依赖 scheduled_date / start_time / end_time / priority",
+        "required": ["id", "plan_id", "title", "estimated_duration", "priority", "status", "order_index"],
+        "properties": {
+          "id": { "type": "integer" },
+          "plan_id": { "type": "integer" },
+          "goal_id": { "type": "integer", "nullable": true, "description": "可信；用于待办按目标分组" },
+          "parent_task_id": { "type": "integer", "nullable": true },
+          "title": { "type": "string" },
+          "description": { "type": "string", "nullable": true },
+          "estimated_duration": { "type": "integer", "description": "预计分钟" },
+          "predicted_duration": { "type": "integer", "nullable": true },
+          "cognitive_load": { "$ref": "#/components/schemas/CognitiveLoad" },
+          "priority": {
+            "type": "integer",
+            "description": "1=低 2=中 3=高（前端旗标按 >=3 高 / 2 中 / 其它 低）。请给出真实档位差异。"
+          },
+          "scheduled_date": { "type": "string", "format": "date", "nullable": true },
+          "start_time": { "type": "string", "nullable": true, "example": "09:00:00" },
+          "end_time": { "type": "string", "nullable": true, "example": "10:00:00" },
+          "status": { "$ref": "#/components/schemas/TaskStatus" },
+          "completion_probability": { "type": "number", "nullable": true },
+          "is_flexible": { "type": "boolean" },
+          "order_index": { "type": "integer" },
+          "standards": { "type": "array", "items": { "$ref": "#/components/schemas/StandardRead" } }
+        }
+      },
+      "GoalRead": {
+        "type": "object",
+        "required": ["id", "title", "goal_type", "priority", "status"],
+        "properties": {
+          "id": { "type": "integer" },
+          "title": { "type": "string" },
+          "goal_type": { "type": "string", "enum": ["long_term", "short_term", "project", "habit", "other"] },
+          "priority": { "type": "integer", "minimum": 1, "maximum": 4 },
+          "status": { "type": "string" }
+        }
+      },
+      "GoalDetailRead": {
+        "type": "object",
+        "description": "目标 / 待拆解项",
+        "required": ["id", "title", "status"],
+        "properties": {
+          "id": { "type": "integer" },
+          "title": { "type": "string" },
+          "description": { "type": "string", "nullable": true, "description": "待拆解项里对应「补充」" },
+          "goal_type": { "type": "string", "default": "other" },
+          "status": {
+            "type": "string",
+            "enum": ["active", "draft", "completed", "archived", "cancelled"],
+            "description": "draft = 等待拆解"
+          },
+          "deadline": { "type": "string", "format": "date", "nullable": true },
+          "priority": { "type": "integer", "minimum": 1, "maximum": 4 },
+          "estimated_minutes": { "type": "integer", "nullable": true },
+          "created_at": { "type": "string", "format": "date-time" }
+        }
+      },
+      "GoalCreate": {
+        "type": "object",
+        "required": ["title"],
+        "properties": {
+          "title": { "type": "string" },
+          "description": { "type": "string", "nullable": true },
+          "goal_type": { "type": "string", "enum": ["long_term", "short_term", "project", "habit", "other"], "default": "other" },
+          "deadline": { "type": "string", "format": "date-time", "nullable": true },
+          "priority": { "type": "integer", "minimum": 1, "maximum": 4, "default": 2 },
+          "estimated_minutes": { "type": "integer", "nullable": true },
+          "subject": { "type": "string", "nullable": true },
+          "task_type": { "type": "string", "nullable": true },
+          "status": {
+            "type": "string",
+            "enum": ["active", "draft"],
+            "default": "active",
+            "description": "建待拆解项时传 draft"
+          }
+        }
+      },
+      "GoalUpdate": {
+        "type": "object",
+        "properties": {
+          "title": { "type": "string" },
+          "description": { "type": "string", "nullable": true },
+          "status": {
+            "type": "string",
+            "enum": ["active", "draft", "completed", "archived", "cancelled"]
+          },
+          "deadline": { "type": "string", "format": "date", "nullable": true },
+          "priority": { "type": "integer", "minimum": 1, "maximum": 4 }
+        }
+      },
+      "PlanRead": {
+        "type": "object",
+        "required": ["id", "user_id", "version", "status", "start_date", "end_date", "created_at", "tasks", "goals"],
+        "properties": {
+          "id": { "type": "integer" },
+          "user_id": { "type": "integer" },
+          "version": { "type": "integer" },
+          "status": { "type": "string", "enum": ["active", "superseded", "draft", "completed", "archived"] },
+          "title": { "type": "string", "nullable": true },
+          "start_date": { "type": "string", "format": "date" },
+          "end_date": { "type": "string", "format": "date" },
+          "parent_plan_id": { "type": "integer", "nullable": true },
+          "confidence": { "type": "number", "nullable": true },
+          "created_at": { "type": "string", "format": "date-time" },
+          "tasks": { "type": "array", "items": { "$ref": "#/components/schemas/TaskRead" } },
+          "goals": {
+            "type": "array",
+            "items": { "$ref": "#/components/schemas/GoalRead" },
+            "description": "由该计划任务的 goal_id 反查；前端只用它做分组标题"
+          }
+        }
+      },
+      "PlanListItem": {
+        "type": "object",
+        "required": ["id", "version", "status", "start_date", "end_date", "created_at", "task_count", "completed_count"],
+        "properties": {
+          "id": { "type": "integer" },
+          "version": { "type": "integer" },
+          "status": { "type": "string" },
+          "title": { "type": "string", "nullable": true },
+          "start_date": { "type": "string", "format": "date" },
+          "end_date": { "type": "string", "format": "date" },
+          "confidence": { "type": "number" },
+          "created_at": { "type": "string", "format": "date-time" },
+          "task_count": { "type": "integer" },
+          "completed_count": { "type": "integer" }
+        }
+      },
+      "PlanGenerateRequest": {
+        "type": "object",
+        "required": ["goals"],
+        "properties": {
+          "goals": { "type": "array", "minItems": 1, "items": { "$ref": "#/components/schemas/GoalCreate" } },
+          "start_date": { "type": "string", "format": "date", "nullable": true },
+          "end_date": { "type": "string", "format": "date", "nullable": true },
+          "plan_title": { "type": "string", "nullable": true },
+          "available_minutes_per_day": { "type": "integer", "minimum": 1, "maximum": 1440, "default": 480 },
+          "daily_limit_minutes": { "type": "integer", "minimum": 1, "maximum": 1440, "default": 300 },
+          "buffer_minutes": { "type": "integer", "minimum": 0, "maximum": 120, "default": 15 },
+          "high_cognitive_max_per_day": { "type": "integer", "minimum": 1, "maximum": 10, "default": 2 },
+          "user_profile": { "type": "object", "additionalProperties": true, "default": {} },
+          "execution_weight": { "type": "number", "nullable": true }
+        }
+      },
+      "PlanGenerateResponse": {
+        "type": "object",
+        "required": ["job_id", "status", "events_url"],
+        "properties": {
+          "job_id": { "type": "string" },
+          "status": { "type": "string", "example": "completed" },
+          "plan_id": { "type": "integer", "nullable": true },
+          "events_url": { "type": "string" },
+          "plan": { "allOf": [{ "$ref": "#/components/schemas/PlanRead" }], "nullable": true }
+        }
+      },
+      "DecomposeRequest": {
+        "type": "object",
+        "required": ["goals"],
+        "properties": {
+          "goals": {
+            "type": "array",
+            "minItems": 1,
+            "description": "待拆解清单（用户在目标页攒的多条）",
+            "items": { "$ref": "#/components/schemas/DecomposeGoal" }
+          },
+          "draft_id": {
+            "type": "string",
+            "nullable": true,
+            "description": "「重新生成」时带上同一 draft_id，后端据此保留上下文"
+          },
+          "feedback": {
+            "type": "string",
+            "nullable": true,
+            "description": "用户对上一版预览的意见，如「晚点做」「少一点」「挪到周末」"
+          }
+        }
+      },
+      "DecomposeGoal": {
+        "type": "object",
+        "required": ["title"],
+        "properties": {
+          "title": { "type": "string" },
+          "priority": { "type": "integer", "minimum": 1, "maximum": 3, "default": 2 },
+          "deadline": { "type": "string", "format": "date", "nullable": true },
+          "notes": { "type": "string", "description": "补充，拆解线索" }
+        }
+      },
+      "DecomposeDraftTask": {
+        "type": "object",
+        "required": ["title", "priority", "estimated_minutes"],
+        "properties": {
+          "title": { "type": "string" },
+          "priority": { "type": "integer", "minimum": 1, "maximum": 3 },
+          "estimated_minutes": { "type": "integer" },
+          "start_time": { "type": "string", "nullable": true, "example": "09:00:00" },
+          "end_time": { "type": "string", "nullable": true, "example": "10:00:00" },
+          "source_index": { "type": "integer", "description": "来自请求 goals 的下标，便于前端对应" }
+        }
+      },
+      "DecomposeDay": {
+        "type": "object",
+        "required": ["date", "tasks"],
+        "properties": {
+          "date": { "type": "string", "format": "date" },
+          "tasks": { "type": "array", "items": { "$ref": "#/components/schemas/DecomposeDraftTask" } }
+        }
+      },
+      "DecomposeResponse": {
+        "type": "object",
+        "required": ["draft_id", "days"],
+        "properties": {
+          "draft_id": { "type": "string" },
+          "days": { "type": "array", "items": { "$ref": "#/components/schemas/DecomposeDay" } }
+        }
+      },
+      "ConfirmDraftRequest": {
+        "type": "object",
+        "required": ["draft_id"],
+        "properties": { "draft_id": { "type": "string" } }
+      },
+      "TaskUpdateRequest": {
+        "type": "object",
+        "properties": {
+          "status": { "$ref": "#/components/schemas/TaskStatus" },
+          "completed": { "type": "boolean", "description": "true 会写一条 TaskExecution；false 是 no-op，请用 status=scheduled" },
+          "actual_duration": { "type": "integer" },
+          "difficulty_feedback": { "type": "integer", "minimum": 1, "maximum": 5 },
+          "stress_before": { "type": "integer", "minimum": 0, "maximum": 10 },
+          "stress_after": { "type": "integer", "minimum": 0, "maximum": 10 },
+          "failure_reason": { "type": "string" },
+          "started_at": { "type": "string", "format": "date-time" },
+          "finished_at": { "type": "string", "format": "date-time" },
+          "standard_updates": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "required": ["id", "completed"],
+              "properties": { "id": { "type": "integer" }, "completed": { "type": "boolean" } }
+            }
+          }
+        }
+      },
+      "FeedbackCreate": {
+        "type": "object",
+        "required": ["date"],
+        "properties": {
+          "date": { "type": "string", "format": "date" },
+          "completion_rate": { "type": "number", "minimum": 0, "maximum": 1 },
+          "stress_level": { "type": "integer", "minimum": 0, "maximum": 10, "nullable": true },
+          "energy_level": { "type": "integer", "minimum": 0, "maximum": 10, "nullable": true },
+          "delay_reason": { "type": "string", "nullable": true },
+          "free_text": { "type": "string", "nullable": true },
+          "sleep_hours": { "type": "number", "minimum": 0, "maximum": 24, "nullable": true },
+          "dominant_time_of_day": { "type": "string", "nullable": true }
+        }
+      },
+      "FeedbackRead": {
+        "allOf": [
+          { "$ref": "#/components/schemas/FeedbackCreate" },
+          {
+            "type": "object",
+            "required": ["id", "user_id", "plan_id", "completion_rate", "created_at"],
+            "properties": {
+              "id": { "type": "integer" },
+              "user_id": { "type": "integer" },
+              "plan_id": { "type": "integer" },
+              "completion_rate": { "type": "number" },
+              "created_at": { "type": "string", "format": "date-time" }
+            }
+          }
+        ]
+      },
+      "ReplanEligibilityRead": {
+        "type": "object",
+        "required": ["eligible", "reason", "cooldown_hours"],
+        "properties": {
+          "eligible": { "type": "boolean" },
+          "reason": { "type": "string" },
+          "next_eligible_at": { "type": "string", "format": "date-time", "nullable": true },
+          "last_replan_at": { "type": "string", "format": "date-time", "nullable": true },
+          "cooldown_hours": { "type": "integer", "example": 24 }
+        }
+      },
+      "FeedbackSubmitResponse": {
+        "type": "object",
+        "required": ["feedback", "replan_triggered"],
+        "properties": {
+          "feedback": { "$ref": "#/components/schemas/FeedbackRead" },
+          "replan_triggered": { "type": "boolean" },
+          "replan_plan_id": { "type": "integer", "nullable": true },
+          "replan_eligibility": {
+            "allOf": [{ "$ref": "#/components/schemas/ReplanEligibilityRead" }],
+            "nullable": true
+          }
+        }
+      },
+      "ReplanTriggerType": {
+        "type": "string",
+        "enum": ["manual", "feedback_triggered", "scheduled", "system"]
+      },
+      "ReplanRequest": {
+        "type": "object",
+        "properties": {
+          "trigger_type": { "$ref": "#/components/schemas/ReplanTriggerType" },
+          "reason": { "type": "string", "nullable": true },
+          "from_date": { "type": "string", "format": "date", "nullable": true }
+        }
+      },
+      "ReplanResponse": {
+        "type": "object",
+        "required": ["plan_id", "old_version", "new_version", "changed_task_ids", "reason", "trigger_type"],
+        "properties": {
+          "plan_id": { "type": "integer" },
+          "old_version": { "type": "integer" },
+          "new_version": { "type": "integer" },
+          "changed_task_ids": { "type": "array", "items": { "type": "integer" } },
+          "reason": { "type": "string" },
+          "trigger_type": { "$ref": "#/components/schemas/ReplanTriggerType" }
+        }
+      },
+      "PlanChangeDayRead": {
+        "type": "object",
+        "required": ["date", "added", "moved", "removed", "summary"],
+        "properties": {
+          "date": { "type": "string", "format": "date" },
+          "added": { "type": "integer", "description": "新增任务数" },
+          "moved": { "type": "integer", "description": "从别的天挪进来的任务数" },
+          "removed": { "type": "integer", "description": "移出/删除的任务数" },
+          "summary": { "type": "string", "description": "一句话说明" },
+          "task_ids": { "type": "array", "items": { "type": "integer" } }
+        }
+      },
+      "PlanChangeRead": {
+        "type": "object",
+        "required": ["id", "trigger_type", "reason", "old_version", "new_version", "created_at", "days"],
+        "properties": {
+          "id": { "type": "integer" },
+          "trigger_type": { "$ref": "#/components/schemas/ReplanTriggerType" },
+          "reason": { "type": "string" },
+          "old_version": { "type": "integer" },
+          "new_version": { "type": "integer" },
+          "created_at": { "type": "string", "format": "date-time" },
+          "days": { "type": "array", "items": { "$ref": "#/components/schemas/PlanChangeDayRead" } }
+        }
+      },
+      "DailyCompletionRead": {
+        "type": "object",
+        "required": ["date", "total_tasks", "completed_tasks", "completion_rate", "planned_minutes"],
+        "properties": {
+          "date": { "type": "string", "format": "date" },
+          "total_tasks": { "type": "integer" },
+          "completed_tasks": { "type": "integer" },
+          "completion_rate": { "type": "number" },
+          "planned_minutes": { "type": "integer" }
+        }
+      },
+      "InsightRead": {
+        "type": "object",
+        "required": [
+          "plan_id", "total_tasks", "completed_tasks", "completion_rate",
+          "total_planned_minutes", "total_actual_minutes",
+          "high_cognitive_minutes", "cognitive_load_breakdown", "daily", "recommendations"
+        ],
+        "properties": {
+          "plan_id": { "type": "integer" },
+          "total_tasks": { "type": "integer" },
+          "completed_tasks": { "type": "integer" },
+          "completion_rate": { "type": "number" },
+          "total_planned_minutes": { "type": "integer" },
+          "total_actual_minutes": { "type": "integer" },
+          "avg_stress": { "type": "number", "nullable": true },
+          "avg_energy": { "type": "number", "nullable": true },
+          "high_cognitive_minutes": { "type": "integer" },
+          "predicted_vs_actual_ratio": { "type": "number", "nullable": true },
+          "cognitive_load_breakdown": {
+            "type": "object",
+            "additionalProperties": { "type": "integer" }
+          },
+          "daily": { "type": "array", "items": { "$ref": "#/components/schemas/DailyCompletionRead" } },
+          "recommendations": { "type": "array", "items": { "type": "string" } },
+          "data_sufficiency": {
+            "nullable": true,
+            "description": "【建议新增】画像「数据够不够」",
+            "type": "object",
+            "properties": {
+              "samples": { "type": "integer" },
+              "min_samples": { "type": "integer" },
+              "sufficient": { "type": "boolean" }
+            }
+          },
+          "drivers": {
+            "nullable": true,
+            "description": "【建议新增】画像「系统为什么这么判断」",
+            "type": "array",
+            "items": { "type": "string" }
+          }
+        }
+      },
+      "SituationTrendPoint": {
+        "type": "object",
+        "required": ["date"],
+        "properties": {
+          "date": { "type": "string", "format": "date" },
+          "energy": { "type": "number", "nullable": true, "description": "0..10" },
+          "stress": { "type": "number", "nullable": true, "description": "0..10" },
+          "efficacy": { "type": "number", "nullable": true, "description": "0..1；如无后端定义，前端按 0.6*execution_weight + 0.4*完成率 兜底" }
+        }
+      },
+      "SituationTrendRead": {
+        "type": "object",
+        "required": ["points", "samples", "min_samples", "sufficient"],
+        "properties": {
+          "points": { "type": "array", "items": { "$ref": "#/components/schemas/SituationTrendPoint" } },
+          "samples": { "type": "integer", "description": "有效反馈天数" },
+          "min_samples": { "type": "integer", "description": "判断门槛，建议 5" },
+          "sufficient": { "type": "boolean" },
+          "drivers": {
+            "type": "array",
+            "items": { "type": "string" },
+            "description": "系统判断理由（人话）"
+          }
+        }
+      }
+    }
+  }
+}
