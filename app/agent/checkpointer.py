@@ -185,15 +185,9 @@ def close_checkpointer() -> None:
         logger.warning("agent checkpointer: pool close failed: %s: %s", type(exc).__name__, exc)
 
 
-def reset_checkpointer() -> None:
-    """Drop the cached checkpointer (used by tests)."""
-    close_checkpointer()
-
-
 __all__ = [
     "build_checkpointer",
     "close_checkpointer",
     "get_checkpointer",
     "get_checkpointer_mode",
-    "reset_checkpointer",
 ]

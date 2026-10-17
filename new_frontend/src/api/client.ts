@@ -1,8 +1,16 @@
 // `expo/fetch` is the runtime's global fetch and the guaranteed-streaming form.
 // Aliased so the existing `apiRequest` keeps using the global `fetch` untouched.
 import { fetch as expoFetch } from 'expo/fetch';
+import { Platform } from 'react-native';
 
-import { apiBaseUrl, apiPrefix, pollIntervalMs, requestTimeoutMs, streamTimeoutMs } from '@/api/config';
+import {
+  apiBaseUrl,
+  apiPrefix,
+  pollIntervalMs,
+  requestTimeoutMs,
+  streamIdleTimeoutMs,
+  streamTimeoutMs,
+} from '@/api/config';
 import type { JobStatus } from '@/api/types';
 
 export class ApiError extends Error {
@@ -91,10 +99,6 @@ export function setAuthToken(token: string | null) {
   writeStoredToken(token);
 }
 
-export function getAuthToken(): string | null {
-  return authToken;
-}
-
 type RequestOptions = {
   method?: 'GET' | 'POST' | 'PATCH' | 'DELETE';
   body?: unknown;
@@ -141,7 +145,9 @@ export async function apiRequest<T>(path: string, options: RequestOptions = {}):
     const data = text ? parseJson(text) : null;
 
     if (!response.ok) {
-      if (response.status === 401) notifyUnauthorized();
+      // Login/register intentionally pass `auth: false`: a bad password must be
+      // shown as an error, not treated as an expired session.
+      if (response.status === 401 && auth) notifyUnauthorized();
       const envelope = (data ?? {}) as { code?: string; message?: string; detail?: unknown };
       throw new ApiError(
         response.status,
@@ -173,6 +179,31 @@ type ExpoResponse = Awaited<ReturnType<typeof expoFetch>>;
 
 function abortError(): ApiError {
   return new ApiError(0, 'aborted', '请求已取消。');
+}
+
+function streamTimeoutError(): ApiError {
+  return new ApiError(0, 'stream_timeout', '生成流长时间没有响应，已改用轮询。');
+}
+
+/**
+ * Normalise CRLF and bare CR newlines without corrupting a CRLF split across
+ * two decoder chunks (the trailing CR is carried into the next append).
+ */
+function createNewlineNormalizer() {
+  let pendingCR = false;
+  return {
+    append(chunk: string): string {
+      let text = (pendingCR ? '\r' : '') + chunk;
+      pendingCR = text.endsWith('\r');
+      if (pendingCR) text = text.slice(0, -1);
+      return text.replace(/\r\n?/g, '\n');
+    },
+    flush(): string {
+      if (!pendingCR) return '';
+      pendingCR = false;
+      return '\n';
+    },
+  };
 }
 
 /** Split one raw SSE frame into `event:` / `data:` parts and dispatch it. */
@@ -214,50 +245,72 @@ export async function apiStream(
   signal?: AbortSignal,
 ): Promise<void> {
   const headers: Record<string, string> = { Accept: 'text/event-stream' };
+  // Browsers forbid setting this header; native runtimes need it so an HTTP
+  // proxy does not buffer the stream into one late chunk.
+  if (Platform.OS !== 'web') headers['Accept-Encoding'] = 'identity';
   if (authToken) headers.Authorization = `Bearer ${authToken}`;
 
-  let response: ExpoResponse;
+  // Fan the caller's signal into our own controller so the idle watchdog can
+  // abort the request without losing which source triggered the abort.
+  const controller = new AbortController();
+  const abortFromCaller = () => controller.abort();
+  if (signal) {
+    if (signal.aborted) controller.abort();
+    else signal.addEventListener('abort', abortFromCaller, { once: true });
+  }
+
+  let idleTimedOut = false;
+  let idleTimer: ReturnType<typeof setTimeout> | undefined;
+  const resetIdle = () => {
+    if (idleTimer !== undefined) clearTimeout(idleTimer);
+    idleTimer = setTimeout(() => {
+      idleTimedOut = true;
+      controller.abort();
+    }, streamIdleTimeoutMs);
+  };
+  resetIdle();
+
   try {
-    response = await expoFetch(`${apiBaseUrl}${apiPrefix}${path}`, {
-      method: 'GET',
-      headers,
-      signal,
-    });
-  } catch (error) {
-    if (error instanceof ApiError) throw error;
-    if (signal?.aborted || (error instanceof Error && error.name === 'AbortError')) {
-      throw abortError();
+    let response: ExpoResponse;
+    try {
+      response = await expoFetch(`${apiBaseUrl}${apiPrefix}${path}`, {
+        method: 'GET',
+        headers,
+        signal: controller.signal,
+      });
+    } catch (error) {
+      if (idleTimedOut) throw streamTimeoutError();
+      if (error instanceof ApiError) throw error;
+      if (signal?.aborted || (error instanceof Error && error.name === 'AbortError')) {
+        throw abortError();
+      }
+      throw new ApiError(0, 'network_error', '连不上后端，检查网络或后端地址。');
     }
-    throw new ApiError(0, 'network_error', '连不上后端，检查网络或后端地址。');
-  }
 
-  if (!response.ok) {
-    const text = await response.text().catch(() => '');
-    const data = text ? parseJson(text) : null;
-    if (response.status === 401) notifyUnauthorized();
-    const envelope = (data ?? {}) as { code?: string; message?: string; detail?: unknown };
-    throw new ApiError(
-      response.status,
-      envelope.code ?? 'http_error',
-      envelope.message ?? `请求失败（HTTP ${response.status}）`,
-      envelope.detail ?? null,
-    );
-  }
+    if (!response.ok) {
+      const text = await response.text().catch(() => '');
+      const data = text ? parseJson(text) : null;
+      if (response.status === 401) notifyUnauthorized();
+      const envelope = (data ?? {}) as { code?: string; message?: string; detail?: unknown };
+      throw new ApiError(
+        response.status,
+        envelope.code ?? 'http_error',
+        envelope.message ?? `请求失败（HTTP ${response.status}）`,
+        envelope.detail ?? null,
+      );
+    }
 
-  if (!response.body) {
-    throw new ApiError(0, 'no_stream', '当前平台不支持流式响应，已改用轮询。');
-  }
+    if (!response.body) {
+      throw new ApiError(0, 'no_stream', '当前平台不支持流式响应，已改用轮询。');
+    }
 
-  const reader = response.body.getReader();
-  const decoder = new TextDecoder();
-  let buffer = '';
+    resetIdle();
+    const reader = response.body.getReader();
+    const decoder = new TextDecoder();
+    const normalizer = createNewlineNormalizer();
+    let buffer = '';
 
-  try {
-    for (;;) {
-      const { done, value } = await reader.read();
-      if (done) break;
-      buffer += decoder.decode(value, { stream: true });
-      buffer = buffer.replace(/\r\n/g, '\n');
+    const drain = () => {
       let boundary = buffer.indexOf('\n\n');
       while (boundary !== -1) {
         const frame = buffer.slice(0, boundary);
@@ -265,19 +318,34 @@ export async function apiStream(
         dispatchFrame(frame, handlers.onStage);
         boundary = buffer.indexOf('\n\n');
       }
+    };
+
+    try {
+      for (;;) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        resetIdle();
+        buffer += normalizer.append(decoder.decode(value, { stream: true }));
+        drain();
+      }
+      buffer += normalizer.append(decoder.decode());
+      buffer += normalizer.flush();
+      drain();
+      const tail = buffer.trim();
+      if (tail) dispatchFrame(tail, handlers.onStage);
+    } catch (error) {
+      if (idleTimedOut) throw streamTimeoutError();
+      if (error instanceof ApiError) throw error;
+      if (signal?.aborted || (error instanceof Error && error.name === 'AbortError')) {
+        throw abortError();
+      }
+      throw new ApiError(0, 'stream_error', '生成流中断，已改用轮询。');
+    } finally {
+      reader.cancel().catch(() => undefined);
     }
-    buffer += decoder.decode();
-    buffer = buffer.replace(/\r\n/g, '\n');
-    const tail = buffer.trim();
-    if (tail) dispatchFrame(tail, handlers.onStage);
-  } catch (error) {
-    if (error instanceof ApiError) throw error;
-    if (signal?.aborted || (error instanceof Error && error.name === 'AbortError')) {
-      throw abortError();
-    }
-    throw new ApiError(0, 'stream_error', '生成流中断，已改用轮询。');
   } finally {
-    reader.cancel().catch(() => undefined);
+    if (idleTimer !== undefined) clearTimeout(idleTimer);
+    signal?.removeEventListener('abort', abortFromCaller);
   }
 }
 
@@ -314,6 +382,11 @@ export async function apiPollJob(
   for (;;) {
     if (signal?.aborted) throw abortError();
     const status = await apiRequest<JobStatus>(statusPath, { signal });
+    // A truncated/proxied body can parse as `{}`; polling it forever would
+    // never terminate, so treat a missing status as a transport failure.
+    if (!status || typeof status !== 'object' || typeof status.status !== 'string') {
+      throw new ApiError(0, 'network_error', '生成状态响应不完整，请重试。');
+    }
     if (status.status === 'completed' || status.status === 'failed') return status;
     if (Date.now() - startedAt >= timeoutMs) {
       throw new ApiError(0, 'timeout', '生成超时，请稍后重试。');

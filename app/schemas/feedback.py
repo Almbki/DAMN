@@ -42,6 +42,9 @@ class FeedbackSubmitResponse(BaseModel):
     feedback: FeedbackRead
     replan_triggered: bool = False
     replan_plan_id: int | None = None
+    #: Set when `?stream_replan=true` was used: poll/stream this job for the
+    #: feedback-driven replan result.
+    replan_job_id: str | None = None
     replan_eligibility: ReplanEligibilityRead | None = None
     #: Agent decision from the feedback loop (route / severity / reasons).
     adjustment: FeedbackAdjustmentRead | None = None

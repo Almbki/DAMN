@@ -86,6 +86,20 @@ class UserSituationResult(LLMOutput):
     confidence: float = Field(default=0.5, ge=0.0, le=1.0)
 
 
+class UserSituationNarrative(LLMOutput):
+    """Narrow output for the optional ``user_situation`` narrative step.
+
+    The numeric predictions are produced by the ML predictors. Asking the model
+    to echo the full :class:`UserSituationResult` made it return wrappers or
+    aliases that failed validation; this step only needs the narrative.
+    """
+
+    model_config = ConfigDict(extra="ignore")
+
+    narrative: str = ""
+    confidence: float = Field(default=0.5, ge=0.0, le=1.0)
+
+
 class GeneratedTaskDraft(LLMOutput):
     """A task proposed by the ``plan_generation`` node (not yet scheduled)."""
 
@@ -200,16 +214,6 @@ class PreviewDecision(BaseModel):
 
     action: Literal["confirm", "adjust"] = "confirm"
     feedback: str | None = None
-
-
-class PreviewAdjustmentRejected(BaseModel):
-    """Returned when the adjustment budget is exhausted."""
-
-    rejected: bool = True
-    adjustment_count: int = 0
-    max_adjustments: int = 2
-    reason: str = ""
-    message: str = ""
 
 
 # ---------------------------------------------------------------------------

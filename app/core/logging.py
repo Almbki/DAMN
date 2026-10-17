@@ -39,8 +39,3 @@ def setup_logging(settings: Settings | None = None) -> None:
         },
     }
     logging.config.dictConfig(config)
-
-
-def get_logger(name: str) -> logging.Logger:
-    """Thin wrapper to keep a single import surface for logging."""
-    return logging.getLogger(name)

@@ -8,7 +8,6 @@ from app.agent.context import (
     MemoryItem,
     MemoryKind,
     PlanningContext,
-    UserPreferences,
 )
 from app.agent.schemas import GeneratedTaskDraft
 from app.agent.state import GoalInput
@@ -17,13 +16,11 @@ from app.agent.tools.memory_retriever import MemoryQuery, MemoryRetrieverInput
 from app.agent.tools.rule_validator import RuleValidatorInput
 from app.agent.tools.schedule_generator import ScheduleGeneratorInput
 from app.agent.tools.task_decomposer import TaskDecomposerInput
-from app.agent.tools.user_statistics import UserStatisticsInput
 from app.agent.tools.workload_estimator import WorkloadEstimatorInput
 from app.domain.models import Task
 from app.domain.models.enums import CognitiveLoad, Priority
 from app.domain.rules.base import RuleContext
 from app.domain.scheduling.schedule_result import CandidateSchedule, ScheduledTask
-from app.ml.base import FeedbackSignal
 
 EXPECTED_TOOLS = {
     "memory_retriever",
@@ -32,7 +29,6 @@ EXPECTED_TOOLS = {
     "schedule_generator",
     "task_decomposer",
     "task_duration_predictor",
-    "user_statistics",
     "workload_estimator",
 }
 #: Only language-understanding tools may ever be exposed to a model.
@@ -42,11 +38,13 @@ LLM_EXPOSED = {"task_decomposer", "workload_estimator", "plan_drafter"}
 def test_registry_exposes_the_expected_tools() -> None:
     registry = default_registry()
     assert set(registry.names()) == EXPECTED_TOOLS
-    assert {tool.name for tool in registry.llm_tools()} == LLM_EXPOSED
+    assert {name for name in registry.names() if registry.get(name).llm_exposed} == LLM_EXPOSED
 
 
 def test_every_tool_has_a_name_and_description() -> None:
-    for tool in default_registry().all():
+    registry = default_registry()
+    for name in registry.names():
+        tool = registry.get(name)
         assert tool.name
         assert tool.description
 
@@ -54,7 +52,7 @@ def test_every_tool_has_a_name_and_description() -> None:
 def test_deterministic_tools_are_not_llm_exposed() -> None:
     """Hard constraints, scheduling and DB lookups must never be model-driven."""
     registry = default_registry()
-    for name in ("rule_validator", "schedule_generator", "user_statistics", "memory_retriever"):
+    for name in ("rule_validator", "schedule_generator", "memory_retriever"):
         assert registry.get(name).llm_exposed is False
 
 
@@ -140,22 +138,6 @@ def test_memory_retriever_filters_by_kind() -> None:
     )
     assert digest.procedural == ["morning"]
     assert digest.semantic == []
-
-
-def test_user_statistics_summarises_feedback() -> None:
-    context = PlanningContext(
-        user_id=1,
-        preferences=UserPreferences(daily_limit_minutes=120),
-        recent_feedback=[
-            FeedbackSignal(date=date.today(), completion_rate=0.4, stress_level=8, energy_level=3)
-        ],
-    )
-    tool = default_registry().get("user_statistics")
-    stats = tool.run(UserStatisticsInput(context=context))  # type: ignore[attr-defined]
-    assert stats.days_with_feedback == 1
-    assert stats.recent_completion_rate == 0.4
-    assert stats.recent_stress == 8.0
-    assert stats.daily_limit_minutes == 120
 
 
 def test_tool_invoke_reports_failures_without_raising() -> None:

@@ -22,10 +22,6 @@ class PlanDetail(BaseModel):
     tasks: list[TaskWithStandards] = Field(default_factory=list)
     goals: list[Goal] = Field(default_factory=list)
 
-    @property
-    def plain_tasks(self) -> list[Task]:
-        return [item.task for item in self.tasks]
-
 
 class PlanChangeDay(BaseModel):
     """What changed on one calendar day."""

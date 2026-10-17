@@ -16,8 +16,6 @@ from app.domain.models.enums import TaskStatus
 from app.domain.rules.base import RuleContext
 
 DEFAULT_CONFLICTING_SUBJECTS: list[tuple[str, str]] = [("math", "algorithm")]
-DEFAULT_DAY_START = time(8, 0)
-DEFAULT_DAY_END = time(22, 0)
 
 
 def get_context(runtime: object) -> PlannerContext:
@@ -193,11 +191,6 @@ def build_rule_context(
     )
 
 
-def preferences_block(state: PlannerState) -> dict:
-    """Preferences as a JSON-friendly dict for prompt variables."""
-    return resolve_preferences(state).model_dump(mode="json")
-
-
 #: State keys whose `.confidence` contributes to the run's overall confidence.
 _CONFIDENCE_KEYS = (
     "goal_analysis",
@@ -232,6 +225,5 @@ __all__ = [
     "current_drafts",
     "drafts_to_tasks",
     "get_context",
-    "preferences_block",
     "resolve_preferences",
 ]

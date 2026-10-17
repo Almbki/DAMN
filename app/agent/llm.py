@@ -18,6 +18,7 @@ module imports no infrastructure code at runtime.
 from __future__ import annotations
 
 import json
+import logging
 import re
 import time
 from dataclasses import dataclass
@@ -34,6 +35,8 @@ TModel = TypeVar("TModel", bound=BaseModel)
 
 _CODE_FENCE_RE = re.compile(r"```(?:json)?\s*(.*?)```", re.DOTALL)
 _JSON_OBJECT_RE = re.compile(r"\{.*\}", re.DOTALL)
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass(slots=True)
@@ -71,6 +74,37 @@ def _matches_schema_fields(payload: object, schema: type[BaseModel]) -> bool:
     if not isinstance(payload, dict):
         return False
     return bool(set(schema.model_fields) & set(payload))
+
+
+_WRAPPER_KEYS = frozenset(
+    {"result", "data", "output", "response", "payload", "user_situation", "analysis"}
+)
+_NARRATIVE_ALIASES = ("summary", "analysis", "explanation", "text", "commentary", "message")
+
+
+def _unwrap_payload(payload: object) -> object:
+    """Unwrap common single-key envelopes and one-element lists."""
+    for _ in range(3):
+        if isinstance(payload, dict) and len(payload) == 1:
+            key, value = next(iter(payload.items()))
+            if str(key).lower() in _WRAPPER_KEYS and isinstance(value, (dict, list)):
+                payload = value
+                continue
+        if isinstance(payload, list) and payload and isinstance(payload[0], dict):
+            payload = payload[0]
+            continue
+        break
+    return payload
+
+
+def _normalise_payload(payload: dict, schema: type[BaseModel]) -> dict:
+    """Accept a few common aliases for the narrative field."""
+    if "narrative" in schema.model_fields and not payload.get("narrative"):
+        for alias in _NARRATIVE_ALIASES:
+            value = payload.get(alias)
+            if isinstance(value, str) and value.strip():
+                return {**payload, "narrative": value}
+    return payload
 
 
 class StructuredLLM:
@@ -140,6 +174,12 @@ class StructuredLLM:
 
             try:
                 payload = json.loads(_extract_json(response.text))
+                if isinstance(payload, str):
+                    payload = json.loads(payload)
+                payload = _unwrap_payload(payload)
+                if not isinstance(payload, dict):
+                    raise ValueError("response is not a JSON object")
+                payload = _normalise_payload(payload, schema)
                 if not _matches_schema_fields(payload, schema):
                     raise ValueError(
                         "response does not contain any of the expected fields"
@@ -147,6 +187,13 @@ class StructuredLLM:
                 value = schema.model_validate(payload)
             except (json.JSONDecodeError, ValidationError, ValueError) as exc:
                 last_error = f"invalid structured output: {exc}"
+                logger.warning(
+                    "structured LLM output rejected (prompt=%s schema=%s): %s; raw=%r",
+                    prompt_name,
+                    schema.__name__,
+                    exc,
+                    getattr(response, "text", "")[:800],
+                )
                 extra = (
                     "\n\nYour previous output did not match the schema. "
                     f"Fix exactly these errors and return JSON only:\n{exc}"

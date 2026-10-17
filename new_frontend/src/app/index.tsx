@@ -1,14 +1,17 @@
 import { useRouter } from 'expo-router';
-import { useCallback, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { StyleSheet, Text, View, useWindowDimensions } from 'react-native';
 
 import { DailyFeedbackSheet } from '@/components/daily-feedback-sheet';
 import { PlanChangeSheet } from '@/components/plan-change-sheet';
-import { TaskEditor } from '@/components/task-editor';
 import { TaskRow } from '@/components/task-row';
+import { Banner } from '@/components/task/banner';
+import { QuickTaskDialog } from '@/components/task/quick-task-dialog';
+import { TaskDetailSheet } from '@/components/task/task-detail-sheet';
+import { TaskFilterChip } from '@/components/task/task-filter-chip';
 import { Timeline, type TimelineItem } from '@/components/timeline';
 import { Button } from '@/components/ui/button';
-import { FilterChip } from '@/components/ui/chip';
+import { Dialog } from '@/components/ui/dialog';
 import { Segmented } from '@/components/ui/segmented';
 import { EmptyState } from '@/components/ui/states';
 import { Fonts, Layout, Line, Space, Type } from '@/constants/tokens';
@@ -19,20 +22,35 @@ import { useListKeys } from '@/hooks/use-list-keys';
 import { usePlan } from '@/state/plan';
 import { useTheme } from '@/state/theme';
 
+type FilterKey = 'all' | 'open' | 'done';
+
 const VIEWS = ['今日', '本周', '每月'];
-const FILTERS = ['全部', '未完成'];
+const FILTERS: { key: FilterKey; label: string }[] = [
+  { key: 'all', label: '全部' },
+  { key: 'open', label: '未完成' },
+  { key: 'done', label: '已完成' },
+];
 const WEEKDAY = ['周日', '周一', '周二', '周三', '周四', '周五', '周六'];
 
 function toItem(task: Task): TimelineItem {
   return {
     id: task.id,
     title: task.title,
-    done: isClosed(task),
+    done: task.done,
+    skipped: task.skipped,
     startTime: task.startTime,
     endTime: task.endTime,
     estimatedMinutes: task.estimatedMinutes,
     priority: task.priority,
   };
+}
+
+function timeValue(task: Task): string {
+  return task.startTime ?? task.dueTime ?? '99:99';
+}
+
+function byStartTime(a: Task, b: Task): number {
+  return timeValue(a).localeCompare(timeValue(b)) || a.order - b.order;
 }
 
 export default function TodoScreen() {
@@ -47,47 +65,141 @@ export default function TodoScreen() {
     stats,
     mode,
     canEditTasks,
+    canCreateTasks,
+    actionError,
+    clearActionError,
     goals,
     planChanges,
     updateTask,
-    deleteTask,
-    toggleDone,
+    updateStandard,
+    setDone,
     setSkipped,
     moveBy,
     replanNow,
+    createTask,
   } = usePlan();
   const isApi = mode === 'api';
 
   const [view, setView] = useState(0);
-  const [filter, setFilter] = useState(1);
+  const [filter, setFilter] = useState<FilterKey>('open');
   const [grouped, setGrouped] = useState(false);
   const [changeOpen, setChangeOpen] = useState(false);
   const [feedbackOpen, setFeedbackOpen] = useState(false);
   const [replanBusy, setReplanBusy] = useState(false);
   const [replanMessage, setReplanMessage] = useState<string | null>(null);
+  const [replanConfirmOpen, setReplanConfirmOpen] = useState(false);
   const [activeId, setActiveId] = useState<number | null>(null);
-  const [editingId, setEditingId] = useState<number | null>(null);
+  const [detailId, setDetailId] = useState<number | null>(null);
+  const [undo, setUndo] = useState<{ id: number; title: string } | null>(null);
+  const undoTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const [addHintOpen, setAddHintOpen] = useState(false);
+  const [quickAddOpen, setQuickAddOpen] = useState(false);
 
-  const handleReplan = useCallback(async () => {
+  const dismissUndo = useCallback(() => {
+    if (undoTimer.current) {
+      clearTimeout(undoTimer.current);
+      undoTimer.current = null;
+    }
+    setUndo(null);
+  }, []);
+
+  useEffect(
+    () => () => {
+      if (undoTimer.current) clearTimeout(undoTimer.current);
+    },
+    [],
+  );
+
+  const showUndo = useCallback((task: Pick<Task, 'id' | 'title'>) => {
+    if (undoTimer.current) clearTimeout(undoTimer.current);
+    setUndo({ id: task.id, title: task.title });
+    undoTimer.current = setTimeout(() => {
+      undoTimer.current = null;
+      setUndo(null);
+    }, 5000);
+  }, []);
+
+  const handleToggleById = useCallback(
+    (id: number) => {
+      const task = tasks.find((item) => item.id === id);
+      if (!task) return;
+      if (task.done) {
+        setDone(id, false);
+        return;
+      }
+      setDone(id, true);
+      showUndo(task);
+    },
+    [tasks, setDone, showUndo],
+  );
+
+  const undoCompletion = useCallback(() => {
+    if (!undo) return;
+    setDone(undo.id, false);
+    dismissUndo();
+  }, [undo, setDone, dismissUndo]);
+
+  const handleOpen = useCallback((id: number) => {
+    setDetailId(id);
+  }, []);
+
+  const goGoal = useCallback(() => {
+    setAddHintOpen(false);
+    router.push('/goal');
+  }, [router]);
+
+  const handleAdd = useCallback(() => {
+    if (canCreateTasks) {
+      setQuickAddOpen(true);
+      return;
+    }
+    setAddHintOpen(true);
+  }, [canCreateTasks]);
+
+  const runReplan = useCallback(async () => {
+    setReplanConfirmOpen(false);
     setReplanBusy(true);
+    setReplanMessage(null);
+    dismissUndo();
     try {
       setReplanMessage(await replanNow());
+    } catch {
+      setReplanMessage('重排没有完成，请稍后再试。');
     } finally {
       setReplanBusy(false);
     }
-  }, [replanNow]);
+  }, [replanNow, dismissUndo]);
 
   const today = todayISO();
-  const openOnly = filter === 1;
-  const applyFilter = useCallback(
-    (items: Task[]) => (openOnly ? items.filter((task) => !isClosed(task)) : items),
-    [openOnly],
+  const allToday = lists.today;
+
+  const openTodayCount = useMemo(
+    () => allToday.filter((task) => !isClosed(task)).length,
+    [allToday],
+  );
+  const doneTodayCount = useMemo(
+    () => allToday.filter((task) => task.done).length,
+    [allToday],
+  );
+  const skippedTodayCount = useMemo(
+    () => allToday.filter((task) => task.skipped).length,
+    [allToday],
   );
 
-  const todayTasks = useMemo(() => applyFilter(lists.today), [applyFilter, lists.today]);
+  const filterTasks = useCallback((items: Task[], key: FilterKey) => {
+    if (key === 'open') return items.filter((task) => !isClosed(task));
+    if (key === 'done') return items.filter((task) => task.done);
+    return items;
+  }, []);
+
+  const todayTasks = useMemo(() => filterTasks(allToday, filter), [allToday, filter, filterTasks]);
+  const overdueAll = useMemo(
+    () => tasks.filter((task) => task.dueDate != null && task.dueDate < today),
+    [tasks, today],
+  );
   const overdueTasks = useMemo(
-    () => applyFilter(tasks.filter((task) => task.dueDate != null && task.dueDate < today)),
-    [applyFilter, tasks, today],
+    () => filterTasks(overdueAll, filter),
+    [overdueAll, filter, filterTasks],
   );
   const groupedTasks = useMemo(
     () => groupByGoal(todayTasks, goals).filter((group) => group.tasks.length > 0),
@@ -97,12 +209,15 @@ export default function TodoScreen() {
     () =>
       weekDates(today).map((date) => ({
         date,
-        tasks: applyFilter(tasks.filter((task) => task.dueDate === date)),
+        tasks: filterTasks(
+          tasks.filter((task) => task.dueDate === date),
+          filter,
+        ).sort(byStartTime),
       })),
-    [applyFilter, tasks, today],
+    [tasks, today, filter, filterTasks],
   );
 
-  const editingTask = editingId == null ? null : (tasks.find((task) => task.id === editingId) ?? null);
+  const detailTask = detailId == null ? null : (tasks.find((task) => task.id === detailId) ?? null);
 
   const move = useCallback(
     (delta: number) => {
@@ -116,24 +231,39 @@ export default function TodoScreen() {
     },
     [todayTasks, currentTask],
   );
+
   const toggleActive = useCallback(() => {
     const id = activeId ?? currentTask?.id ?? todayTasks[0]?.id;
     if (id == null) return;
     setActiveId(id);
-    toggleDone(id);
-  }, [activeId, currentTask, todayTasks, toggleDone]);
-  const skipActive = useCallback(() => {
+    handleToggleById(id);
+  }, [activeId, currentTask, todayTasks, handleToggleById]);
+
+  const deferActive = useCallback(() => {
     const id = activeId ?? currentTask?.id ?? todayTasks[0]?.id;
     if (id == null) return;
     setActiveId(id);
-    setSkipped(id, true);
-  }, [activeId, currentTask, todayTasks, setSkipped]);
-  useListKeys({
-    onPrev: () => move(-1),
-    onNext: () => move(1),
-    onToggle: toggleActive,
-    onSkip: skipActive,
-  });
+    moveBy(id, 1);
+  }, [activeId, currentTask, todayTasks, moveBy]);
+
+  const keysEnabled =
+    view === 0 &&
+    detailTask == null &&
+    !feedbackOpen &&
+    !changeOpen &&
+    !addHintOpen &&
+    !quickAddOpen &&
+    !replanConfirmOpen;
+
+  useListKeys(
+    {
+      onPrev: () => move(-1),
+      onNext: () => move(1),
+      onToggle: toggleActive,
+      onSkip: deferActive,
+    },
+    keysEnabled,
+  );
 
   function renderTimeline(items: Task[]) {
     return (
@@ -141,9 +271,8 @@ export default function TodoScreen() {
         items={items.map(toItem)}
         nowId={currentTask?.id ?? null}
         activeId={activeId}
-        onToggleDone={toggleDone}
-        onOpen={canEditTasks ? (id) => setEditingId(id) : undefined}
-        onSkip={(id) => setSkipped(id, true)}
+        onToggleDone={handleToggleById}
+        onOpen={handleOpen}
       />
     );
   }
@@ -154,55 +283,171 @@ export default function TodoScreen() {
         key={task.id}
         task={task}
         active={task.id === activeId}
-        onToggleDone={() => toggleDone(task.id)}
-        onOpen={canEditTasks ? () => setEditingId(task.id) : undefined}
-        onSkip={() => setSkipped(task.id, true)}
+        onToggleDone={() => handleToggleById(task.id)}
+        onOpen={() => handleOpen(task.id)}
+      />
+    );
+  }
+
+  function renderEmpty() {
+    if (!allToday.length) {
+      return (
+        <EmptyState
+          title="今天没有排任务"
+          body={
+            isApi
+              ? '去「目标」写一个目标，系统会把它拆成今天能做的事。'
+              : '去「目标」写下一个目标，系统会把它拆成今天能做完的几步。'
+          }
+          actionLabel="去目标页"
+          actionIcon="target"
+          onAction={goGoal}
+        />
+      );
+    }
+
+    if (openTodayCount === 0) {
+      const allSkipped = doneTodayCount === 0 && skippedTodayCount > 0;
+      return (
+        <EmptyState
+          title={allSkipped ? '今天的任务都跳过了' : '今天全部完成'}
+          body={
+            allSkipped
+              ? '今天安排的任务都被跳过了。想重新安排，去目标页写下新的目标。'
+              : '今天的任务都收好了。想加新的事，去目标页写一个目标。'
+          }
+          actionLabel="去目标页"
+          actionIcon="target"
+          onAction={goGoal}
+        />
+      );
+    }
+
+    if (filter === 'done') {
+      return (
+        <EmptyState
+          title="今天还没有完成任务"
+          body="完成一件后，它会留在这里，也可以随时撤销。"
+          actionLabel="看未完成"
+          actionIcon="list"
+          onAction={() => setFilter('open')}
+        />
+      );
+    }
+
+    return (
+      <EmptyState
+        title="今天没有任务"
+        body="去目标页写一个目标，系统会把它拆成今天能做的事。"
+        actionLabel="去目标页"
+        actionIcon="target"
+        onAction={goGoal}
       />
     );
   }
 
   return (
     <View style={styles.page}>
+      {actionError ? (
+        <Banner
+          tone="error"
+          title="操作没有完成"
+          body={actionError}
+          onDismiss={clearActionError}
+        />
+      ) : null}
+
+      {undo ? (
+        <Banner
+          tone="success"
+          icon="check"
+          title="已完成"
+          body={undo.title}
+          actionLabel="撤销"
+          onAction={undoCompletion}
+          onDismiss={dismissUndo}
+        />
+      ) : null}
+
+      {replanMessage ? (
+        <Banner
+          tone="info"
+          title="重排结果"
+          body={replanMessage}
+          onDismiss={() => setReplanMessage(null)}
+        />
+      ) : null}
+
       <View style={styles.controls}>
         <View style={styles.controlsRow}>
           <View style={styles.viewSwitch}>
-            <Segmented options={VIEWS} value={view} onChange={setView} />
+            <Segmented
+              options={VIEWS}
+              value={view}
+              onChange={(index) => {
+                setView(index);
+                setActiveId(null);
+              }}
+            />
           </View>
-          <Button
-            label={planChanges.length > 0 ? `计划变更 · ${planChanges.length}` : '计划变更'}
-            variant="tonal"
-            icon="calendar"
-            onPress={() => setChangeOpen(true)}
-          />
+          <View style={styles.controlsActions}>
+            <Button label="添加" icon="plus" variant="filled" onPress={handleAdd} />
+            <Button
+              label={planChanges.length > 0 ? `计划变更 · ${planChanges.length}` : '计划变更'}
+              variant="tonal"
+              icon="calendar"
+              onPress={() => setChangeOpen(true)}
+            />
+          </View>
         </View>
 
         <View style={styles.filterRow}>
-          <View style={styles.filterSwitch}>
-            <Segmented options={FILTERS} value={filter} onChange={setFilter} size="sm" />
+          <View style={styles.filterGroup}>
+            {FILTERS.map((item) => (
+              <TaskFilterChip
+                key={item.key}
+                label={item.label}
+                selected={filter === item.key}
+                count={
+                  item.key === 'all'
+                    ? allToday.length
+                    : item.key === 'open'
+                      ? openTodayCount
+                      : doneTodayCount
+                }
+                onPress={() => {
+                  setFilter(item.key);
+                  setActiveId(null);
+                }}
+              />
+            ))}
+            {view === 0 ? (
+              <TaskFilterChip
+                label="按分组"
+                icon="swap"
+                selected={grouped}
+                onPress={() => setGrouped((value) => !value)}
+              />
+            ) : null}
           </View>
-          <FilterChip
-            label="按分组"
-            icon="swap"
-            selected={grouped}
-            onPress={() => setGrouped((value) => !value)}
-          />
           <Button
             label={replanBusy ? '重排中…' : '重排计划'}
             variant="outlined"
             icon="swap"
             disabled={replanBusy}
-            onPress={() => {
-              void handleReplan();
-            }}
+            onPress={() => setReplanConfirmOpen(true)}
           />
         </View>
-        {replanMessage ? (
-          <Text style={[styles.replanNote, { color: colors.inkMuted }]}>{replanMessage}</Text>
+
+        {replanBusy ? (
+          <Text style={[styles.replanNote, { color: colors.inkMuted }]}>
+            正在重排，新版本会替换当前计划；旧版本会保留。
+          </Text>
         ) : null}
       </View>
 
       {view === 0 ? (
-        <View style={styles.list}>
+        <View style={styles.body} testID="todo-list">
           {overdueTasks.length > 0 ? (
             <View style={styles.group}>
               <Text style={[styles.groupTitle, { color: colors.error }]}>
@@ -232,19 +477,7 @@ export default function TodoScreen() {
             )
           ) : null}
 
-          {todayTasks.length === 0 && overdueTasks.length === 0 ? (
-            <EmptyState
-              title={isApi ? '今天没有排任务' : '今天没有安排'}
-              body={
-                isApi
-                  ? '去「目标」写一个目标，系统会把它拆成今天能做的事。'
-                  : '去「目标」写下一个目标，系统会把它拆成今天能做完的几步。'
-              }
-              actionLabel="去添加目标"
-              actionIcon="plus"
-              onAction={() => router.push('/goal')}
-            />
-          ) : null}
+          {todayTasks.length === 0 && overdueTasks.length === 0 ? renderEmpty() : null}
         </View>
       ) : null}
 
@@ -291,9 +524,11 @@ export default function TodoScreen() {
 
       <View style={[styles.footer, { borderTopColor: colors.outlineVariant }]}>
         <Text style={[styles.footnote, { color: colors.inkMuted }]}>
-          共 <Text style={styles.mono}>{stats.openCount}</Text> 件未完成 · 已完成{' '}
-          <Text style={styles.mono}>{stats.completedToday}</Text> 件 · 连续{' '}
-          <Text style={styles.mono}>{stats.streak}</Text> 天
+          共 <Text style={styles.mono}>{stats.openCount}</Text> 件未完成 · 今日{' '}
+          <Text style={styles.mono}>
+            {stats.todayDone}/{stats.todayTotal}
+          </Text>{' '}
+          · 连续 <Text style={styles.mono}>{stats.streak}</Text> 天
         </Text>
         <Button label="写今日反馈" variant="filled" onPress={() => setFeedbackOpen(true)} />
       </View>
@@ -311,17 +546,71 @@ export default function TodoScreen() {
       />
       <DailyFeedbackSheet visible={feedbackOpen} onClose={() => setFeedbackOpen(false)} />
 
-      {canEditTasks && editingTask ? (
-        <TaskEditor
-          key={editingTask.id}
-          task={editingTask}
-          isNew={false}
-          onClose={() => setEditingId(null)}
-          onSave={(id, patch) => updateTask(id, patch)}
-          onDelete={deleteTask}
-          onMove={moveBy}
+      {quickAddOpen ? (
+        <QuickTaskDialog
+          onClose={() => setQuickAddOpen(false)}
+          onCreate={(input) => {
+            createTask(input);
+            setQuickAddOpen(false);
+          }}
         />
       ) : null}
+
+      {detailTask ? (
+        <TaskDetailSheet
+          key={detailTask.id}
+          task={detailTask}
+          canEdit={canEditTasks}
+          goalTitle={
+            detailTask.goalId == null
+              ? null
+              : (goals.find((goal) => goal.id === detailTask.goalId)?.title ?? null)
+          }
+          onClose={() => setDetailId(null)}
+          onUpdateTask={updateTask}
+          onUpdateStandard={updateStandard}
+          onToggleDone={(id) => {
+            handleToggleById(id);
+            setDetailId(null);
+          }}
+          onSetSkipped={(id, skipped) => {
+            setSkipped(id, skipped);
+            setDetailId(null);
+          }}
+          onMoveTomorrow={(id) => {
+            moveBy(id, 1);
+            setDetailId(null);
+          }}
+        />
+      ) : null}
+
+      <Dialog
+        visible={addHintOpen}
+        title="在目标页添加并拆解"
+        description="新任务要先在「目标」页写下来，再交给系统拆成每天能做的事。这里不会空白新建任务。"
+        onRequestClose={() => setAddHintOpen(false)}
+        actions={[
+          { label: '取消', variant: 'text', onPress: () => setAddHintOpen(false) },
+          { label: '去目标页', variant: 'filled', onPress: goGoal },
+        ]}
+      />
+
+      <Dialog
+        visible={replanConfirmOpen}
+        title="重排这一版计划？"
+        description="会基于今天的完成情况和状态生成新一版计划。旧版本会保留，反馈记录也不会丢。"
+        onRequestClose={() => setReplanConfirmOpen(false)}
+        actions={[
+          { label: '取消', variant: 'text', onPress: () => setReplanConfirmOpen(false) },
+          {
+            label: '开始重排',
+            variant: 'filled',
+            onPress: () => {
+              void runReplan();
+            },
+          },
+        ]}
+      />
     </View>
   );
 }
@@ -335,28 +624,42 @@ const styles = StyleSheet.create({
   },
   controlsRow: {
     flexDirection: 'row',
+    flexWrap: 'wrap',
     alignItems: 'center',
     justifyContent: 'space-between',
     gap: Space.md,
   },
   viewSwitch: {
-    flex: 1,
+    flexGrow: 1,
+    flexBasis: 220,
     maxWidth: 360,
   },
-  filterRow: {
+  controlsActions: {
     flexDirection: 'row',
+    flexWrap: 'wrap',
     alignItems: 'center',
     gap: Space.sm,
   },
-  filterSwitch: {
-    flex: 1,
-    maxWidth: 220,
+  filterRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: Space.sm,
+  },
+  filterGroup: {
+    flexGrow: 1,
+    minWidth: 0,
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    alignItems: 'center',
+    gap: Space.sm,
   },
   replanNote: {
     fontSize: Type.labelMedium,
     lineHeight: Type.labelMedium * Line.relaxed,
   },
-  list: {
+  body: {
     gap: Space.xl,
   },
   group: {

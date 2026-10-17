@@ -4,6 +4,8 @@ from __future__ import annotations
 
 from fastapi.testclient import TestClient
 
+from tests.support import generate_and_wait
+
 _ONE_GOAL = [
     {
         "title": "复习高数极限",
@@ -22,11 +24,7 @@ def _profile(client: TestClient, headers: dict) -> dict:
 
 
 def _make_plan(client: TestClient, headers: dict) -> int:
-    response = client.post(
-        "/api/v1/plans/generate", json={"goals": _ONE_GOAL}, headers=headers
-    )
-    assert response.status_code == 202, response.text
-    return response.json()["plan_id"]
+    return generate_and_wait(client, headers, {"goals": _ONE_GOAL})["plan_id"]
 
 
 # ---------------------------------------------------------------------------

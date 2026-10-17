@@ -103,14 +103,5 @@ class MemoryService:
         self._session.commit()
         return saved
 
-    def get_memories(self, user_id: int, *, kind: str | None = None) -> list[AgentMemory]:
-        return self._memories.list_by_user(user_id, kind=kind)
-
-    def forget(self, user_id: int) -> int:
-        """Delete all persisted memory for a user (privacy / reset)."""
-        removed = self._memories.delete_by_user(user_id)
-        self._session.commit()
-        return removed
-
 
 __all__ = ["EPISODIC_KEEP", "MemoryService"]

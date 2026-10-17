@@ -7,7 +7,7 @@ only contributes the narrative and may not change a single number.
 from __future__ import annotations
 
 from app.agent.nodes._shared import get_context
-from app.agent.schemas import AgentError, UserSituationResult
+from app.agent.schemas import AgentError, UserSituationNarrative, UserSituationResult
 from app.agent.state import PlannerState, ToolCallRecord
 from app.agent.tools.memory_retriever import MemoryQuery, MemoryRetrieverInput
 from app.agent.tools.task_duration_predictor import (
@@ -61,9 +61,6 @@ def user_situation_analysis_node(state: PlannerState, runtime: object) -> dict:
                 confidence=0.2,
                 narrative="no user history available; using neutral defaults",
             ),
-            "predicted_duration": {},
-            "predicted_completion_probability": {},
-            "stress_estimation": 5.0,
             "prediction_source": "fallback:no_features",
             "errors": [
                 AgentError(
@@ -118,9 +115,6 @@ def user_situation_analysis_node(state: PlannerState, runtime: object) -> dict:
 
     updates: dict = {
         "user_situation": result,
-        "predicted_duration": dict(result.predicted_duration),
-        "predicted_completion_probability": dict(result.predicted_completion_probability),
-        "stress_estimation": result.stress_state,
         "prediction_source": predictions.source,
         "tool_results": [
             ToolCallRecord(
@@ -166,7 +160,7 @@ def _narrative(
     )
     outcome = ctx.llm.complete_model(
         prompt_name=PROMPT,
-        schema=UserSituationResult,
+        schema=UserSituationNarrative,
         variables={
             "user_context": digest.as_prompt_block(),
             "ml_prediction": result.model_dump(mode="json"),
@@ -174,7 +168,7 @@ def _narrative(
                 state.get("progress").model_dump(mode="json") if state.get("progress") else {}
             ),
         },
-        fallback=result,
+        fallback=UserSituationNarrative(narrative=result.narrative),
     )
     if not outcome.used_llm:
         return "", AgentError(

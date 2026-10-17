@@ -28,8 +28,6 @@ class FeedbackService:
         *,
         replan_service=None,
         plan_service=None,
-        memory_service=None,
-        profile_service=None,
     ) -> None:
         self._session = session
         self._feedback = FeedbackRepository(session)
@@ -37,12 +35,21 @@ class FeedbackService:
         self._tasks = TaskRepository(session)
         self._replan_service = replan_service
         self._plan_service = plan_service
-        self._memory_service = memory_service
-        self._profile_service = profile_service
 
     def submit_feedback(
-        self, user_id: int, plan_id: int, feedback: Feedback
+        self,
+        user_id: int,
+        plan_id: int,
+        feedback: Feedback,
+        *,
+        defer_replan: bool = False,
     ) -> FeedbackSubmitResult:
+        """Persist the check-in and (optionally) run the feedback cycle.
+
+        ``defer_replan`` is used by the streaming API: the expensive agent cycle
+        runs in a background job after this call returns, so only the check-in
+        side effects happen here.
+        """
         plan = self._plans.get_by_id(plan_id)
         if plan is None:
             raise NotFoundError("plan not found")
@@ -64,7 +71,7 @@ class FeedbackService:
             eligibility = self._replan_service.check_eligibility(user_id, plan_id)
 
         adjustment = None
-        if self._plan_service is not None:
+        if not defer_replan and self._plan_service is not None:
             outcome = self._plan_service.process_feedback_cycle(
                 user_id, plan_id, note=saved.free_text
             )
@@ -92,11 +99,9 @@ class FeedbackService:
 
     def _refresh_memory(self, user_id: int) -> None:
         """Update persisted memory; never let it break a feedback submission."""
-        service = self._memory_service
-        if service is None:
-            from app.application.services.memory_service import MemoryService
+        from app.application.services.memory_service import MemoryService
 
-            service = MemoryService(self._session)
+        service = MemoryService(self._session)
         try:
             service.refresh(user_id)
         except Exception:  # noqa: BLE001 - memory is best-effort, feedback is the record
@@ -104,11 +109,9 @@ class FeedbackService:
 
     def _update_profile_state(self, user_id: int, feedback: Feedback) -> None:
         """Feed the check-in through the portrait EWMA; best-effort only."""
-        service = self._profile_service
-        if service is None:
-            from app.application.services.profile_service import ProfileService
+        from app.application.services.profile_service import ProfileService
 
-            service = ProfileService(self._session)
+        service = ProfileService(self._session)
         try:
             rate = feedback.completion_rate or 0.0
             service.update_from_feedback(

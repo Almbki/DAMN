@@ -75,6 +75,10 @@ export function makeTask(state: StoreState, input: NewTaskInput): { state: Store
     tags: input.tags ?? [],
     order: maxOrder + 1,
     completedAt: null,
+    standards: [],
+    completionProbability: null,
+    predictedDuration: null,
+    isFlexible: true,
   };
   return { state: { ...state, tasks: [...state.tasks, task] }, id };
 }

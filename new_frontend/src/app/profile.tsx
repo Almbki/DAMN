@@ -5,6 +5,7 @@ import { BasicProfileSection } from '@/components/profile/basic-profile';
 import { StateDashboardSection } from '@/components/profile/state-dashboard';
 import { TrendChart } from '@/components/trend-chart';
 import { Button } from '@/components/ui/button';
+import { EmptyState } from '@/components/ui/states';
 import { Surface } from '@/components/ui/surface';
 import { Fonts, Line, Space, Type } from '@/constants/tokens';
 import { usePlan } from '@/state/plan';
@@ -25,7 +26,7 @@ function levelLabel(value: number | null, kind: 'energy' | 'stress'): string {
 export default function ProfileScreen() {
   const { colors } = useTheme();
   const router = useRouter();
-  const { situation, stats, user, energyLabelText } = usePlan();
+  const { situation, stats, user, energyLabelText, refresh, loading, mode } = usePlan();
 
   const energy = situation.energy;
   const stress = situation.stress;
@@ -33,6 +34,22 @@ export default function ProfileScreen() {
 
   return (
     <View style={styles.page}>
+      <View style={styles.toolbar}>
+        <Text style={[styles.toolbarText, { color: colors.inkMuted }]}>
+          {mode === 'api'
+            ? '下面有两套数字：近期趋势来自每天反馈的原值，画像估计是系统平滑后的判断。它们可能不一样。'
+            : '演示模式：数字来自本机示例。近期趋势与画像估计也可能不一样，连接后端后会显示真实画像。'}
+        </Text>
+        <Button
+          label={loading ? '刷新中…' : '刷新数据'}
+          variant="tonal"
+          size="sm"
+          icon="refresh"
+          disabled={loading || mode === 'mock'}
+          onPress={refresh}
+        />
+      </View>
+
       <BasicProfileSection />
 
       <StateDashboardSection />
@@ -68,13 +85,20 @@ export default function ProfileScreen() {
       </View>
 
       <View style={styles.section}>
-        <Text style={[styles.sectionTitle, { color: colors.ink }]}>趋势（近 14 天）</Text>
+        <Text style={[styles.sectionTitle, { color: colors.ink }]}>近期趋势（每日反馈）</Text>
+        <Text style={[styles.note, { color: colors.inkMuted }]}>
+          来自你每天写下的精力、压力和完成情况，显示原始走势。
+        </Text>
         {situation.points.length >= 2 ? (
           <TrendChart points={situation.points} />
         ) : (
-          <Text style={[styles.note, { color: colors.inkMuted }]}>
-            至少要两天的反馈才能画趋势。
-          </Text>
+          <EmptyState
+            title="还没有足够的每日反馈"
+            body={`趋势至少要两天的反馈才能画出来，现在只有 ${situation.samples} 天。写完今天的状态，这里就会开始有线条。`}
+            actionLabel="去待办写反馈"
+            actionIcon="arrowRight"
+            onAction={() => router.push('/')}
+          />
         )}
         <Surface level="level1" radius="md">
           <View style={styles.sufficiency}>
@@ -168,6 +192,20 @@ function Fact({ label, value }: { label: string; value: string }) {
 const styles = StyleSheet.create({
   page: {
     gap: Space.xxl,
+  },
+  toolbar: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    flexWrap: 'wrap',
+    gap: Space.md,
+  },
+  toolbarText: {
+    flexGrow: 1,
+    flexBasis: 320,
+    fontSize: Type.bodyMedium,
+    lineHeight: Type.bodyMedium * Line.relaxed,
+    maxWidth: 620,
   },
   section: {
     gap: Space.md,

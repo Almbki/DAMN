@@ -8,6 +8,8 @@ from __future__ import annotations
 
 from fastapi.testclient import TestClient
 
+from tests.support import decompose_and_wait, generate_and_wait, replan_and_wait
+
 _ONE_GOAL = [
     {
         "title": "复习高数极限",
@@ -17,12 +19,6 @@ _ONE_GOAL = [
         "priority": 3,
     }
 ]
-
-
-def _decompose(client: TestClient, headers: dict, goals: list[dict], **extra) -> dict:
-    return client.post(
-        "/api/v1/plans/decompose", json={"goals": goals, **extra}, headers=headers
-    )
 
 
 # ---------------------------------------------------------------------------
@@ -125,11 +121,10 @@ def test_generate_falls_back_to_stored_preferences(
         },
         headers=auth_headers,
     )
-    generated = client.post(
-        "/api/v1/plans/generate", json={"goals": _ONE_GOAL}, headers=auth_headers
+    generated = generate_and_wait(
+        client, auth_headers, {"goals": _ONE_GOAL}
     )
-    assert generated.status_code == 202, generated.text
-    plan = generated.json()["plan"]
+    plan = generated["plan"]
     assert _dated_minutes(plan) == {}
 
 
@@ -147,17 +142,16 @@ def test_generate_request_overrides_stored_preferences(
         },
         headers=auth_headers,
     )
-    generated = client.post(
-        "/api/v1/plans/generate",
-        json={
+    generated = generate_and_wait(
+        client,
+        auth_headers,
+        {
             "goals": _ONE_GOAL,
             "available_minutes_per_day": 480,
             "daily_limit_minutes": 600,
         },
-        headers=auth_headers,
     )
-    assert generated.status_code == 202, generated.text
-    totals = _dated_minutes(generated.json()["plan"])
+    totals = _dated_minutes(generated["plan"])
     assert totals, "the request override should have made the task schedulable"
     assert max(totals.values()) > 60
 
@@ -168,9 +162,7 @@ def test_generate_request_overrides_stored_preferences(
 def test_decompose_returns_days_and_confirm_persists(
     client: TestClient, auth_headers: dict
 ) -> None:
-    decomposed = _decompose(client, auth_headers, _ONE_GOAL)
-    assert decomposed.status_code == 200, decomposed.text
-    body = decomposed.json()
+    body = decompose_and_wait(client, auth_headers, {"goals": _ONE_GOAL})
     assert body["draft_id"]
     assert body["days"], "a draft must group tasks by day"
 
@@ -206,17 +198,22 @@ def test_confirm_unknown_draft_is_404(client: TestClient, auth_headers: dict) ->
 def test_decompose_regenerate_then_hit_budget(
     client: TestClient, auth_headers: dict
 ) -> None:
-    draft_id = _decompose(client, auth_headers, _ONE_GOAL).json()["draft_id"]
+    draft = decompose_and_wait(client, auth_headers, {"goals": _ONE_GOAL})
+    draft_id = draft["draft_id"]
 
     for _ in range(3):  # AGENT_MAX_PREVIEW_ADJUSTMENTS = 3
-        regenerated = _decompose(
-            client, auth_headers, _ONE_GOAL, draft_id=draft_id, feedback="少一点"
+        regenerated = decompose_and_wait(
+            client,
+            auth_headers,
+            {"goals": _ONE_GOAL, "draft_id": draft_id, "feedback": "少一点"},
         )
-        assert regenerated.status_code == 200, regenerated.text
-        assert regenerated.json()["draft_id"] == draft_id
+        assert regenerated["draft_id"] == draft_id
 
-    exhausted = _decompose(
-        client, auth_headers, _ONE_GOAL, draft_id=draft_id, feedback="再少一点"
+    # The budget check is immediate, before any background work starts.
+    exhausted = client.post(
+        "/api/v1/plans/decompose",
+        json={"goals": _ONE_GOAL, "draft_id": draft_id, "feedback": "再少一点"},
+        headers=auth_headers,
     )
     assert exhausted.status_code == 409
     assert "调整次数" in exhausted.json()["message"]
@@ -227,7 +224,7 @@ def test_decompose_supports_several_goals(client: TestClient, auth_headers: dict
         {"title": "复习高数极限", "priority": 3, "notes": "看课\n做例题"},
         {"title": "准备汇报", "priority": 2, "notes": "写大纲\n做 PPT"},
     ]
-    body = _decompose(client, auth_headers, goals).json()
+    body = decompose_and_wait(client, auth_headers, {"goals": goals})
     source_indices = {
         task["source_index"] for day in body["days"] for task in day["tasks"]
     }
@@ -265,22 +262,17 @@ def test_situation_trends_rejects_out_of_range_days(
 # plan changes
 # ---------------------------------------------------------------------------
 def test_plan_changes_after_a_replan(client: TestClient, auth_headers: dict) -> None:
-    generated = client.post(
-        "/api/v1/plans/generate", json={"goals": _ONE_GOAL}, headers=auth_headers
-    )
-    plan_id = generated.json()["plan_id"]
+    generated = generate_and_wait(client, auth_headers, {"goals": _ONE_GOAL})
+    plan_id = generated["plan_id"]
 
     empty = client.get(f"/api/v1/plans/{plan_id}/changes", headers=auth_headers)
     assert empty.status_code == 200
     assert empty.json() == []
 
-    replanned = client.post(
-        f"/api/v1/plans/{plan_id}/replan",
-        json={"reason": "manual replan"},
-        headers=auth_headers,
+    replanned = replan_and_wait(
+        client, auth_headers, plan_id, {"reason": "manual replan"}
     )
-    assert replanned.status_code == 201, replanned.text
-    new_plan_id = replanned.json()["plan_id"]
+    new_plan_id = replanned["plan_id"]
 
     changes = client.get(f"/api/v1/plans/{new_plan_id}/changes", headers=auth_headers)
     assert changes.status_code == 200
@@ -300,10 +292,8 @@ def test_plan_changes_after_a_replan(client: TestClient, auth_headers: dict) -> 
 def test_insights_report_sufficiency_and_drivers(
     client: TestClient, auth_headers: dict
 ) -> None:
-    generated = client.post(
-        "/api/v1/plans/generate", json={"goals": _ONE_GOAL}, headers=auth_headers
-    )
-    plan_id = generated.json()["plan_id"]
+    generated = generate_and_wait(client, auth_headers, {"goals": _ONE_GOAL})
+    plan_id = generated["plan_id"]
 
     response = client.get(f"/api/v1/plans/{plan_id}/insights", headers=auth_headers)
     assert response.status_code == 200, response.text
@@ -359,10 +349,8 @@ def test_goal_delete_conflicts_when_plan_references_it(
     client: TestClient, auth_headers: dict
 ) -> None:
     """A goal used by a plan task cannot be deleted (FK integrity)."""
-    generated = client.post(
-        "/api/v1/plans/generate", json={"goals": _ONE_GOAL}, headers=auth_headers
-    )
-    plan_id = generated.json()["plan_id"]
+    generated = generate_and_wait(client, auth_headers, {"goals": _ONE_GOAL})
+    plan_id = generated["plan_id"]
     goal_id = client.get(f"/api/v1/plans/{plan_id}", headers=auth_headers).json()["goals"][0][
         "id"
     ]

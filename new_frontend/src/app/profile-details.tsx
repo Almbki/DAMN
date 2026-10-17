@@ -1,7 +1,9 @@
-import { useState } from 'react';
+import { useRouter } from 'expo-router';
+import { useEffect, useRef, useState } from 'react';
 import { StyleSheet, Text, View } from 'react-native';
 
 import { Button } from '@/components/ui/button';
+import { InlineNotice, SaveStatus, type SaveState } from '@/components/ui/states';
 import { Surface } from '@/components/ui/surface';
 import { TextField } from '@/components/ui/text-field';
 import { Fonts, Line, Space, Type } from '@/constants/tokens';
@@ -21,32 +23,104 @@ function sleepHours(start: string, end: string): number | null {
 
 export default function ProfileDetailsScreen() {
   const { colors } = useTheme();
-  const { preferences, updatePreferences } = usePlan();
+  const router = useRouter();
+  const { preferences, updatePreferences, actionError, clearActionError } = usePlan();
   const [start, setStart] = useState(preferences.sleepStart);
   const [end, setEnd] = useState(preferences.sleepEnd);
+  const [saveState, setSaveState] = useState<SaveState>('idle');
+  const touchedRef = useRef(false);
+  const prefsRef = useRef(preferences);
+  const actionErrorRef = useRef(actionError);
+  const pendingSavesRef = useRef(0);
+  const idleTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // Seed the local time fields from the provider until the user edits them.
+  useEffect(() => {
+    if (touchedRef.current) return;
+    setStart(preferences.sleepStart);
+    setEnd(preferences.sleepEnd);
+  }, [preferences.sleepStart, preferences.sleepEnd]);
+
+  useEffect(() => {
+    if (saveState === 'saving') return;
+    prefsRef.current = preferences;
+  }, [preferences, saveState]);
+
+  useEffect(() => {
+    actionErrorRef.current = actionError;
+  }, [actionError]);
+
+  useEffect(
+    () => () => {
+      if (idleTimerRef.current) clearTimeout(idleTimerRef.current);
+    },
+    [],
+  );
+
+  const runSave = async (run: () => Promise<void>) => {
+    pendingSavesRef.current += 1;
+    setSaveState('saving');
+    if (idleTimerRef.current) {
+      clearTimeout(idleTimerRef.current);
+      idleTimerRef.current = null;
+    }
+    try {
+      await run();
+      await new Promise((resolve) => setTimeout(resolve, 40));
+      if (actionErrorRef.current) {
+        setSaveState('error');
+      } else if (pendingSavesRef.current === 1) {
+        setSaveState('saved');
+        idleTimerRef.current = setTimeout(() => setSaveState('idle'), 2200);
+      }
+    } catch {
+      setSaveState('error');
+    } finally {
+      pendingSavesRef.current -= 1;
+    }
+  };
 
   const hours = sleepHours(start, end);
   const step = PREFERENCE_BOUNDS.availableMinutesPerDay.step;
 
   function commitSleep(nextStart: string, nextEnd: string) {
+    touchedRef.current = true;
     setStart(nextStart);
     setEnd(nextEnd);
     if (TIME_RE.test(nextStart) && TIME_RE.test(nextEnd)) {
-      void updatePreferences({ sleepStart: nextStart, sleepEnd: nextEnd });
+      void runSave(() => updatePreferences({ sleepStart: nextStart, sleepEnd: nextEnd }));
     }
   }
 
   function shiftAvailable(delta: number) {
-    void updatePreferences({
-      availableMinutesPerDay: clampPreference(
-        'availableMinutesPerDay',
-        preferences.availableMinutesPerDay + delta,
-      ),
-    });
+    const current = prefsRef.current.availableMinutesPerDay;
+    const next = clampPreference('availableMinutesPerDay', current + delta);
+    if (next === current) return;
+    prefsRef.current = { ...prefsRef.current, availableMinutesPerDay: next };
+    void runSave(() => updatePreferences({ availableMinutesPerDay: next }));
   }
+
+  const saveError = saveState === 'error' ? (actionError ?? '保存失败，请稍后重试。') : null;
 
   return (
     <View style={styles.page}>
+      <View style={styles.statusRow}>
+        <Text style={[styles.statusText, { color: colors.inkMuted }]}>
+          这里的更改会自动保存；作息和每日可投入时间只由这份基础档案负责。
+        </Text>
+        <SaveStatus state={saveState} />
+      </View>
+
+      {saveError || actionError ? (
+        <InlineNotice
+          message={saveError ?? actionError ?? ''}
+          onDismiss={() => {
+            clearActionError();
+            setSaveState('idle');
+          }}
+        />
+      ) : null}
+
       <Surface level="level1" radius="lg">
         <View style={styles.card}>
           <Text style={[styles.title, { color: colors.ink }]}>作息</Text>
@@ -100,9 +174,20 @@ export default function ProfileDetailsScreen() {
         </View>
       </Surface>
 
-      <Text style={[styles.footer, { color: colors.inkFaint }]}>
-        单日上限、缓冲和高认知上限属于排程策略，在「设置」里调整。
-      </Text>
+      <Surface level="level0" radius="lg" bordered>
+        <View style={styles.crossLink}>
+          <Text style={[styles.helper, { color: colors.inkMuted }]}>
+            单日上限、任务间缓冲和高认知任务数属于排程策略，在「设置」里调整。
+          </Text>
+          <Button
+            label="去设置排程上限"
+            variant="tonal"
+            size="sm"
+            icon="arrowRight"
+            onPress={() => router.push('/settings')}
+          />
+        </View>
+      </Surface>
     </View>
   );
 }
@@ -110,6 +195,19 @@ export default function ProfileDetailsScreen() {
 const styles = StyleSheet.create({
   page: {
     gap: Space.xxl,
+  },
+  statusRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    flexWrap: 'wrap',
+    gap: Space.sm,
+  },
+  statusText: {
+    flexGrow: 1,
+    flexBasis: 260,
+    fontSize: Type.labelLarge,
+    lineHeight: Type.labelLarge * Line.normal,
   },
   card: {
     padding: Space.xl,
@@ -149,8 +247,12 @@ const styles = StyleSheet.create({
   valueUnit: {
     fontSize: Type.labelLarge,
   },
-  footer: {
-    fontSize: Type.labelMedium,
-    lineHeight: Type.labelMedium * Line.relaxed,
+  crossLink: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    flexWrap: 'wrap',
+    gap: Space.md,
+    padding: Space.lg,
   },
 });

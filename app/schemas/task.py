@@ -59,4 +59,13 @@ class TaskUpdateRequest(BaseModel):
     failure_reason: str | None = Field(default=None, max_length=500)
     started_at: datetime | None = None
     finished_at: datetime | None = None
+    # Editable / reschedulable fields (explicit user overrides).
+    title: str | None = Field(default=None, min_length=1, max_length=200)
+    description: str | None = Field(default=None, max_length=2000)
+    estimated_duration: int | None = Field(default=None, ge=1)
+    priority: Priority | None = None
+    cognitive_load: CognitiveLoad | None = None
+    scheduled_date: date | None = None
+    start_time: time | None = None
+    end_time: time | None = None
     standard_updates: list[TaskStandardUpdate] | None = None

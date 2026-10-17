@@ -9,19 +9,14 @@ from __future__ import annotations
 from datetime import date, datetime
 
 import langgraph.checkpoint.postgres  # noqa: F401  (import before patching the pool)
-from langgraph.checkpoint.memory import InMemorySaver
 
 from app.agent import checkpointer as cp
-from app.agent.graph import PlannerGraph
 from app.agent.schemas import PreviewPayload
-from app.agent.state import AgentConfig, PlannerContext, PlannerRequest
 from app.api.v1.mappers import preview_read
 from app.application.services.plan_service import PlanService
 from app.core.config import Settings
 from app.domain.models.enums import ViolationSeverity
-from app.domain.rules.base import RuleEngine, RuleViolation
-from app.domain.scheduling.scheduler import Scheduler
-from app.ml.predictors import PredictorSet
+from app.domain.rules.base import RuleViolation
 from app.schemas.common import ViolationRead
 from app.schemas.goal import GoalDetailRead
 
@@ -93,28 +88,6 @@ def test_goal_deadline_serialises_as_a_plain_date() -> None:
         {"id": 2, "title": "t", "deadline": date(2026, 10, 1), "created_at": datetime.now()}
     )
     assert passthrough.deadline == date(2026, 10, 1)
-
-
-def test_run_events_include_the_rule_validation_stage() -> None:
-    """The SSE layer re-emits `node.completed` as the stage name; rule_validation
-    must publish one or a progress UI never advances past plan_generation."""
-    ctx = PlannerContext(
-        scheduler=Scheduler(),
-        rule_engine=RuleEngine(),
-        predictors=PredictorSet.default(),
-        config=AgentConfig(),
-        llm=None,
-        context_builder=None,
-    )
-    graph = PlannerGraph(ctx, checkpointer=InMemorySaver())
-    request = PlannerRequest(user_id=1, start_date=date.today(), end_date=date.today())
-
-    _state, events = graph.run_with_events(request)
-
-    assert any(
-        event.get("event") == "node.completed" and event.get("node") == "rule_validation"
-        for event in events
-    )
 
 
 def test_build_postgres_closes_the_replaced_pool(monkeypatch) -> None:

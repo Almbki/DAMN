@@ -6,16 +6,22 @@ Single source of truth for configuration. Import via :func:`get_settings`.
 from __future__ import annotations
 
 from functools import lru_cache
+from pathlib import Path
 
 from pydantic import Field, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
+
+#: Project root (``app/core/config.py`` -> ``app/core`` -> ``app`` -> root).
+#: Resolve the .env absolutely so running uvicorn from ``app/`` (or any other
+#: CWD) cannot silently fall back to the built-in defaults (mock LLM, SQLite).
+_ENV_FILE = Path(__file__).resolve().parents[2] / ".env"
 
 
 class Settings(BaseSettings):
     """Environment driven settings (Pydantic v2 / pydantic-settings)."""
 
     model_config = SettingsConfigDict(
-        env_file=".env",
+        env_file=_ENV_FILE,
         env_file_encoding="utf-8",
         case_sensitive=False,
         extra="ignore",
@@ -96,10 +102,6 @@ class Settings(BaseSettings):
     @property
     def is_sqlite(self) -> bool:
         return self.database_url.startswith("sqlite")
-
-    @property
-    def is_development(self) -> bool:
-        return self.environment.lower() in {"development", "dev", "local"}
 
     @property
     def checkpointer_mode(self) -> str:

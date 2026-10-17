@@ -1,10 +1,11 @@
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 
+import { DotsButton } from '@/components/task/dots-button';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Icon } from '@/components/ui/icon';
 import { useInteraction } from '@/components/ui/interaction';
 import { Surface } from '@/components/ui/surface';
-import { Fonts, Line, Space, Type } from '@/constants/tokens';
+import { Fonts, Line, Radius, Space, Type } from '@/constants/tokens';
 import { useTheme } from '@/state/theme';
 
 /** Minimal shape the timeline draws — real tasks and preview drafts both map to it. */
@@ -12,6 +13,8 @@ export type TimelineItem = {
   id: number;
   title: string;
   done: boolean;
+  /** Soft defer; drawn as a neutral tag, not as completion. */
+  skipped?: boolean;
   startTime: string | null;
   endTime: string | null;
   estimatedMinutes: number | null;
@@ -26,17 +29,16 @@ export function Timeline({
   activeId = null,
   onToggleDone,
   onOpen,
-  onSkip,
 }: {
   items: TimelineItem[];
-  /** Read-only (preview) when false: no checkbox, no skip, no open. */
+  /** Read-only (preview) when false: no checkbox, no overflow, no open. */
   interactive?: boolean;
   /** The current node, drawn in the live scallion tone. */
   nowId?: number | null;
   activeId?: number | null;
   onToggleDone?: (id: number) => void;
+  /** Open the task detail sheet. The visible overflow uses the same action. */
   onOpen?: (id: number) => void;
-  onSkip?: (id: number) => void;
 }) {
   const ordered = [...items].sort((a, b) => {
     if (a.startTime && b.startTime) return a.startTime.localeCompare(b.startTime);
@@ -56,7 +58,6 @@ export function Timeline({
           active={item.id === activeId}
           onToggleDone={onToggleDone}
           onOpen={onOpen}
-          onSkip={onSkip}
         />
       ))}
     </View>
@@ -70,7 +71,6 @@ function TimelineRow({
   active,
   onToggleDone,
   onOpen,
-  onSkip,
 }: {
   item: TimelineItem;
   interactive: boolean;
@@ -78,15 +78,15 @@ function TimelineRow({
   active: boolean;
   onToggleDone?: (id: number) => void;
   onOpen?: (id: number) => void;
-  onSkip?: (id: number) => void;
 }) {
   const { colors } = useTheme();
-  const { focused, hovered, onFocus, onBlur, onHoverIn, onHoverOut } = useInteraction();
+  const { focused, onFocus, onBlur } = useInteraction();
   const done = item.done;
+  const skipped = item.skipped === true;
   const clickable = interactive && onOpen != null;
 
   return (
-    <View style={styles.row} onPointerEnter={onHoverIn} onPointerLeave={onHoverOut}>
+    <View style={styles.row}>
       <View style={styles.timeCol}>
         <Text style={[styles.time, { color: item.startTime ? colors.inkMuted : colors.inkFaint }]}>
           {item.startTime ?? '—'}
@@ -117,7 +117,10 @@ function TimelineRow({
       <Surface
         level={active ? 'level2' : 'level1'}
         radius="lg"
-        style={[styles.card, { borderColor: focused ? colors.focusRing : 'transparent', borderWidth: 1 }]}>
+        style={[
+          styles.card,
+          { borderColor: focused ? colors.focusRing : 'transparent', borderWidth: 1 },
+        ]}>
         <View style={styles.cardRow}>
           <Checkbox
             checked={done}
@@ -128,17 +131,22 @@ function TimelineRow({
 
           <Pressable
             accessibilityRole={clickable ? 'button' : undefined}
-            accessibilityLabel={clickable ? `编辑任务：${item.title}` : item.title}
+            accessibilityLabel={clickable ? `任务详情：${item.title}` : item.title}
             disabled={!clickable}
             onPress={clickable ? () => onOpen?.(item.id) : undefined}
             onFocus={onFocus}
             onBlur={onBlur}
-            style={styles.content}>
+            style={[
+              styles.content,
+              {
+                boxShadow: focused ? `inset 0 0 0 2px ${colors.focusRing}` : undefined,
+              },
+            ]}>
             <Text
               style={[
                 styles.title,
                 {
-                  color: done ? colors.inkMuted : colors.ink,
+                  color: done || skipped ? colors.inkMuted : colors.ink,
                   textDecorationLine: done ? 'line-through' : 'none',
                 },
               ]}>
@@ -150,23 +158,22 @@ function TimelineRow({
                   {item.startTime}
                   {item.endTime ? ` - ${item.endTime}` : ''}
                 </Text>
-              ) : item.estimatedMinutes ? (
+              ) : null}
+              {item.estimatedMinutes ? (
                 <Text style={[styles.range, { color: colors.inkMuted }]}>
-                  约 {item.estimatedMinutes} 分钟
+                  {item.startTime ? '· ' : '约 '}
+                  {item.estimatedMinutes} 分钟
                 </Text>
+              ) : null}
+              {skipped ? (
+                <Text style={[styles.skipped, { color: colors.warning }]}>已跳过</Text>
               ) : null}
               <PriorityFlag priority={item.priority} />
             </View>
           </Pressable>
 
-          {interactive && onSkip && !done && hovered ? (
-            <Pressable
-              accessibilityRole="button"
-              accessibilityLabel={`今天先不做：${item.title}`}
-              onPress={() => onSkip(item.id)}
-              style={styles.skip}>
-              <Text style={[styles.skipText, { color: colors.primary }]}>今天先不做</Text>
-            </Pressable>
+          {clickable ? (
+            <DotsButton label={`任务详情：${item.title}`} onPress={() => onOpen?.(item.id)} />
           ) : null}
         </View>
       </Surface>
@@ -176,8 +183,7 @@ function TimelineRow({
 
 function PriorityFlag({ priority }: { priority: number }) {
   const { colors } = useTheme();
-  const tone =
-    priority >= 3 ? colors.error : priority === 2 ? colors.warning : colors.inkMuted;
+  const tone = priority >= 3 ? colors.error : priority === 2 ? colors.warning : colors.inkMuted;
   const label = priority >= 3 ? '高' : priority === 2 ? '中' : '低';
   return (
     <View style={styles.priority}>
@@ -220,6 +226,7 @@ const styles = StyleSheet.create({
     flex: 1,
     marginLeft: Space.sm,
     marginVertical: Space.xs,
+    minWidth: 0,
   },
   cardRow: {
     flexDirection: 'row',
@@ -232,6 +239,7 @@ const styles = StyleSheet.create({
     flex: 1,
     gap: Space.xs,
     minWidth: 0,
+    borderRadius: Radius.sm,
     paddingVertical: Space.xs,
   },
   title: {
@@ -249,6 +257,10 @@ const styles = StyleSheet.create({
     fontFamily: Fonts.monoRegular,
     fontSize: Type.labelMedium,
   },
+  skipped: {
+    fontSize: Type.labelMedium,
+    fontWeight: '600',
+  },
   priority: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -257,13 +269,5 @@ const styles = StyleSheet.create({
   priorityText: {
     fontSize: Type.labelMedium,
     fontWeight: '600',
-  },
-  skip: {
-    paddingHorizontal: Space.sm,
-    minHeight: 32,
-    justifyContent: 'center',
-  },
-  skipText: {
-    fontSize: Type.labelMedium,
   },
 });

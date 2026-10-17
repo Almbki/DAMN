@@ -1,142 +1,102 @@
 import { useState } from 'react';
-import { Pressable, StyleSheet, Text, View } from 'react-native';
+import { StyleSheet, Text, View } from 'react-native';
 
-import { Button } from '@/components/ui/button';
-import { DateTimeField } from '@/components/ui/date-time-field';
+import { isEndAfterStart, isValidTime, parseEstimatedMinutes } from '@/components/task/task-form';
 import { Dialog } from '@/components/ui/dialog';
+import { DateTimeField } from '@/components/ui/date-time-field';
 import { Segmented } from '@/components/ui/segmented';
 import { TextField } from '@/components/ui/text-field';
-import { Radius, Space, Type } from '@/constants/tokens';
-import {
-  REPEAT_ENDS,
-  REPEAT_END_LABEL,
-  REPEAT_FREQS,
-  REPEAT_FREQ_LABEL,
-  type RepeatEnd,
-  type RepeatFreq,
-  type Task,
-} from '@/domain/task';
+import { Space, Type } from '@/constants/tokens';
+import type { Task } from '@/domain/task';
 import { useTheme } from '@/state/theme';
 
+const PRIORITIES = ['低', '中', '高'];
+
+/**
+ * Focused editor for the fields the API actually supports. Repeat/isNew
+ * branches were removed: they only ever ran in the local mock store.
+ */
 export function TaskEditor({
   task,
-  isNew = false,
   onClose,
   onSave,
-  onDelete,
-  onMove,
 }: {
   task: Task;
-  isNew?: boolean;
   onClose: () => void;
   onSave: (id: number, patch: Partial<Task>) => void;
-  onDelete: (id: number) => void;
-  onMove: (id: number, delta: number) => void;
 }) {
   const { colors } = useTheme();
   const [title, setTitle] = useState(task.title);
-  const [description, setDescription] = useState(task.description);
-  const [notes, setNotes] = useState(task.notes);
-  const [startDate, setStartDate] = useState(task.startDate ?? '');
-  const [startTime, setStartTime] = useState(task.startTime ?? '');
+  const [minutes, setMinutes] = useState(
+    task.estimatedMinutes != null ? String(task.estimatedMinutes) : '',
+  );
+  const [priority, setPriority] = useState(Math.min(3, Math.max(1, task.priority)));
   const [dueDate, setDueDate] = useState(task.dueDate ?? '');
-  const [dueTime, setDueTime] = useState(task.dueTime ?? '');
-  const [minutes, setMinutes] = useState(task.estimatedMinutes ? String(task.estimatedMinutes) : '');
-  const [repeatFreq, setRepeatFreq] = useState<RepeatFreq>(task.repeat.freq);
-  const [repeatInterval, setRepeatInterval] = useState(task.repeat.interval);
-  const [repeatEnd, setRepeatEnd] = useState<RepeatEnd>(task.repeat.end);
-  const [repeatUntil, setRepeatUntil] = useState(task.repeat.until ?? '');
-  const [repeatCount, setRepeatCount] = useState(task.repeat.count ? String(task.repeat.count) : '');
+  const [startTime, setStartTime] = useState(task.startTime ?? '');
+  const [endTime, setEndTime] = useState(task.endTime ?? '');
+  const [error, setError] = useState<string | null>(null);
 
   function save() {
+    const nextTitle = title.trim();
+    const nextMinutes = parseEstimatedMinutes(minutes);
+    const nextStart = startTime.trim();
+    const nextEnd = endTime.trim();
+
+    if (!nextTitle) {
+      setError('标题不能为空。');
+      return;
+    }
+    if (nextMinutes === 'invalid') {
+      setError('预计时长填 1 到 600 分钟。');
+      return;
+    }
+    if (!isValidTime(nextStart) || !isValidTime(nextEnd)) {
+      setError('时间格式用 HH:MM。');
+      return;
+    }
+    if (nextEnd && !nextStart) {
+      setError('先填开始时间，再填结束时间。');
+      return;
+    }
+    if (!isEndAfterStart(nextStart, nextEnd)) {
+      setError('结束时间要晚于开始时间。');
+      return;
+    }
+    if ((nextStart || nextEnd) && !dueDate) {
+      setError('排了时间，也要选一个日期。');
+      return;
+    }
+
     onSave(task.id, {
-      title: title.trim() || '未命名任务',
-      description,
-      notes,
-      startDate: startDate || null,
-      startTime: startTime || null,
+      title: nextTitle,
+      estimatedMinutes: nextMinutes,
+      priority,
       dueDate: dueDate || null,
-      dueTime: dueTime || null,
-      estimatedMinutes: minutes.trim() ? Number(minutes) || null : null,
-      repeat:
-        repeatFreq === 'none'
-          ? { freq: 'none', interval: 1, end: 'never', until: null, count: null }
-          : {
-              freq: repeatFreq,
-              interval: Math.max(1, repeatInterval),
-              end: repeatEnd,
-              until: repeatEnd === 'until' ? repeatUntil || null : null,
-              count: repeatEnd === 'count' ? Math.max(1, Number(repeatCount) || 1) : null,
-            },
+      startTime: nextStart || null,
+      dueTime: nextStart || null,
+      endTime: nextEnd || null,
     });
     onClose();
   }
 
-  const intervalUnit = repeatFreq === 'weekly' ? '周' : repeatFreq === 'monthly' ? '个月' : '天';
-
   return (
     <Dialog
       visible
-      width={600}
-      title={isNew ? '新建任务' : '编辑任务'}
+      width={560}
+      title="编辑任务"
+      description="只显示后端能保存的字段；删除任务和重复规则不在当前 API 里。"
       onRequestClose={onClose}
       actions={[
-        ...(isNew
-          ? []
-          : [
-              { label: '上移', variant: 'text' as const, onPress: () => onMove(task.id, -1) },
-              { label: '下移', variant: 'text' as const, onPress: () => onMove(task.id, 1) },
-              {
-                label: '删除',
-                variant: 'text' as const,
-                onPress: () => {
-                  onDelete(task.id);
-                  onClose();
-                },
-              },
-            ]),
-        { label: '保存', variant: 'filled' as const, onPress: save },
+        { label: '取消', variant: 'text', onPress: onClose },
+        { label: '保存', variant: 'filled', onPress: save },
       ]}>
       <TextField
         label="标题"
         value={title}
         onChangeText={setTitle}
         placeholder="要做什么？"
-        autoFocus={isNew}
-        testID="editor-title"
         background={colors.surfaceContainerLowest}
       />
-      <TextField
-        label="描述"
-        value={description}
-        onChangeText={setDescription}
-        placeholder="一句话说明"
-        background={colors.surfaceContainerLowest}
-      />
-      <TextField
-        label="备注"
-        value={notes}
-        onChangeText={setNotes}
-        placeholder="补充信息、链接…"
-        multiline
-        background={colors.surfaceContainerLowest}
-      />
-
-      <DateTimeField
-        label="开始"
-        date={startDate}
-        time={startTime}
-        onChangeDate={(value) => setStartDate(value ?? '')}
-        onChangeTime={(value) => setStartTime(value ?? '')}
-      />
-      <DateTimeField
-        label="截止"
-        date={dueDate}
-        time={dueTime}
-        onChangeDate={(value) => setDueDate(value ?? '')}
-        onChangeTime={(value) => setDueTime(value ?? '')}
-      />
-
       <TextField
         label="预计时长（分钟）"
         value={minutes}
@@ -145,106 +105,57 @@ export function TaskEditor({
         keyboardType="number-pad"
         background={colors.surfaceContainerLowest}
       />
-
-      <View style={styles.repeatBlock}>
-        <Segmented
-          label="重复"
-          options={REPEAT_FREQS.map((item) => REPEAT_FREQ_LABEL[item])}
-          value={REPEAT_FREQS.indexOf(repeatFreq)}
-          onChange={(index) => setRepeatFreq(REPEAT_FREQS[index] as RepeatFreq)}
-          scroll
-        />
-        {repeatFreq !== 'none' ? (
-          <>
-            <View style={styles.stepperRow}>
-              <Text style={[styles.stepperLabel, { color: colors.inkMuted }]}>频率</Text>
-              <View style={styles.stepper}>
-                <Pressable
-                  accessibilityRole="button"
-                  accessibilityLabel="减少"
-                  onPress={() => setRepeatInterval(Math.max(1, repeatInterval - 1))}
-                  style={[styles.stepperBtn, { borderColor: colors.outline }]}>
-                  <Text style={[styles.stepperBtnText, { color: colors.primary }]}>−</Text>
-                </Pressable>
-                <Text style={[styles.stepperValue, { color: colors.ink }]}>
-                  每 {repeatInterval} {intervalUnit}
-                </Text>
-                <Pressable
-                  accessibilityRole="button"
-                  accessibilityLabel="增加"
-                  onPress={() => setRepeatInterval(repeatInterval + 1)}
-                  style={[styles.stepperBtn, { borderColor: colors.outline }]}>
-                  <Text style={[styles.stepperBtnText, { color: colors.primary }]}>＋</Text>
-                </Pressable>
-              </View>
-            </View>
-            <Segmented
-              label="结束条件"
-              options={REPEAT_ENDS.map((item) => REPEAT_END_LABEL[item])}
-              value={REPEAT_ENDS.indexOf(repeatEnd)}
-              onChange={(index) => setRepeatEnd(REPEAT_ENDS[index] as RepeatEnd)}
-              scroll
-            />
-            {repeatEnd === 'until' ? (
-              <DateTimeField
-                label="重复到"
-                date={repeatUntil}
-                time=""
-                withTime={false}
-                onChangeDate={(value) => setRepeatUntil(value ?? '')}
-                onChangeTime={() => undefined}
-              />
-            ) : null}
-            {repeatEnd === 'count' ? (
-              <TextField
-                label="重复次数"
-                value={repeatCount}
-                onChangeText={setRepeatCount}
-                placeholder="5"
-                keyboardType="number-pad"
-                background={colors.surfaceContainerLowest}
-              />
-            ) : null}
-          </>
-        ) : null}
+      <Segmented
+        label="优先级"
+        options={PRIORITIES}
+        value={priority - 1}
+        onChange={(index) => setPriority(index + 1)}
+      />
+      <DateTimeField
+        label="计划日期"
+        date={dueDate}
+        time=""
+        withTime={false}
+        onChangeDate={(value) => setDueDate(value ?? '')}
+        onChangeTime={() => undefined}
+      />
+      <View style={styles.timeRow}>
+        <View style={styles.timeField}>
+          <TextField
+            label="开始时间"
+            value={startTime}
+            onChangeText={setStartTime}
+            placeholder="09:00"
+            background={colors.surfaceContainerLowest}
+          />
+        </View>
+        <View style={styles.timeField}>
+          <TextField
+            label="结束时间"
+            value={endTime}
+            onChangeText={setEndTime}
+            placeholder="09:30"
+            background={colors.surfaceContainerLowest}
+          />
+        </View>
       </View>
-      <Button label="取消" variant="text" onPress={onClose} />
+      {error ? <Text style={[styles.error, { color: colors.error }]}>{error}</Text> : null}
     </Dialog>
   );
 }
 
 const styles = StyleSheet.create({
-  repeatBlock: {
-    gap: Space.lg,
-  },
-  stepperRow: {
+  timeRow: {
     flexDirection: 'row',
-    alignItems: 'center',
+    flexWrap: 'wrap',
     gap: Space.md,
   },
-  stepperLabel: {
+  timeField: {
+    flexGrow: 1,
+    flexBasis: 140,
+  },
+  error: {
     fontSize: Type.labelMedium,
-  },
-  stepper: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: Space.sm,
-  },
-  stepperBtn: {
-    width: 36,
-    height: 36,
-    borderWidth: 1,
-    borderRadius: Radius.pill,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  stepperBtnText: {
-    fontSize: Type.bodyLg,
-    fontWeight: '600',
-  },
-  stepperValue: {
-    fontSize: Type.bodyMedium,
-    minWidth: 76,
-    textAlign: 'center',
+    lineHeight: Type.labelMedium * 1.5,
   },
 });

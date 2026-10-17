@@ -30,7 +30,6 @@ from app.domain.profile import (
     init_state,
     profile_prompt_json,
     replan_decision,
-    resolve_mbti_type,
     update_state,
 )
 from app.infrastructure.database.repositories import (
@@ -220,10 +219,6 @@ class ProfileService:
         payload["degraded"] = state.is_degraded()
         return payload
 
-    def prompt_block(self, user_id: int) -> dict:
-        """Same as :meth:`snapshot` but safe to embed in an LLM prompt."""
-        return self.snapshot(user_id)
-
     # ------------------------------------------------------------------
     # internals
     # ------------------------------------------------------------------
@@ -234,9 +229,6 @@ class ProfileService:
             mbti_dims=dict(user.mbti_dims) if user.mbti_dims else None,
             identity=user.identity,
         )
-
-    def resolved_mbti(self, user_id: int) -> str:
-        return resolve_mbti_type(self.get_profile(user_id))
 
 
 __all__ = ["PROFILE_FIELDS", "ProfileService", "WINDOW_7D", "WINDOW_30D"]

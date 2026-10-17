@@ -205,6 +205,15 @@ export interface TaskUpdateRequest {
   failure_reason?: string;
   started_at?: string;
   finished_at?: string;
+  /** Explicit user overrides (editable in `PATCH /plans/{id}/tasks/{task_id}`). */
+  title?: string;
+  description?: string | null;
+  estimated_duration?: number;
+  priority?: number;
+  cognitive_load?: CognitiveLoad;
+  scheduled_date?: string | null;
+  start_time?: string | null;
+  end_time?: string | null;
   standard_updates?: { id: number; completed: boolean }[];
 }
 
@@ -289,14 +298,6 @@ export interface PlanGenerateRequest {
   execution_weight?: number | null;
 }
 
-export interface PlanGenerateResponse {
-  job_id: string;
-  status: string;
-  plan_id: number | null;
-  events_url: string;
-  plan: PlanRead | null;
-}
-
 export interface FeedbackCreate {
   date: string;
   completion_rate?: number;
@@ -338,6 +339,8 @@ export interface FeedbackSubmitResponse {
   feedback: FeedbackRead;
   replan_triggered: boolean;
   replan_plan_id: number | null;
+  /** Set when `?stream_replan=true`; poll/stream this job for the replan result. */
+  replan_job_id: string | null;
   replan_eligibility: ReplanEligibilityRead | null;
   /** Agent decision from the feedback loop (route / severity / reasons). */
   adjustment: FeedbackAdjustmentRead | null;
@@ -506,6 +509,3 @@ export type JobStatus = {
   error: string | null;
   events: Record<string, unknown>[];
 };
-
-/** SSE stage name; e.g. `goal_analysis` ... `rule_validation`, `completed`. */
-export type PlanStage = string;

@@ -74,10 +74,25 @@ SSE 实时推送：
    fields). Now: sent values win, omitted values fall back to the stored
    preferences. `user_profile` is forwarded as `profile`.
 
+## 真流式改造（2026-10）
+
+`POST /plans/generate`、`POST /plans/decompose`、`POST /plans/{id}/replan` 现在是
+真异步 job：立即返回 202，后台线程跑图，节点完成即推 SSE，`completed` 帧带 result。
+
+| Endpoint | 现在 |
+| --- | --- |
+| `POST /plans/generate` | 202 `PlanGenerateResponse`（`status="running"`、`plan=null`、`plan_id=null`、`events_url`、`status_url`）；result `{plan_id, plan}` |
+| `POST /plans/decompose` | 202 `JobAcceptedResponse`；result `DecomposeResponse`；draft 404/403/预算 409 仍立即返回 |
+| `POST /plans/{id}/replan` | 202 `JobAcceptedResponse`；result `ReplanResponse`；冷却 409 仍立即返回 |
+| `POST /plans/{id}/feedback?stream_replan=true` | 201 增加 `replan_job_id`；重排图走 job |
+
+前端要复用已有的 `runJob`（`new_frontend/src/api/endpoints.ts:178`）和
+`apiPollJob`（`client.ts:307`）。详见 `docs/streaming-and-callchains.md`。
+
 ## Deliberately unchanged
 
-- `POST /plans/generate` — still synchronous, `202`, returns the full plan, no
-  fake SSE progress.
+- 两个 `confirm` 仍同步（只落库，快速且需要原子性）。
+- `PATCH /plans/{plan_id}/tasks/{task_id}` 仍同步。
 - `PATCH /tasks/{id}` — `completed: false` stays a **no-op**; un-completing means
   `{"status": "scheduled"}`.
 - Feedback → auto-replan below 50% completion, per-user 24 h cooldown, `409` with

@@ -15,8 +15,6 @@ import time
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
 
-from pydantic import BaseModel
-
 
 @dataclass(slots=True)
 class ToolResult[TOut]:
@@ -85,16 +83,5 @@ class ToolRegistry:
     def names(self) -> list[str]:
         return sorted(self._tools)
 
-    def all(self) -> list[BaseTool]:
-        return [self._tools[name] for name in self.names()]
 
-    def llm_tools(self) -> list[BaseTool]:
-        return [tool for tool in self.all() if tool.llm_exposed]
-
-
-def describe_schema(schema: type[BaseModel] | None) -> dict:
-    """JSON-schema of a tool payload (used for documentation / LLM binding)."""
-    return schema.model_json_schema() if schema is not None else {}
-
-
-__all__ = ["BaseTool", "ToolRegistry", "ToolResult", "describe_schema"]
+__all__ = ["BaseTool", "ToolRegistry", "ToolResult"]

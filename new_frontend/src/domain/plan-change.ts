@@ -9,6 +9,8 @@ export interface PlanChangeDay {
   moved: number;
   removed: number;
   summary: string;
+  /** Task ids the backend associated with this day's diff. */
+  taskIds: number[];
 }
 
 export interface PlanChange {

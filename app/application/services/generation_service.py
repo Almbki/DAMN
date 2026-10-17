@@ -16,7 +16,6 @@ from collections.abc import Callable, Iterator
 from datetime import UTC, datetime
 from uuid import uuid4
 
-from app.agent.state import PlannerRequest
 from app.application.dto.generation import AgentEvent, GenerationJob, JobStatus
 from app.application.exceptions import NotFoundError, PermissionDeniedError
 from app.application.services.plan_service import PlanService
@@ -88,41 +87,6 @@ class GenerationService:
         with self._lock:
             self._threads.append(thread)
         thread.start()
-        return job
-
-    def create_job(
-        self, plan_service: PlanService, user_id: int, request: PlannerRequest
-    ) -> GenerationJob:
-        """Synchronous compatibility path used by ``POST /plans/generate``.
-
-        Runs the full pipeline inline in the caller's thread (legacy behaviour)
-        and returns a terminal job. A channel is registered so the SSE endpoint
-        can still replay the recorded events.
-        """
-        self._purge_expired()
-        job = GenerationJob(
-            job_id=uuid4().hex,
-            user_id=user_id,
-            kind="generate",
-            status=JobStatus.RUNNING,
-        )
-        channel = _Channel()
-        with self._lock:
-            self._jobs[job.job_id] = job
-            self._channels[job.job_id] = channel
-        try:
-            detail, run_events = plan_service.generate_plan_with_events(user_id, request)
-        except Exception as exc:  # noqa: BLE001 - record then re-raise to the route
-            with channel.condition:
-                job.error = f"{type(exc).__name__}: {exc}"
-                job.status = JobStatus.FAILED
-            channel.close()
-            raise
-        with channel.condition:
-            job.events = [AgentEvent.from_dict(event) for event in run_events]
-            job.plan_id = detail.plan.id
-            job.status = JobStatus.COMPLETED
-        channel.close()
         return job
 
     def get_job(self, job_id: str, user_id: int) -> GenerationJob:
@@ -215,14 +179,21 @@ class GenerationService:
         try:
             service = self._build_service()
             result = runner(service, sink)
-            job.result = dict(result or {})
-            plan_id = job.result.get("plan_id")
-            if isinstance(plan_id, int):
-                job.plan_id = plan_id
-            job.status = JobStatus.COMPLETED
+            # Publish the terminal state under the channel lock: the subscriber
+            # may be waiting for the final `completed` frame, which must already
+            # carry the job result.
+            with channel.condition:
+                job.result = dict(result or {})
+                plan_id = job.result.get("plan_id")
+                if isinstance(plan_id, int):
+                    job.plan_id = plan_id
+                job.status = JobStatus.COMPLETED
+                channel.condition.notify_all()
         except Exception as exc:  # noqa: BLE001 - a failed job must not kill the thread
-            job.error = f"{type(exc).__name__}: {exc}"
-            job.status = JobStatus.FAILED
+            with channel.condition:
+                job.error = f"{type(exc).__name__}: {exc}"
+                job.status = JobStatus.FAILED
+                channel.condition.notify_all()
         finally:
             if service is not None:
                 try:
@@ -233,9 +204,7 @@ class GenerationService:
                 channel.condition.notify_all()
 
     def _build_service(self) -> PlanService:
-        if self._service_factory is not None:
-            return self._service_factory()
-        return _default_service_factory()
+        return self._service_factory()
 
     def _channel_for(self, job_id: str) -> _Channel:
         with self._lock:
@@ -264,26 +233,6 @@ class GenerationService:
             self._threads = [thread for thread in self._threads if thread.is_alive()]
         for channel in stale:
             channel.close()
-
-
-def _default_service_factory() -> PlanService:
-    """Fallback factory when the service is built without one.
-
-    Mirrors ``app.api.deps._plan_service_factory`` so a directly-constructed
-    service still gets its own session, LLM and checkpointer.
-    """
-    from app.agent.checkpointer import get_checkpointer
-    from app.agent.llm import StructuredLLM
-    from app.infrastructure.database import SessionLocal
-    from app.infrastructure.llm.client import get_llm_client
-
-    settings = get_settings()
-    llm = StructuredLLM(
-        get_llm_client(settings),
-        max_retries=settings.agent_llm_max_retries,
-        prompt_version=settings.agent_prompt_version,
-    )
-    return PlanService(SessionLocal(), llm=llm, checkpointer=get_checkpointer(settings))
 
 
 def _frame(event: AgentEvent) -> str:

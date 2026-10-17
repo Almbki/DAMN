@@ -1,10 +1,13 @@
-import { Link, usePathname } from 'expo-router';
+import { Link, usePathname, useRouter } from 'expo-router';
 import { Pressable, ScrollView, StyleSheet, Text, useWindowDimensions, View } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
+import { IconButton } from '@/components/ui/button';
 import { Icon } from '@/components/ui/icon';
 import { useInteraction } from '@/components/ui/interaction';
-import { NAV, type NavItem } from '@/constants/nav';
+import { NAV, routeMetaFor, type NavItem } from '@/constants/nav';
 import { Elevation, Layout, Line, Radius, Space, Type } from '@/constants/tokens';
+import { usePlan } from '@/state/plan';
 import { useTheme } from '@/state/theme';
 
 function useWide() {
@@ -15,53 +18,129 @@ function useWide() {
 
 export function AppShell({ children }: { children: React.ReactNode }) {
   const { colors } = useTheme();
+  const { actionError, clearActionError } = usePlan();
+  const insets = useSafeAreaInsets();
   const wide = useWide();
   const pathname = usePathname();
-  const active = NAV.find((item) => item.href === pathname) ?? NAV[0];
+  const router = useRouter();
+  const meta = routeMetaFor(pathname);
+
+  function goBack() {
+    if (router.canGoBack()) router.back();
+    else router.replace('/profile');
+  }
+
+  const content = (
+    <View
+      style={[
+        styles.content,
+        {
+          maxWidth: Layout.contentMax,
+          paddingHorizontal: wide ? Layout.padWide : Layout.padNarrow,
+          paddingTop: wide ? Space.xxl : Space.xl,
+          paddingBottom: (wide ? Space.xxl : Space.xl) + (wide ? insets.bottom : 0),
+        },
+      ]}>
+      {children}
+    </View>
+  );
 
   return (
     <View
       style={[
         styles.root,
-        { backgroundColor: colors.surface, flexDirection: wide ? 'row' : 'column' },
+        {
+          backgroundColor: colors.surface,
+          flexDirection: wide ? 'row' : 'column',
+          paddingLeft: insets.left,
+          paddingRight: insets.right,
+        },
       ]}>
-      {wide ? <NavigationRail pathname={pathname} /> : null}
+      {wide ? (
+        <NavigationRail
+          activeHref={meta.navHref}
+          topInset={insets.top}
+          bottomInset={insets.bottom}
+        />
+      ) : null}
 
       <View style={styles.main}>
         <View
           style={[
             styles.header,
             {
-              height: Layout.headerHeight,
+              height: Layout.headerHeight + insets.top,
+              paddingTop: insets.top,
               paddingHorizontal: wide ? Layout.padWide : Layout.padNarrow,
               borderBottomColor: colors.outlineVariant,
               backgroundColor: colors.surface,
             },
           ]}>
-          <Text style={[styles.headerTitle, { color: colors.ink }]}>{active.title}</Text>
+          <View style={styles.headerLeft}>
+            {meta.back ? (
+              <IconButton name="arrowLeft" label="返回" size={44} onPress={goBack} />
+            ) : null}
+            <Text
+              accessibilityRole="header"
+              numberOfLines={1}
+              style={[styles.headerTitle, { color: colors.ink }]}>
+              {meta.title}
+            </Text>
+          </View>
         </View>
 
-        <ScrollView style={styles.scroll} contentContainerStyle={styles.scrollContent}>
+        {actionError ? (
           <View
+            accessibilityRole="alert"
+            accessibilityLiveRegion="polite"
             style={[
-              styles.content,
+              styles.errorBanner,
               {
-                maxWidth: Layout.contentMax,
+                backgroundColor: colors.errorContainer,
+                borderBottomColor: colors.error,
                 paddingHorizontal: wide ? Layout.padWide : Layout.padNarrow,
-                paddingVertical: wide ? Space.xxl : Space.xl,
               },
             ]}>
-            {children}
+            <Icon name="flag" size={16} color={colors.onErrorContainer} />
+            <Text style={[styles.errorText, { color: colors.onErrorContainer }]} numberOfLines={3}>
+              {actionError}
+            </Text>
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel="关闭错误提示"
+              onPress={clearActionError}
+              hitSlop={8}
+              style={styles.errorDismiss}>
+              <Icon name="close" size={16} color={colors.onErrorContainer} />
+            </Pressable>
           </View>
-        </ScrollView>
+        ) : null}
+
+        {meta.selfScroll ? (
+          <View style={styles.contentHost}>{content}</View>
+        ) : (
+          <ScrollView style={styles.scroll} contentContainerStyle={styles.scrollContent}>
+            {content}
+          </ScrollView>
+        )}
       </View>
 
-      {wide ? null : <BottomNav pathname={pathname} />}
+      {wide ? null : (
+        <BottomNav activeHref={meta.navHref} bottomInset={insets.bottom} />
+      )}
     </View>
   );
 }
 
-function NavigationRail({ pathname }: { pathname: string }) {
+function NavigationRail({
+  activeHref,
+  topInset,
+  bottomInset,
+}: {
+  activeHref: string | null;
+  topInset: number;
+  bottomInset: number;
+}) {
   const { colors } = useTheme();
   return (
     <View
@@ -69,6 +148,8 @@ function NavigationRail({ pathname }: { pathname: string }) {
         styles.rail,
         {
           width: Layout.railWidth,
+          paddingTop: topInset + Space.lg,
+          paddingBottom: Space.md + bottomInset,
           backgroundColor: colors.surfaceContainer,
           borderRightColor: colors.outlineVariant,
         },
@@ -77,7 +158,7 @@ function NavigationRail({ pathname }: { pathname: string }) {
 
       <View style={styles.navList}>
         {NAV.map((item) => (
-          <NavLink key={item.href} item={item} active={item.href === pathname} variant="rail" />
+          <NavLink key={item.href} item={item} active={item.href === activeHref} variant="rail" />
         ))}
       </View>
 
@@ -89,7 +170,13 @@ function NavigationRail({ pathname }: { pathname: string }) {
   );
 }
 
-function BottomNav({ pathname }: { pathname: string }) {
+function BottomNav({
+  activeHref,
+  bottomInset,
+}: {
+  activeHref: string | null;
+  bottomInset: number;
+}) {
   const { colors } = useTheme();
   return (
     <View
@@ -98,11 +185,12 @@ function BottomNav({ pathname }: { pathname: string }) {
         {
           backgroundColor: colors.surfaceContainer,
           borderTopColor: colors.outlineVariant,
-          height: Layout.navBarHeight,
+          height: Layout.navBarHeight + bottomInset,
+          paddingBottom: Space.sm + bottomInset,
         },
       ]}>
       {NAV.map((item) => (
-        <NavLink key={item.href} item={item} active={item.href === pathname} variant="bar" />
+        <NavLink key={item.href} item={item} active={item.href === activeHref} variant="bar" />
       ))}
     </View>
   );
@@ -179,15 +267,46 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     borderBottomWidth: 1,
   },
+  headerLeft: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Space.xs,
+    minWidth: 0,
+  },
   headerTitle: {
+    flexShrink: 1,
     fontSize: Type.titleLarge,
     fontWeight: '600',
+  },
+  errorBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Space.md,
+    borderBottomWidth: 1,
+    paddingVertical: Space.sm,
+  },
+  errorText: {
+    flex: 1,
+    fontSize: Type.labelLarge,
+    lineHeight: Type.labelLarge * Line.normal,
+  },
+  errorDismiss: {
+    width: 32,
+    height: 32,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderRadius: Radius.pill,
   },
   scroll: {
     flex: 1,
   },
   scrollContent: {
     flexGrow: 1,
+  },
+  contentHost: {
+    flex: 1,
+    minHeight: 0,
   },
   content: {
     width: '100%',
@@ -198,7 +317,6 @@ const styles = StyleSheet.create({
   },
   rail: {
     borderRightWidth: 1,
-    paddingTop: Space.lg,
     paddingBottom: Space.md,
     alignItems: 'center',
   },
@@ -247,7 +365,6 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     borderTopWidth: 1,
     paddingTop: Space.sm,
-    paddingBottom: Space.sm,
   },
   barItem: {
     flex: 1,

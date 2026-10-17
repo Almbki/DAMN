@@ -172,48 +172,9 @@ class PlannerRequest(BaseModel):
 GenerationRequest = PlannerRequest
 
 
-class PreviewActionRequest(BaseModel):
-    """Resume payload for the paused preview."""
-
-    user_id: int
-    thread_id: str
-    action: str = "confirm"  # "confirm" | "adjust"
-    feedback: str | None = None
-
-
-class FeedbackCycleRequest(BaseModel):
-    """Input of the feedback loop graph."""
-
-    user_id: int
-    plan_id: int
-    user_note: str | None = None
-
-
-class ReplanTriggerRequest(BaseModel):
-    """Explicit user-initiated replan."""
-
-    user_id: int
-    plan_id: int
-    reason: str | None = None
-    trigger_source: str = "user_request"
-
-
 # ---------------------------------------------------------------------------
-# Run metadata / tool records
+# Tool records
 # ---------------------------------------------------------------------------
-
-
-class RunMetadata(BaseModel):
-    """Non-sensitive run bookkeeping (no prompts, no private text)."""
-
-    run_id: str = ""
-    user_id: int = 0
-    trigger_type: str = "initial_plan"
-    graph_version: str = "planner-v1"
-    prompt_version: str = "v1"
-    started_at: datetime | None = None
-    nodes_executed: list[str] = Field(default_factory=list)
-    llm_calls: int = 0
 
 
 class ToolCallRecord(BaseModel):
@@ -251,9 +212,6 @@ class PlannerState(TypedDict, total=False):
 
     # --- ML ---
     ml_prediction: AdjustmentPrediction | None
-    predicted_duration: dict[int, int]
-    predicted_completion_probability: dict[int, float]
-    stress_estimation: float
     #: Truthful origin of the per-task predictions (goes into prediction_logs).
     prediction_source: str
 
@@ -293,21 +251,14 @@ class PlannerState(TypedDict, total=False):
     errors: Annotated[list[AgentError], operator.add]
     tool_results: Annotated[list[ToolCallRecord], operator.add]
 
-    # --- metadata ---
-    metadata: RunMetadata
-
 
 __all__ = [
     "AgentConfig",
-    "FeedbackCycleRequest",
     "GenerationRequest",
     "GoalInput",
     "PlannerContext",
     "PlannerRequest",
     "PlannerState",
     "PreferenceInput",
-    "PreviewActionRequest",
-    "ReplanTriggerRequest",
-    "RunMetadata",
     "ToolCallRecord",
 ]

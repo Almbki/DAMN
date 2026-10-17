@@ -4,7 +4,6 @@ from app.domain.scheduling.schedule_result import (
     SCHEMA_VERSION,
     CandidateSchedule,
     ScheduledTask,
-    ScheduleResult,
 )
 
-__all__ = ["SCHEMA_VERSION", "CandidateSchedule", "ScheduleResult", "ScheduledTask"]
+__all__ = ["SCHEMA_VERSION", "CandidateSchedule", "ScheduledTask"]

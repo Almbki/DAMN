@@ -20,7 +20,9 @@ export type IconName =
   | 'target'
   | 'sliders'
   | 'swap'
+  | 'arrowLeft'
   | 'arrowRight'
+  | 'refresh'
   | 'calendar'
   | 'clock'
   | 'dot'
@@ -185,6 +187,32 @@ function renderIcon(name: IconName, size: number, color: string, s: number) {
         </>
       );
 
+    case 'arrowLeft':
+      return (
+        <>
+          {bar({
+            width: size * 0.56,
+            height: s,
+            borderRadius: s,
+            left: size * 0.26,
+            top: half - s / 2,
+            backgroundColor: color,
+          })}
+          {triangle({
+            width: 0,
+            height: 0,
+            left: size * 0.14,
+            top: half - size * 0.15,
+            borderTopWidth: size * 0.15,
+            borderBottomWidth: size * 0.15,
+            borderRightWidth: size * 0.18,
+            borderTopColor: 'transparent',
+            borderBottomColor: 'transparent',
+            borderRightColor: color,
+          })}
+        </>
+      );
+
     case 'arrowRight':
       return (
         <>
@@ -204,6 +232,34 @@ function renderIcon(name: IconName, size: number, color: string, s: number) {
             borderTopWidth: size * 0.15,
             borderBottomWidth: size * 0.15,
             borderLeftWidth: size * 0.18,
+            borderTopColor: 'transparent',
+            borderBottomColor: 'transparent',
+            borderLeftColor: color,
+          })}
+        </>
+      );
+
+    case 'refresh':
+      return (
+        <>
+          {bar({
+            width: size * 0.64,
+            height: size * 0.64,
+            borderRadius: size,
+            left: size * 0.18,
+            top: size * 0.18,
+            borderWidth: s,
+            borderColor: color,
+            borderRightColor: 'transparent',
+          })}
+          {triangle({
+            width: 0,
+            height: 0,
+            left: size * 0.64,
+            top: size * 0.12,
+            borderTopWidth: size * 0.11,
+            borderBottomWidth: size * 0.11,
+            borderLeftWidth: size * 0.16,
             borderTopColor: 'transparent',
             borderBottomColor: 'transparent',
             borderLeftColor: color,

@@ -33,7 +33,6 @@ from app.schemas.plan import (
     ConfirmDraftRequest,
     ConfirmResponse,
     DecomposeRequest,
-    DecomposeResponse,
     JobAcceptedResponse,
     JobStatusResponse,
     PlanChangeRead,
@@ -192,35 +191,42 @@ def adjust_response_dict(result, thread_id: str, final_plan: PlanRead | None = N
     "/generate",
     response_model=PlanGenerateResponse,
     status_code=status.HTTP_202_ACCEPTED,
-    summary="Generate a first plan from goals",
+    summary="Generate a first plan from goals (async job)",
     description=(
-        "Runs the LangGraph planning pipeline (goal analysis -> theoretical analysis -> "
-        "user situation analysis -> plan generation -> rule validation -> plan repair), "
-        "persists a new plan version and returns a generation job id. "
-        "Subscribe to the SSE endpoint for the stage-by-stage progress."
+        "Async job. Runs the LangGraph planning pipeline (goal analysis -> theoretical "
+        "analysis -> user situation analysis -> plan generation -> rule validation -> "
+        "plan repair) and persists a new plan version. Returns 202 with `events_url` "
+        "(SSE stream) and `status_url` (poll); the job result carries `plan_id` and "
+        "the persisted `plan`."
     ),
     responses={**_AUTH, 422: {"model": ErrorResponse, "description": "Invalid goals"}},
 )
 def generate_plan(
     payload: PlanGenerateRequest,
     current_user: User = Depends(get_current_user),
-    plan_service: PlanService = Depends(get_plan_service),
     generation_service: GenerationService = Depends(get_generation_service),
 ) -> PlanGenerateResponse:
+    user_id = current_user.id or 0
+    # Build the graph input up-front: it must not depend on the request session
+    # once the background worker (own session) takes over.
     request = _to_generation_request(current_user, payload)
-    job = generation_service.create_job(plan_service, current_user.id or 0, request)
-    detail = (
-        plan_service.get_plan(current_user.id or 0, job.plan_id)
-        if job.plan_id is not None
-        else None
-    )
+
+    def runner(service: PlanService, emit) -> dict:
+        detail, _events = service.generate_plan_with_events(user_id, request, emit=emit)
+        return {
+            "plan_id": detail.plan.id,
+            "plan": plan_read(detail).model_dump(mode="json"),
+        }
+
+    job = generation_service.submit(user_id=user_id, kind="generate", runner=runner)
     settings = get_settings()
     return PlanGenerateResponse(
         job_id=job.job_id,
-        status=job.status.value,
-        plan_id=job.plan_id,
+        status=_job_status_value(job),
+        plan_id=None,
         events_url=f"{settings.api_v1_prefix}/plans/generation/{job.job_id}/events",
-        plan=plan_read(detail) if detail else None,
+        status_url=f"{settings.api_v1_prefix}/plans/generation/{job.job_id}",
+        plan=None,
     )
 
 
@@ -321,14 +327,16 @@ def adjust_preview(
 
 @router.post(
     "/decompose",
-    response_model=DecomposeResponse,
-    status_code=status.HTTP_200_OK,
-    summary="Decompose several goals into a per-day draft (not persisted)",
+    response_model=JobAcceptedResponse,
+    status_code=status.HTTP_202_ACCEPTED,
+    summary="Decompose several goals into a per-day draft (async job, not persisted)",
     description=(
-        "Frontend contract: send the goals you want split up and get a draft back "
-        "grouped by day. Nothing is persisted except the goals. Pass `draft_id` + "
-        "`feedback` to regenerate the same draft (bounded by "
-        "`AGENT_MAX_PREVIEW_ADJUSTMENTS`; over budget returns 409)."
+        "Async job. Frontend contract: send the goals you want split up and the job "
+        "produces a draft grouped by day. Nothing is persisted except the goals. "
+        "Returns 202 with `events_url` (SSE stream) and `status_url` (poll); the job "
+        "result has the `DecomposeResponse` shape. Pass `draft_id` + `feedback` to "
+        "regenerate the same draft (bounded by `AGENT_MAX_PREVIEW_ADJUSTMENTS`; over "
+        "budget still returns an immediate 409)."
     ),
     responses={
         **_AUTH,
@@ -339,12 +347,13 @@ def decompose_plan(
     payload: DecomposeRequest,
     current_user: User = Depends(get_current_user),
     plan_service: PlanService = Depends(get_plan_service),
-) -> DecomposeResponse:
+    generation_service: GenerationService = Depends(get_generation_service),
+) -> JobAcceptedResponse:
     user_id = current_user.id or 0
 
     if payload.draft_id:
-        # Regeneration path: the draft must exist, belong to the user and have
-        # budget left (pending_draft raises 404 / 403 / 409 as appropriate).
+        # Regeneration path: validate immediately (404 / 403 / 409) before the
+        # background job starts, so an exhausted budget is still an HTTP 409.
         pending = plan_service.pending_draft(user_id, payload.draft_id)
         used = int(pending.get("adjustment_count") or 0)
         limit = plan_service.max_preview_adjustments
@@ -352,16 +361,26 @@ def decompose_plan(
             raise ConflictError(
                 f"调整次数已用完（{used}/{limit}），请先执行当前计划再重新拆解"
             )
-        result = plan_service.adjust_preview(
-            user_id, payload.draft_id, payload.feedback or ""
-        )
-        if result.preview is None:  # budget hit on this very call
-            raise ConflictError("调整次数已用完，草稿已定稿为正式计划")
-        return decompose_response(result.thread_id, result.preview)
+        draft_id = payload.draft_id
+        feedback = payload.feedback or ""
+
+        def runner(service: PlanService, emit) -> dict:
+            result = service.adjust_preview(user_id, draft_id, feedback, emit=emit)
+            if result.preview is None:  # budget hit on this very call
+                raise ConflictError("调整次数已用完，草稿已定稿为正式计划")
+            return decompose_response(result.thread_id, result.preview).model_dump(mode="json")
+
+        job = generation_service.submit(user_id=user_id, kind="decompose", runner=runner)
+        return _job_accepted(job)
 
     request = _decompose_request(current_user, payload)
-    preview_result = plan_service.generate_preview(user_id, request)
-    return decompose_response(preview_result.thread_id, preview_result.preview)
+
+    def runner(service: PlanService, emit) -> dict:
+        result = service.generate_preview(user_id, request, emit=emit)
+        return decompose_response(result.thread_id, result.preview).model_dump(mode="json")
+
+    job = generation_service.submit(user_id=user_id, kind="decompose", runner=runner)
+    return _job_accepted(job)
 
 
 @router.post(
@@ -505,12 +524,15 @@ def list_plan_changes(
 
 @router.post(
     "/{plan_id}/replan",
-    response_model=ReplanResponse,
-    status_code=status.HTTP_201_CREATED,
-    summary="Trigger a replan (creates a new plan version)",
+    response_model=JobAcceptedResponse,
+    status_code=status.HTTP_202_ACCEPTED,
+    summary="Trigger a replan (async job, creates a new plan version)",
     description=(
-        "Creates plan v(n+1) instead of overwriting v(n), re-schedules the "
-        "unfinished tasks and records a ReplanEvent. Subject to the cooldown."
+        "Async job. Creates plan v(n+1) instead of overwriting v(n), re-schedules "
+        "the unfinished tasks and records a ReplanEvent. Subject to the cooldown: "
+        "an ineligible plan still returns an immediate 409. Returns 202 with "
+        "`events_url` (SSE stream) and `status_url` (poll); the job result has the "
+        "`ReplanResponse` shape."
     ),
     responses={**_AUTH, **_NOT_FOUND, **_FORBIDDEN, 409: {"model": ErrorResponse}},
 )
@@ -519,8 +541,8 @@ def replan(
     payload: ReplanRequest,
     current_user: User = Depends(get_current_user),
     replan_service: ReplanService = Depends(get_replan_service),
-    plan_service: PlanService = Depends(get_plan_service),
-) -> ReplanResponse:
+    generation_service: GenerationService = Depends(get_generation_service),
+) -> JobAcceptedResponse:
     user_id = current_user.id or 0
     # Cooldown is policy, checked before any agent work is done.
     eligibility = replan_service.check_eligibility(user_id, plan_id)
@@ -529,21 +551,26 @@ def replan(
             eligibility.reason, detail=eligibility.model_dump(mode="json")
         )
 
-    detail = plan_service.replan_with_agent(
-        user_id, plan_id, reason=payload.reason or "user requested replan"
-    )
-    return ReplanResponse(
-        plan_id=detail.plan.id or 0,
-        old_version=(detail.plan.version - 1),
-        new_version=detail.plan.version,
-        # TODO(contract): this returns every task of the new version, not the
-        # changed set. `PlanService.list_changes` only exposes a per-day diff
-        # (and mixes old-version ids for removed tasks), so deriving the true
-        # changed ids needs a small service-level diff - left as-is for now.
-        changed_task_ids=[item.task.id or 0 for item in detail.tasks],
-        reason=payload.reason or "user requested replan",
-        trigger_type=payload.trigger_type,
-    )
+    reason = payload.reason or "user requested replan"
+    trigger_type = payload.trigger_type
+
+    def runner(service: PlanService, emit) -> dict:
+        detail = service.replan_with_agent(user_id, plan_id, reason=reason, emit=emit)
+        return ReplanResponse(
+            plan_id=detail.plan.id or 0,
+            old_version=(detail.plan.version - 1),
+            new_version=detail.plan.version,
+            # TODO(contract): this returns every task of the new version, not the
+            # changed set. `PlanService.list_changes` only exposes a per-day diff
+            # (and mixes old-version ids for removed tasks), so deriving the true
+            # changed ids needs a small service-level diff - left as-is for now.
+            changed_task_ids=[item.task.id or 0 for item in detail.tasks],
+            reason=reason,
+            trigger_type=trigger_type,
+        ).model_dump(mode="json")
+
+    job = generation_service.submit(user_id=user_id, kind="replan", runner=runner)
+    return _job_accepted(job)
 
 
 @router.get(

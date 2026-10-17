@@ -87,20 +87,8 @@ def load_prompt(name: str) -> PromptTemplate:
     return PromptTemplate(name=name, body=body.strip(), meta=meta, path=path)
 
 
-def list_prompts() -> list[str]:
-    """All available prompt names (sorted)."""
-    return sorted(path.stem for path in PROMPTS_DIR.glob("*.md"))
-
-
-def clear_prompt_cache() -> None:
-    """Drop the cache (used by tests after editing prompt files)."""
-    load_prompt.cache_clear()
-
-
 __all__ = [
     "PROMPTS_DIR",
     "PromptTemplate",
-    "clear_prompt_cache",
-    "list_prompts",
     "load_prompt",
 ]

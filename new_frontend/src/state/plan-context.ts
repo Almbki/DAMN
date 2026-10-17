@@ -39,11 +39,19 @@ export type PendingTaskInput = {
 
 export type PlanContextValue = {
   mode: DataMode;
-  /** False in api mode, where the backend cannot create/edit/delete/reorder tasks. */
+  /** True when task fields can be edited through `PATCH /plans/{id}/tasks/{id}`. */
   canEditTasks: boolean;
+  /** False in api mode: new work starts on the 目标 screen, not via quick-add. */
+  canCreateTasks: boolean;
   loading: boolean;
+  /** Fatal initial load / session error only. */
   error: string | null;
+  /** Last mutation/action failure; cleared on the next successful action. */
+  actionError: string | null;
+  clearActionError: () => void;
   refresh: () => void;
+  /** Re-run the session handshake and initial load. */
+  retryConnection: () => void;
 
   user: UserRead;
   tasks: Task[];
@@ -57,7 +65,12 @@ export type PlanContextValue = {
     completedToday: number;
     openCount: number;
     doneCount: number;
+    /** Overall completion rate (from the plan insight in api mode). */
     rate: number;
+    /** Today's done / (done + open) — the daily feedback input. */
+    todayDone: number;
+    todayTotal: number;
+    todayRate: number;
     streak: number;
     longest: number;
     weekly: { date: string; count: number; minutes: number }[];
@@ -75,6 +88,9 @@ export type PlanContextValue = {
   updatePreferences: (patch: Partial<SchedulingPreferences>) => Promise<void>;
   /** Replan change notice; mock until the backend exposes it. */
   planChanges: PlanChange[];
+  /** Plan id created by the most recent confirm, for the change-notice flow. */
+  lastConfirmedPlanId: number | null;
+  clearLastConfirmed: () => void;
   /** 手动重排：先查冷却，可用则生成新版本；返回一句给用户看的结果。 */
   replanNow: () => Promise<string>;
   /** 当前计划的每日反馈历史（`GET /plans/{id}/feedback`）。 */
@@ -106,6 +122,12 @@ export type PlanContextValue = {
     adjustmentCount: number;
     maxAdjustments: number;
     warnings: string[];
+    /** Hard-rule violations from the backend preview (human-readable). */
+    violations: string[];
+    /** The preview thread, needed to confirm/adjust. */
+    threadId: string;
+    estimatedTotalMinutes: number;
+    dailyLimitMinutes: number | null;
     /** Human label for the currently streaming generation stage (`null` when idle). */
     stage?: string | null;
   } | null;
@@ -113,14 +135,14 @@ export type PlanContextValue = {
   assessment: Assessment;
   setAssessment: (next: Assessment) => void;
   submitFeedback: (input: FeedbackInput) => Promise<FeedbackResult>;
-  /** mock: adds a task; api: generates a new plan version from a goal title. */
-  submitGoal: (title: string) => void;
   /** api: PATCH /users/me; mock: no-op. */
   updateWeight: (value: number) => Promise<void>;
 
   addTask: (text: string, defaults?: Partial<NewTaskInput>) => void;
   createTask: (input: NewTaskInput) => void;
   updateTask: (id: number, patch: Partial<Task>) => void;
+  /** Toggle one checklist standard on a task (`standard_updates`). */
+  updateStandard: (taskId: number, standardId: number, completed: boolean) => Promise<void>;
   deleteTask: (id: number) => void;
   setDone: (id: number, done: boolean) => void;
   toggleDone: (id: number) => void;

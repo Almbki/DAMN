@@ -10,12 +10,15 @@ from datetime import date
 
 from fastapi.testclient import TestClient
 
+from tests.support import generate_and_wait
+
 
 def test_full_adaptive_loop(client: TestClient, auth_headers: dict) -> None:
     # 1. Generate v1.
-    generated = client.post(
-        "/api/v1/plans/generate",
-        json={
+    generated = generate_and_wait(
+        client,
+        auth_headers,
+        {
             "goals": [
                 {
                     "title": "高数冲刺",
@@ -28,10 +31,8 @@ def test_full_adaptive_loop(client: TestClient, auth_headers: dict) -> None:
             "plan_title": "Integration Plan",
             "daily_limit_minutes": 200,
         },
-        headers=auth_headers,
     )
-    assert generated.status_code == 202, generated.text
-    plan_id = generated.json()["plan_id"]
+    plan_id = generated["plan_id"]
     assert plan_id is not None
 
     detail = client.get(f"/api/v1/plans/{plan_id}", headers=auth_headers).json()

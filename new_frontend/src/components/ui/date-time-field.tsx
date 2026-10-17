@@ -110,6 +110,7 @@ export function DateTimeField({
               accessibilityRole="button"
               accessibilityLabel="上个月"
               onPress={() => shiftMonth(-1)}
+              hitSlop={6}
               style={[styles.monthBtn, { borderColor: colors.line }]}>
               <Text style={[styles.monthBtnText, { color: colors.ink }]}>‹</Text>
             </Pressable>
@@ -120,6 +121,7 @@ export function DateTimeField({
               accessibilityRole="button"
               accessibilityLabel="下个月"
               onPress={() => shiftMonth(1)}
+              hitSlop={6}
               style={[styles.monthBtn, { borderColor: colors.line }]}>
               <Text style={[styles.monthBtnText, { color: colors.ink }]}>›</Text>
             </Pressable>
@@ -181,6 +183,7 @@ export function DateTimeField({
                   accessibilityRole="button"
                   accessibilityLabel="清除时间"
                   onPress={() => onChangeTime(null)}
+                  hitSlop={6}
                   style={styles.clearTime}>
                   <Text style={[styles.clearTimeText, { color: colors.inkMuted }]}>清除</Text>
                 </Pressable>
@@ -200,6 +203,7 @@ function Quick({ label, onPress }: { label: string; onPress: () => void }) {
       accessibilityRole="button"
       accessibilityLabel={label}
       onPress={onPress}
+      hitSlop={6}
       style={[styles.quick, { borderColor: colors.line }]}>
       <Text style={[styles.quickText, { color: colors.ink }]}>{label}</Text>
     </Pressable>
@@ -222,6 +226,7 @@ function Stepper({
         accessibilityRole="button"
         accessibilityLabel="减少"
         onPress={onMinus}
+        hitSlop={6}
         style={[styles.stepperBtn, { borderColor: colors.line }]}>
         <Text style={[styles.stepperBtnText, { color: colors.ink }]}>−</Text>
       </Pressable>
@@ -230,6 +235,7 @@ function Stepper({
         accessibilityRole="button"
         accessibilityLabel="增加"
         onPress={onPlus}
+        hitSlop={6}
         style={[styles.stepperBtn, { borderColor: colors.line }]}>
         <Text style={[styles.stepperBtnText, { color: colors.ink }]}>＋</Text>
       </Pressable>
@@ -315,12 +321,12 @@ const styles = StyleSheet.create({
   },
   dayEmpty: {
     flex: 1,
-    height: 34,
+    height: 44,
     margin: 1,
   },
   dayCell: {
     flex: 1,
-    height: 34,
+    height: 44,
     alignItems: 'center',
     justifyContent: 'center',
     borderWidth: 1,

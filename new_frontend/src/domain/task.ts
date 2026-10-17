@@ -22,6 +22,15 @@ export interface Repeat {
   count: number | null;
 }
 
+/** A sub-standard (`TaskStandardRead`): a checklist item inside a task. */
+export interface TaskStandard {
+  id: number;
+  description: string;
+  estimatedDuration: number | null;
+  completed: boolean;
+  orderIndex: number;
+}
+
 export interface Task {
   id: number;
   title: string;
@@ -50,6 +59,14 @@ export interface Task {
   order: number;
   /** Local date (YYYY-MM-DD) the task was last completed, for streak/stats. */
   completedAt: string | null;
+  /** Checklist items from `TaskRead.standards`. */
+  standards: TaskStandard[];
+  /** ML completion probability (`TaskRead.completion_probability`), 0..1. */
+  completionProbability: number | null;
+  /** ML predicted duration in minutes (`TaskRead.predicted_duration`). */
+  predictedDuration: number | null;
+  /** Whether the scheduler may move this task (`TaskRead.is_flexible`). */
+  isFlexible: boolean;
 }
 
 export const REPEAT_FREQS: RepeatFreq[] = ['none', 'daily', 'weekly', 'monthly', 'custom'];

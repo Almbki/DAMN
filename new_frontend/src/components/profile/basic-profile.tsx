@@ -6,7 +6,7 @@ import { DimensionSlider } from '@/components/profile/dimension-slider';
 import { MbtiPicker } from '@/components/profile/mbti-picker';
 import { Button } from '@/components/ui/button';
 import { FilterChip } from '@/components/ui/chip';
-import { ErrorState, LoadingState } from '@/components/ui/states';
+import { InlineNotice, LoadingState } from '@/components/ui/states';
 import { Surface } from '@/components/ui/surface';
 import { TextField } from '@/components/ui/text-field';
 import { Line, Space, Type } from '@/constants/tokens';
@@ -52,6 +52,8 @@ export function BasicProfileSection() {
   const { loading, saving, error, profile, refresh, save } = useProfile();
   const [form, setForm] = useState<FormState>(() => seedForm(null));
   const [saved, setSaved] = useState(false);
+  const [saveError, setSaveError] = useState<string | null>(null);
+  const [dismissedError, setDismissedError] = useState<string | null>(null);
 
   // Re-seed the form whenever the stored profile (re)loads.
   useEffect(() => {
@@ -65,15 +67,25 @@ export function BasicProfileSection() {
     return () => clearTimeout(timer);
   }, [saved]);
 
-  const pickType = useCallback((next: MbtiType) => {
-    setForm((prev) => ({ ...prev, type: next, dims: dimsForType(next) }));
+  const markDirty = useCallback(() => {
     setSaved(false);
-  }, []);
+    setSaveError(null);
+    // Keep a dismissed load/save error dismissed while the user keeps editing.
+    setDismissedError(error ?? null);
+  }, [error]);
+
+  const pickType = useCallback(
+    (next: MbtiType) => {
+      setForm((prev) => ({ ...prev, type: next, dims: dimsForType(next) }));
+      markDirty();
+    },
+    [markDirty],
+  );
 
   const clearType = useCallback(() => {
     setForm((prev) => ({ ...prev, type: null, dims: null, dimsOpen: false }));
-    setSaved(false);
-  }, []);
+    markDirty();
+  }, [markDirty]);
 
   const toggleDims = useCallback(() => {
     setForm((prev) => ({
@@ -81,23 +93,29 @@ export function BasicProfileSection() {
       dims: prev.dims ?? (prev.type ? dimsForType(prev.type) : null),
       dimsOpen: !prev.dimsOpen,
     }));
-    setSaved(false);
-  }, []);
+    markDirty();
+  }, [markDirty]);
 
-  const changeDim = useCallback((dimension: MbtiDimension, weight: number) => {
-    setForm((prev) => {
-      const base = prev.dims ?? (prev.type ? dimsForType(prev.type) : null);
-      if (!base || !prev.type) return prev;
-      const dims = { ...base, [dimension]: clamp01(weight) };
-      return { ...prev, dims, type: typeWithDimension(prev.type, dimension, dims[dimension]) };
-    });
-    setSaved(false);
-  }, []);
+  const changeDim = useCallback(
+    (dimension: MbtiDimension, weight: number) => {
+      setForm((prev) => {
+        const base = prev.dims ?? (prev.type ? dimsForType(prev.type) : null);
+        if (!base || !prev.type) return prev;
+        const dims = { ...base, [dimension]: clamp01(weight) };
+        return { ...prev, dims, type: typeWithDimension(prev.type, dimension, dims[dimension]) };
+      });
+      markDirty();
+    },
+    [markDirty],
+  );
 
-  const changeIdentity = useCallback((identity: string) => {
-    setForm((prev) => ({ ...prev, identity }));
-    setSaved(false);
-  }, []);
+  const changeIdentity = useCallback(
+    (identity: string) => {
+      setForm((prev) => ({ ...prev, identity }));
+      markDirty();
+    },
+    [markDirty],
+  );
 
   const payload = useMemo(() => {
     const rawDims = form.type && form.dimsOpen ? form.dims : null;
@@ -124,12 +142,23 @@ export function BasicProfileSection() {
   }, [payload, profile]);
 
   const onSave = useCallback(async () => {
+    setSaveError(null);
+    setDismissedError(null);
     const ok = await save(payload);
-    if (ok) setSaved(true);
+    if (ok) {
+      setSaved(true);
+      setSaveError(null);
+    } else {
+      // Keep the form (and the user's edits) in place; the error is inline.
+      setSaved(false);
+      setSaveError('保存失败，请稍后重试。');
+    }
   }, [save, payload]);
 
   const activeType = form.type;
   const showDims = activeType != null && form.dimsOpen;
+  const inlineError = saveError ?? (error && error !== dismissedError ? error : null);
+  const canRetryLoad = !saveError && profile == null;
 
   return (
     <View style={styles.section}>
@@ -140,16 +169,26 @@ export function BasicProfileSection() {
 
       {loading ? (
         <LoadingState label="正在读取画像…" />
-      ) : error ? (
-        <ErrorState title="画像读取失败" body={error} onRetry={refresh} />
       ) : (
-        <Surface level="level1" radius="lg">
-          <View style={styles.card}>
-            {profile == null ? (
-              <Text style={[styles.body, { color: colors.inkMuted }]}>
-                尚未设置画像。选一个 MBTI 类型，或者只填身份也可以。
-              </Text>
-            ) : null}
+        <>
+          {inlineError ? (
+            <InlineNotice
+              message={inlineError}
+              actionLabel={canRetryLoad ? '重试' : undefined}
+              onAction={canRetryLoad ? refresh : undefined}
+              onDismiss={() => {
+                setSaveError(null);
+                setDismissedError(error ?? null);
+              }}
+            />
+          ) : null}
+          <Surface level="level1" radius="lg">
+            <View style={styles.card}>
+              {profile == null ? (
+                <Text style={[styles.body, { color: colors.inkMuted }]}>
+                  尚未设置画像。选一个 MBTI 类型，或者只填身份也可以。
+                </Text>
+              ) : null}
 
             <View style={styles.field}>
               <Text style={[styles.fieldLabel, { color: colors.inkMuted }]}>MBTI 类型</Text>
@@ -215,8 +254,9 @@ export function BasicProfileSection() {
                 <Text style={[styles.saved, { color: colors.inkMuted }]}>已保存</Text>
               ) : null}
             </View>
-          </View>
-        </Surface>
+            </View>
+          </Surface>
+        </>
       )}
     </View>
   );

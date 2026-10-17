@@ -5,11 +5,11 @@ import {
   confirmPreview as confirmPreviewApi,
   createGoal,
   deleteGoal,
-  generatePlan,
   getInsights,
   getPlan,
   getPlanChanges,
   getSituationTrends,
+  jobHandleFromId,
   listFeedback,
   listGoals,
   listPlans,
@@ -20,6 +20,7 @@ import {
   submitAdjustPreview,
   submitFeedback as submitFeedbackApi,
   submitPreview,
+  updateGoal,
   updateMe,
 } from '@/api/endpoints';
 import {
@@ -30,6 +31,7 @@ import {
   previewToDrafts,
   situationFromTrends,
   taskFromApi,
+  taskPatchFromDomain,
 } from '@/api/mapper';
 import type {
   AdjustResponse,
@@ -37,8 +39,11 @@ import type {
   InsightRead,
   PlanGenerateRequest,
   PlanRead,
+  PreviewRead,
   PreviewResponse,
+  ReplanResponse,
   SituationTrendRead,
+  UpdateGoalRequest,
   UserRead,
 } from '@/api/types';
 import { addDays, todayISO } from '@/domain/date';
@@ -48,6 +53,7 @@ import type { PlanChange } from '@/domain/plan-change';
 import type { SchedulingPreferences } from '@/domain/preferences';
 import { buildLists, buildRuler, countLists, pickCurrentTask } from '@/domain/selectors';
 import { buildSituation } from '@/domain/situation';
+import { completedToday } from '@/domain/stats';
 import { isClosed, type Task } from '@/domain/task';
 import * as ops from '@/domain/task-ops';
 import {
@@ -64,10 +70,6 @@ import {
   savePreferencesRemote,
 } from '@/state/preferences-store';
 import { useSession } from '@/state/session';
-
-const ENERGY_LEVELS: ('low' | 'medium' | 'high')[] = ['low', 'medium', 'high', 'high'];
-const ENERGY_TO_SCORE = [2, 5, 7, 9];
-const STRESS_TO_SCORE = [2, 5, 8, 10];
 
 /** SSE stage name → human label for the generation progress line. */
 const PREVIEW_STAGE_LABELS: Record<string, string> = {
@@ -114,6 +116,41 @@ function emptyInsight(planId: number): InsightRead {
   };
 }
 
+function errorMessage(caught: unknown, fallback: string): string {
+  if (isApiError(caught)) return caught.message;
+  if (caught instanceof Error && caught.message) return caught.message;
+  return fallback;
+}
+
+/** The assessment UI is a 0..10 scale; clamp to the backend's 0..10 range. */
+function assessmentScore(value: number | null | undefined, fallback = 5): number {
+  if (value == null || !Number.isFinite(value)) return fallback;
+  return Math.min(10, Math.max(0, Math.round(value)));
+}
+
+function previewMetaFrom(
+  preview: PreviewRead,
+  threadId: string,
+  warnings: string[],
+  dailyLimitMinutes: number | null,
+): NonNullable<PlanContextValue['previewMeta']> {
+  return {
+    canAdjust: preview.can_adjust,
+    adjustmentCount: preview.adjustment_count,
+    maxAdjustments: preview.max_adjustments,
+    warnings,
+    violations: (preview.violations ?? [])
+      .map((item) => item.message ?? item.code ?? item.rule ?? '')
+      .filter(Boolean),
+    threadId,
+    estimatedTotalMinutes: preview.tasks.reduce(
+      (sum, task) => sum + (task.estimated_duration || 0),
+      0,
+    ),
+    dailyLimitMinutes,
+  };
+}
+
 function statsFromInsight(
   insight: InsightRead,
   tasks: Task[],
@@ -156,11 +193,19 @@ function statsFromInsight(
     previous = day;
   }
 
+  const todayTasks = tasks.filter((task) => task.dueDate === today);
+  const todayDone = todayTasks.filter((task) => task.done).length;
+  const todayOpen = todayTasks.filter((task) => !isClosed(task)).length;
+  const todayTotal = todayDone + todayOpen;
+
   return {
-    completedToday: tasks.filter((task) => task.done && task.dueDate === today).length,
+    completedToday: completedToday(tasks),
     openCount: tasks.filter((task) => !isClosed(task)).length,
     doneCount: tasks.filter((task) => task.done).length,
     rate: insight.completion_rate,
+    todayDone,
+    todayTotal,
+    todayRate: todayTotal === 0 ? 0 : todayDone / todayTotal,
     streak,
     longest,
     weekly,
@@ -176,41 +221,69 @@ function statsFromInsight(
 
 export function ApiPlanProvider({ children }: { children: React.ReactNode }) {
   const session = useSession();
-  const { setUser } = session;
+  const { setUser, retry: retrySession } = session;
   const [store, setStore] = useState<ops.StoreState>(EMPTY_STORE);
+  const storeRef = useRef(store);
   const [planId, setPlanId] = useState<number | null>(null);
   const [insight, setInsight] = useState<InsightRead>(() => emptyInsight(0));
   const [loading, setLoading] = useState(true);
+  // `error` is reserved for a fatal initial load/session failure. Mutations use
+  // `actionError` so one failed PATCH never blanks the whole app.
   const [error, setError] = useState<string | null>(null);
-  const [assessment, setAssessment] = useState<Assessment>({ energy: 1, mood: 2, stress: 1 });
+  const [actionError, setActionError] = useState<string | null>(null);
+  const [assessment, setAssessment] = useState<Assessment>({ energy: 5, mood: 3, stress: 4 });
   const [goals, setGoals] = useState<Goal[]>([]);
   const [pendingTasks, setPendingTasks] = useState<PendingTask[]>([]);
   const [preferences, setPreferences] = useState<SchedulingPreferences>(() => loadPreferences());
   const [feedbackHistory, setFeedbackHistory] = useState<FeedbackRead[]>([]);
   const [planChanges, setPlanChanges] = useState<PlanChange[]>([]);
   const [situationTrend, setSituationTrend] = useState<SituationTrendRead | null>(null);
+  const [lastConfirmedPlanId, setLastConfirmedPlanId] = useState<number | null>(null);
   // Negative ids mark pending items that are not (yet) persisted server-side.
   const tempIdRef = useRef(0);
 
-  // `GET /plans/{id}/changes` — the replan notice. Callers load it whenever a
-  // plan is applied (initial load, replan, feedback-triggered replan).
-  const loadPlanChanges = useCallback(async (id: number | null) => {
-    if (id == null) {
-      setPlanChanges([]);
-      return;
-    }
-    try {
-      setPlanChanges((await getPlanChanges(id)).map(planChangeFromApi));
-    } catch {
-      setPlanChanges([]);
-    }
+  /** Latest committed store, so event handlers never read a stale render closure. */
+  const updateStore = useCallback((updater: (prev: ops.StoreState) => ops.StoreState) => {
+    setStore((prev) => {
+      const next = updater(prev);
+      storeRef.current = next;
+      return next;
+    });
   }, []);
+
+  useEffect(() => {
+    storeRef.current = store;
+  }, [store]);
+
+  // Request generation guards `load()`: a stale response must never overwrite a
+  // newer one (e.g. refresh pressed while the first fetch is still in flight).
+  const requestSeqRef = useRef(0);
+  const mountedRef = useRef(true);
+  useEffect(() => {
+    mountedRef.current = true;
+    return () => {
+      mountedRef.current = false;
+      requestSeqRef.current += 1;
+    };
+  }, []);
+
+  // Preferences can be edited while the remote read is in flight. Once the user
+  // touches them, the late server value must not clobber the local change.
+  const preferencesRef = useRef(preferences);
+  const preferencesTouchedRef = useRef(false);
+  const commitPreferences = useCallback((next: SchedulingPreferences) => {
+    preferencesRef.current = next;
+    setPreferences(next);
+  }, []);
+
+  const clearActionError = useCallback(() => setActionError(null), []);
 
   // 待拆解 drafts live on the backend as `draft` goals; the local list stays the
   // UI source of truth so a failed fetch never blanks the screen.
   const loadDraftGoals = useCallback(async () => {
     try {
-      setPendingTasks((await listGoals('draft')).map(pendingTaskFromGoal));
+      const goals = (await listGoals('draft')).map(pendingTaskFromGoal);
+      if (mountedRef.current) setPendingTasks(goals);
     } catch {
       // Keep whatever is already in state.
     }
@@ -229,69 +302,111 @@ export function ApiPlanProvider({ children }: { children: React.ReactNode }) {
 
   const refreshFeedbackHistory = useCallback(async () => {
     if (planId == null) {
-      setFeedbackHistory([]);
+      if (mountedRef.current) setFeedbackHistory([]);
       return;
     }
     try {
-      setFeedbackHistory(await listFeedback(planId));
+      const history = await listFeedback(planId);
+      if (mountedRef.current) setFeedbackHistory(history);
     } catch {
-      setFeedbackHistory([]);
+      if (mountedRef.current) setFeedbackHistory([]);
     }
   }, [planId]);
 
-  const applyPlan = useCallback((plan: PlanRead) => {
-    const mapped = plan.tasks.map(taskFromApi);
-    // `PlanRead.goals` is built from this plan's tasks' `goal_id`, so mapping it
-    // (instead of mock goals) is what makes goal progress line up with the real
-    // tasks. Locally created drafts (negative ids) are kept across reloads.
-    const planGoals: Goal[] = plan.goals.map((goal) => ({
-      id: goal.id,
-      title: goal.title,
-      description: '',
-      status:
-        goal.status === 'completed' ? 'completed' : goal.status === 'draft' ? 'draft' : 'active',
-      deadline: null,
-      estimatedMinutes: null,
-      priority: goal.priority ?? 2,
-      createdAt: '',
-    }));
-    setPlanId(plan.id);
-    setStore((prev) => ({ ...prev, tasks: mapped }));
-    setGoals((prev) => [
-      ...planGoals,
-      ...prev.filter((goal) => goal.status === 'draft' && goal.id < 0),
-    ]);
-    void loadPlanChanges(plan.id);
-  }, [loadPlanChanges]);
-
-  const load = useCallback(async () => {
+  const refreshInsights = useCallback(async () => {
+    if (planId == null) return;
     try {
-      const plans = await listPlans();
-      const active = plans.find((item) => item.status === 'active') ?? plans[0];
-      if (!active) {
-        setPlanId(null);
-        setStore((prev) => ({ ...prev, tasks: [] }));
-        setInsight(emptyInsight(0));
-        setPlanChanges([]);
-        setError(null);
-        setLoading(false);
-        return;
-      }
-      const [plan, report] = await Promise.all([getPlan(active.id), getInsights(active.id)]);
+      const report = await getInsights(planId);
+      if (mountedRef.current) setInsight(report);
+    } catch {
+      // Background refresh is best-effort; the optimistic UI already updated.
+    }
+  }, [planId]);
+
+  const applyPlan = useCallback(
+    (plan: PlanRead) => {
+      const mapped = plan.tasks.map(taskFromApi);
+      // `PlanRead.goals` is built from this plan's tasks' `goal_id`, so mapping it
+      // (instead of mock goals) is what makes goal progress line up with the real
+      // tasks. Locally created drafts (negative ids) are kept across reloads.
+      const planGoals: Goal[] = plan.goals.map((goal) => ({
+        id: goal.id,
+        title: goal.title,
+        description: '',
+        status:
+          goal.status === 'completed' ? 'completed' : goal.status === 'draft' ? 'draft' : 'active',
+        deadline: null,
+        estimatedMinutes: null,
+        priority: goal.priority ?? 2,
+        createdAt: '',
+      }));
+      setPlanId(plan.id);
+      updateStore((prev) => ({ ...prev, tasks: mapped }));
+      setGoals((prev) => [
+        ...planGoals,
+        ...prev.filter((goal) => goal.status === 'draft' && goal.id < 0),
+      ]);
+    },
+    [updateStore],
+  );
+
+  /**
+   * Fetch everything that describes a plan version and make it the active one.
+   * Used after confirm / adjust-finalise / replan / feedback-triggered replan so
+   * insights, history and the change notice are never left on the old version.
+   */
+  const adoptPlan = useCallback(
+    async (id: number) => {
+      const [plan, report, history, changes] = await Promise.all([
+        getPlan(id),
+        getInsights(id),
+        listFeedback(id).catch(() => [] as FeedbackRead[]),
+        getPlanChanges(id).catch(() => []),
+      ]);
+      if (!mountedRef.current) return;
       applyPlan(plan);
       setInsight(report);
-      try {
-        setFeedbackHistory(await listFeedback(active.id));
-      } catch {
+      setFeedbackHistory(history);
+      setPlanChanges(changes.map(planChangeFromApi));
+    },
+    [applyPlan],
+  );
+
+  const load = useCallback(async () => {
+    const seq = ++requestSeqRef.current;
+    try {
+      const plans = await listPlans();
+      if (seq !== requestSeqRef.current) return;
+      const active = plans.find((item) => item.status === 'active') ?? plans[0];
+      if (!active) {
+        if (seq !== requestSeqRef.current || !mountedRef.current) return;
+        setPlanId(null);
+        updateStore((prev) => ({ ...prev, tasks: [] }));
+        setInsight(emptyInsight(0));
         setFeedbackHistory([]);
+        setPlanChanges([]);
+        setError(null);
+        return;
       }
+      const [plan, report, history, changes] = await Promise.all([
+        getPlan(active.id),
+        getInsights(active.id),
+        listFeedback(active.id).catch(() => [] as FeedbackRead[]),
+        getPlanChanges(active.id).catch(() => []),
+      ]);
+      if (seq !== requestSeqRef.current || !mountedRef.current) return;
+      applyPlan(plan);
+      setInsight(report);
+      setFeedbackHistory(history);
+      setPlanChanges(changes.map(planChangeFromApi));
       setError(null);
     } catch (caught) {
-      setError(isApiError(caught) ? caught.message : '加载失败');
+      if (seq !== requestSeqRef.current || !mountedRef.current) return;
+      setError(errorMessage(caught, '加载失败'));
     } finally {
-      setLoading(false);
+      if (seq === requestSeqRef.current && mountedRef.current) setLoading(false);
     }
-  }, [applyPlan]);
+  }, [applyPlan, updateStore]);
 
   useEffect(() => {
     if (session.status !== 'ready') return;
@@ -299,16 +414,39 @@ export function ApiPlanProvider({ children }: { children: React.ReactNode }) {
     void load();
     void loadDraftGoals();
     // Prefer the server's stored preferences over the local cache once loaded.
-    void loadPreferencesRemote().then(setPreferences);
+    void loadPreferencesRemote().then((next) => {
+      if (!mountedRef.current || preferencesTouchedRef.current) return;
+      commitPreferences(next);
+    });
     void getSituationTrends(14)
-      .then(setSituationTrend)
-      .catch(() => setSituationTrend(null));
-  }, [session.status, load, loadDraftGoals]);
+      .then((trend) => {
+        if (mountedRef.current) setSituationTrend(trend);
+      })
+      .catch(() => {
+        if (mountedRef.current) setSituationTrend(null);
+      });
+  }, [session.status, load, loadDraftGoals, commitPreferences]);
 
   const refresh = useCallback(() => {
     setLoading(true);
     void load();
+    void getSituationTrends(14)
+      .then((trend) => {
+        if (mountedRef.current) setSituationTrend(trend);
+      })
+      .catch(() => {
+        if (mountedRef.current) setSituationTrend(null);
+      });
   }, [load]);
+
+  const retryConnection = useCallback(() => {
+    setError(null);
+    setLoading(true);
+    retrySession();
+    void load();
+  }, [retrySession, load]);
+
+  const clearLastConfirmed = useCallback(() => setLastConfirmedPlanId(null), []);
 
   const ordered = useMemo(
     () => [...store.tasks].sort((a, b) => a.order - b.order),
@@ -325,7 +463,8 @@ export function ApiPlanProvider({ children }: { children: React.ReactNode }) {
     [insight, ordered, store.focusSessions, today],
   );
 
-  const energy = ENERGY_LEVELS[assessment.energy] ?? 'medium';
+  const energy: 'low' | 'medium' | 'high' =
+    (['low', 'medium', 'high', 'high'] as const)[assessment.energy] ?? 'medium';
 
   const situation = useMemo(
     () =>
@@ -336,46 +475,67 @@ export function ApiPlanProvider({ children }: { children: React.ReactNode }) {
     [situationTrend, session.user, stats.rate],
   );
 
-  const addPendingTask = useCallback((input: PendingTaskInput) => {
-    const tempId = -(tempIdRef.current += 1);
-    setPendingTasks((prev) => [
-      ...prev,
-      {
-        id: tempId,
+  const addPendingTask = useCallback(
+    (input: PendingTaskInput) => {
+      const tempId = -(tempIdRef.current += 1);
+      setPendingTasks((prev) => [
+        ...prev,
+        {
+          id: tempId,
+          title: input.title,
+          priority: input.priority,
+          dueDate: input.dueDate,
+          notes: input.notes,
+        },
+      ]);
+      setActionError(null);
+      // Persist best-effort; swap the temp id for the real one so a later remove
+      // can delete it. A failure leaves the item local-only.
+      void createGoal({
         title: input.title,
+        description: input.notes || null,
+        status: 'draft',
+        deadline: input.dueDate ? `${input.dueDate}T00:00:00` : null,
         priority: input.priority,
-        dueDate: input.dueDate,
-        notes: input.notes,
-      },
-    ]);
-    // Persist best-effort; swap the temp id for the real one so a later remove
-    // can delete it. A failure leaves the item local-only.
-    void createGoal({
-      title: input.title,
-      description: input.notes || null,
-      status: 'draft',
-      deadline: input.dueDate ? `${input.dueDate}T00:00:00` : null,
-      priority: input.priority,
-    })
-      .then((goal) => {
-        setPendingTasks((prev) =>
-          prev.map((item) => (item.id === tempId ? { ...item, id: goal.id } : item)),
-        );
       })
-      .catch(() => {
-        // Draft persistence is best-effort; the local item still renders.
-      });
-  }, []);
+        .then((goal) => {
+          if (!mountedRef.current) return;
+          setPendingTasks((prev) =>
+            prev.map((item) => (item.id === tempId ? { ...item, id: goal.id } : item)),
+          );
+        })
+        .catch((caught) => {
+          if (mountedRef.current) setActionError(errorMessage(caught, '保存待拆解任务失败'));
+        });
+    },
+    [],
+  );
 
   const updatePendingTask = useCallback((id: number, patch: Partial<PendingTask>) => {
     setPendingTasks((prev) => prev.map((item) => (item.id === id ? { ...item, ...patch } : item)));
+    setActionError(null);
+    // Negative ids are local-only drafts.
+    if (id <= 0) return;
+
+    const body: UpdateGoalRequest = {};
+    if (patch.title !== undefined) body.title = patch.title;
+    if (patch.notes !== undefined) body.description = patch.notes;
+    if (patch.priority !== undefined) body.priority = patch.priority;
+    if (patch.dueDate !== undefined) {
+      body.deadline = patch.dueDate ? `${patch.dueDate}T00:00:00` : null;
+    }
+    if (Object.keys(body).length === 0) return;
+    void updateGoal(id, body).catch((caught) => {
+      if (mountedRef.current) setActionError(errorMessage(caught, '保存目标失败'));
+    });
   }, []);
 
   const removePendingTask = useCallback((id: number) => {
     setPendingTasks((prev) => prev.filter((item) => item.id !== id));
+    setActionError(null);
     if (id > 0) {
-      void deleteGoal(id).catch(() => {
-        // Best-effort; the local list is already correct.
+      void deleteGoal(id).catch((caught) => {
+        if (mountedRef.current) setActionError(errorMessage(caught, '删除目标失败'));
       });
     }
   }, []);
@@ -393,6 +553,10 @@ export function ApiPlanProvider({ children }: { children: React.ReactNode }) {
       adjustmentCount: previewMeta?.adjustmentCount ?? 0,
       maxAdjustments: previewMeta?.maxAdjustments ?? 0,
       warnings: previewMeta?.warnings ?? [],
+      violations: previewMeta?.violations ?? [],
+      threadId: previewMeta?.threadId ?? '',
+      estimatedTotalMinutes: previewMeta?.estimatedTotalMinutes ?? 0,
+      dailyLimitMinutes: previewMeta?.dailyLimitMinutes ?? null,
       stage: previewStage,
     };
   }, [previewMeta, previewStage]);
@@ -424,60 +588,69 @@ export function ApiPlanProvider({ children }: { children: React.ReactNode }) {
     // NOTE: do NOT toggle the global `loading` here. `_layout` renders a
     // full-screen "正在连接后端…" while it is true, which unmounts the goal
     // screen and looks like "点击就断开后端". The screen owns its own busy flag.
+    setActionError(null);
     try {
       const job = await submitPreview(buildGenerateRequest());
       const status = await runJob(job, onPreviewStage);
       const response = status.result as unknown as PreviewResponse | null;
-      if (!response?.preview) {
-        setError(status.error ?? '拆解没有返回结果，请重试。');
+      if (status.status === 'failed' || !response?.preview) {
+        setActionError(status.error ?? '拆解没有返回结果，请重试。');
         setPreviewThread(null);
         setPreviewMeta(null);
         return [];
       }
       setPreviewThread(response.thread_id);
-      setPreviewMeta({
-        canAdjust: response.preview.can_adjust,
-        adjustmentCount: response.preview.adjustment_count,
-        maxAdjustments: response.preview.max_adjustments,
-        warnings: response.warnings,
-      });
-      setError(null);
+      setPreviewMeta(
+        previewMetaFrom(
+          response.preview,
+          response.thread_id,
+          response.warnings,
+          preferences.dailyLimitMinutes ?? null,
+        ),
+      );
       return previewToDrafts(response.preview.tasks);
     } catch (caught) {
-      setError(isApiError(caught) ? caught.message : '拆解失败');
+      setActionError(errorMessage(caught, '拆解失败'));
       setPreviewThread(null);
       setPreviewMeta(null);
       return [];
     } finally {
       setPreviewStage(null);
     }
-  }, [buildGenerateRequest, onPreviewStage]);
+  }, [buildGenerateRequest, onPreviewStage, preferences.dailyLimitMinutes]);
 
   const adjustPreview = useCallback(
     async (feedback: string) => {
       if (!previewThread) {
         return { drafts: null, applied: false, message: '预览已失效，请重新拆解。' };
       }
+      setActionError(null);
       try {
         const job = await submitAdjustPreview(previewThread, feedback);
         const status = await runJob(job, onPreviewStage);
+        if (status.status === 'failed') {
+          throw new Error(status.error ?? '重新生成失败');
+        }
         const response = status.result as unknown as AdjustResponse;
         // 预算耗尽时后端会直接给最终计划：应用它并关掉预览。
         if (response.final_plan) {
           discardDraftGoals(pendingTasks.map((item) => item.id));
-          applyPlan(response.final_plan);
+          await adoptPlan(response.final_plan.id);
+          setLastConfirmedPlanId(response.final_plan.id);
           setPendingTasks([]);
           setPreviewThread(null);
           setPreviewMeta(null);
           return { drafts: null, applied: true, message: '调整次数已用完，已直接生成计划。' };
         }
         if (response.preview) {
-          setPreviewMeta({
-            canAdjust: response.preview.can_adjust,
-            adjustmentCount: response.preview.adjustment_count,
-            maxAdjustments: response.preview.max_adjustments,
-            warnings: response.warnings,
-          });
+          setPreviewMeta(
+            previewMetaFrom(
+              response.preview,
+              response.thread_id,
+              response.warnings,
+              preferences.dailyLimitMinutes ?? null,
+            ),
+          );
           return {
             drafts: previewToDrafts(response.preview.tasks),
             applied: false,
@@ -486,33 +659,44 @@ export function ApiPlanProvider({ children }: { children: React.ReactNode }) {
         }
         return { drafts: null, applied: false, message: '这次没有返回新的预览。' };
       } catch (caught) {
-        setError(isApiError(caught) ? caught.message : '重新生成失败');
-        return { drafts: null, applied: false, message: '重新生成失败。' };
+        setActionError(errorMessage(caught, '重新生成失败'));
+        return { drafts: null, applied: false, message: errorMessage(caught, '重新生成失败。') };
       } finally {
         setPreviewStage(null);
       }
     },
-    [previewThread, applyPlan, onPreviewStage, pendingTasks, discardDraftGoals],
+    [
+      previewThread,
+      adoptPlan,
+      onPreviewStage,
+      pendingTasks,
+      discardDraftGoals,
+      preferences.dailyLimitMinutes,
+    ],
   );
 
   const confirmPreview = useCallback(async () => {
     if (!previewThread) return;
+    setActionError(null);
     try {
       const response = await confirmPreviewApi(previewThread);
       discardDraftGoals(pendingTasks.map((item) => item.id));
-      applyPlan(response.plan);
+      // Confirm returns the plan synchronously; adopt it fully so the todo page
+      // immediately has its insight, feedback history and change notice.
+      await adoptPlan(response.plan.id);
+      setLastConfirmedPlanId(response.plan.id);
       setPendingTasks([]);
       setPreviewThread(null);
       setPreviewMeta(null);
-      setError(null);
     } catch (caught) {
-      setError(isApiError(caught) ? caught.message : '确认失败');
+      setActionError(errorMessage(caught, '确认失败'));
     }
-  }, [previewThread, applyPlan, pendingTasks, discardDraftGoals]);
+  }, [previewThread, pendingTasks, discardDraftGoals, adoptPlan]);
 
   /** 手动重排：先查冷却，可用则生成新版本并切过去。返回一句给用户看的结果。 */
   const replanNow = useCallback(async () => {
     if (planId == null) return '还没有计划，先去「目标」拆一个。';
+    setActionError(null);
     try {
       const eligibility = await replanEligibility(planId);
       if (!eligibility.eligible) {
@@ -520,113 +704,187 @@ export function ApiPlanProvider({ children }: { children: React.ReactNode }) {
           ? `重排冷却中，最早 ${eligibility.next_eligible_at.slice(0, 16).replace('T', ' ')} 可以再排。`
           : '当前还不能重排。';
       }
-      const result = await replanApi(planId, { trigger_type: 'manual', reason: 'user requested' });
-      const [plan, report] = await Promise.all([
-        getPlan(result.plan_id),
-        getInsights(result.plan_id),
-      ]);
-      applyPlan(plan);
-      setInsight(report);
-      try {
-        setFeedbackHistory(await listFeedback(result.plan_id));
-      } catch {
-        setFeedbackHistory([]);
-      }
-      setError(null);
+      const job = await replanApi(planId, { trigger_type: 'manual', reason: 'user requested' });
+      const status = await runJob(job);
+      if (status.status === 'failed') throw new Error(status.error ?? '重排失败');
+      const result = status.result as unknown as ReplanResponse | null;
+      if (!result?.plan_id) throw new Error('重排没有返回结果，请重试。');
+      await adoptPlan(result.plan_id);
       return `已生成新一版计划（v${result.new_version}），调整了 ${result.changed_task_ids.length} 个任务。`;
     } catch (caught) {
-      const message = isApiError(caught) ? caught.message : '重排失败';
-      setError(message);
+      const message = errorMessage(caught, '重排失败');
+      setActionError(message);
       return message;
     }
-  }, [planId, applyPlan]);
+  }, [planId, adoptPlan]);
 
   const updatePreferences = useCallback(
     async (patch: Partial<SchedulingPreferences>) => {
-      const next = { ...preferences, ...patch };
-      setPreferences(next);
-      // Updates the offline cache and write-throughs to the API (api mode).
-      await savePreferencesRemote(next);
-    },
-    [preferences],
-  );
-
-  /** Optimistic local change, reverted by a reload if the server rejects it. */
-  const mutate = useCallback(
-    async (taskId: number, local: () => void, remote: () => Promise<unknown>) => {
-      local();
-      try {
-        await remote();
-      } catch (caught) {
-        setError(isApiError(caught) ? caught.message : '同步失败');
-        void load();
+      // Functional-from-ref so several rapid stepper clicks all see the latest
+      // value (a stale `preferences` closure would drop earlier clicks).
+      const next = { ...preferencesRef.current, ...patch };
+      preferencesTouchedRef.current = true;
+      commitPreferences(next);
+      setActionError(null);
+      const ok = await savePreferencesRemote(next);
+      if (!ok && mountedRef.current) {
+        setActionError('偏好保存失败，已保留本地设置。');
       }
     },
-    [load],
+    [commitPreferences],
   );
 
   const setDone = useCallback(
     (id: number, done: boolean) => {
-      void mutate(
-        id,
-        () => setStore((prev) => ops.setDone(prev, id, done)),
-        () => (planId == null ? Promise.resolve() : patchTask(planId, id, patchDone(done))),
+      setActionError(null);
+      const previousTask = storeRef.current.tasks.find((task) => task.id === id) ?? null;
+      const previousCompletions = storeRef.current.completions.filter(
+        (completion) => completion.taskId === id,
       );
+      updateStore((prev) => ops.setDone(prev, id, done));
+      if (planId == null) return;
+      void patchTask(planId, id, patchDone(done))
+        .then(async () => {
+          await Promise.all([refreshInsights(), refreshFeedbackHistory()]);
+        })
+        .catch((caught) => {
+          // Roll the optimistic flip back so the checkbox never lies.
+          if (previousTask) {
+            updateStore((prev) => ({
+              ...prev,
+              tasks: prev.tasks.map((task) => (task.id === id ? previousTask : task)),
+              completions: [
+                ...prev.completions.filter((completion) => completion.taskId !== id),
+                ...previousCompletions,
+              ],
+            }));
+          }
+          if (mountedRef.current) setActionError(errorMessage(caught, '同步任务失败'));
+        });
     },
-    [mutate, planId],
+    [planId, refreshInsights, refreshFeedbackHistory, updateStore],
   );
+
   const toggleDone = useCallback(
     (id: number) => {
-      const task = store.tasks.find((item) => item.id === id);
+      // Read the latest committed store instead of the render closure so two
+      // quick clicks toggle twice rather than both setting `done = true`.
+      const task = storeRef.current.tasks.find((item) => item.id === id);
       if (task) setDone(id, !task.done);
     },
-    [store.tasks, setDone],
+    [setDone],
   );
+
   const setSkipped = useCallback(
     (id: number, skipped: boolean) => {
-      void mutate(
-        id,
-        () => setStore((prev) => ops.setSkipped(prev, id, skipped)),
-        () => (planId == null ? Promise.resolve() : patchTask(planId, id, patchSkipped())),
+      setActionError(null);
+      const previousTask = storeRef.current.tasks.find((task) => task.id === id) ?? null;
+      const previousCompletions = storeRef.current.completions.filter(
+        (completion) => completion.taskId === id,
       );
+      updateStore((prev) => ops.setSkipped(prev, id, skipped));
+      if (planId == null) return;
+      void patchTask(planId, id, patchSkipped())
+        .then(async () => {
+          await Promise.all([refreshInsights(), refreshFeedbackHistory()]);
+        })
+        .catch((caught) => {
+          if (previousTask) {
+            updateStore((prev) => ({
+              ...prev,
+              tasks: prev.tasks.map((task) => (task.id === id ? previousTask : task)),
+              completions: [
+                ...prev.completions.filter((completion) => completion.taskId !== id),
+                ...previousCompletions,
+              ],
+            }));
+          }
+          if (mountedRef.current) setActionError(errorMessage(caught, '同步任务失败'));
+        });
     },
-    [mutate, planId],
+    [planId, refreshInsights, refreshFeedbackHistory, updateStore],
   );
+
+  const updateTask = useCallback(
+    (id: number, patch: Partial<Task>) => {
+      setActionError(null);
+      const previous = storeRef.current.tasks.find((task) => task.id === id) ?? null;
+      updateStore((prev) => ops.updateTask(prev, id, patch));
+      if (planId == null) return;
+
+      const body = taskPatchFromDomain(patch);
+      if (Object.keys(body).length === 0) return;
+      void patchTask(planId, id, body)
+        .then(() => refreshInsights())
+        .catch((caught) => {
+          if (previous) updateStore((prev) => ops.updateTask(prev, id, previous));
+          if (mountedRef.current) setActionError(errorMessage(caught, '保存任务失败'));
+        });
+    },
+    [planId, refreshInsights, updateStore],
+  );
+
+  const updateStandard = useCallback(
+    async (taskId: number, standardId: number, completed: boolean) => {
+      setActionError(null);
+      const previous = storeRef.current.tasks.find((task) => task.id === taskId)?.standards;
+      updateStore((prev) =>
+        ops.updateTask(prev, taskId, {
+          standards: (prev.tasks.find((task) => task.id === taskId)?.standards ?? []).map(
+            (standard) =>
+              standard.id === standardId ? { ...standard, completed } : standard,
+          ),
+        }),
+      );
+      if (planId == null) return;
+      try {
+        await patchTask(planId, taskId, {
+          standard_updates: [{ id: standardId, completed }],
+        });
+        await refreshInsights();
+      } catch (caught) {
+        if (previous) {
+          updateStore((prev) => ops.updateTask(prev, taskId, { standards: previous }));
+        }
+        if (mountedRef.current) setActionError(errorMessage(caught, '保存子任务失败'));
+      }
+    },
+    [planId, refreshInsights, updateStore],
+  );
+
+  const moveBy = useCallback(
+    (id: number, delta: number) => {
+      if (planId == null) {
+        updateStore((prev) => ops.moveBy(prev, id, delta));
+        return;
+      }
+      // The backend has no ordering endpoint: "move" means reschedule the day.
+      const task = storeRef.current.tasks.find((item) => item.id === id);
+      if (!task) return;
+      const base = task.dueDate ?? todayISO();
+      updateTask(id, { dueDate: addDays(base, delta) });
+    },
+    [planId, updateTask, updateStore],
+  );
+
   // The backend records actual duration only as part of a completion execution
   // (there is no `actual_duration` task column), so a standalone focus log stays
   // local — it still feeds the local focus counters.
-  const logFocus = useCallback((taskId: number, minutes: number) => {
-    setStore((prev) => ops.logFocus(prev, taskId, minutes));
-  }, []);
-
-  const submitGoal = useCallback(
-    (title: string) => {
-      const trimmed = title.trim();
-      if (!trimmed) return;
-      setLoading(true);
-      void generatePlan({ goals: [{ title: trimmed }], plan_title: trimmed })
-        .then((response) => {
-          if (response.plan) applyPlan(response.plan);
-          return planId ?? response.plan?.id ?? 0;
-        })
-        .then((id) => (id ? getInsights(id) : null))
-        .then((report) => {
-          if (report) setInsight(report);
-          setError(null);
-        })
-        .catch((caught) => setError(isApiError(caught) ? caught.message : '生成计划失败'))
-        .finally(() => setLoading(false));
+  const logFocus = useCallback(
+    (taskId: number, minutes: number) => {
+      updateStore((prev) => ops.logFocus(prev, taskId, minutes));
     },
-    [applyPlan, planId],
+    [updateStore],
   );
 
   const updateWeight = useCallback(
     async (weight: number) => {
+      setActionError(null);
       try {
         const me = await updateMe({ execution_weight: weight });
         setUser(me);
       } catch (caught) {
-        setError(isApiError(caught) ? caught.message : '更新失败');
+        setActionError(errorMessage(caught, '更新失败'));
       }
     },
     [setUser],
@@ -635,43 +893,64 @@ export function ApiPlanProvider({ children }: { children: React.ReactNode }) {
   const submitFeedback = useCallback(
     async (input: FeedbackInput): Promise<FeedbackResult> => {
       if (planId == null) {
-        return { replanTriggered: false, replanPlanId: null, cooldownMessage: '还没有计划，先生成一个。' };
+        return {
+          replanTriggered: false,
+          replanPlanId: null,
+          cooldownMessage: '还没有计划，先生成一个。',
+        };
       }
-      const response = await submitFeedbackApi(planId, {
-        date: todayISO(),
-        completion_rate: Math.max(0, Math.min(1, input.completionRate)),
-        stress_level: STRESS_TO_SCORE[assessment.stress] ?? 5,
-        energy_level: ENERGY_TO_SCORE[assessment.energy] ?? 5,
-        free_text: input.freeText ?? null,
-        delay_reason: input.delayReason ?? null,
-      });
+      setActionError(null);
+      try {
+        // `completionRate` is today's rate supplied by the UI (todayDone /
+        // (todayDone + todayOpen)), not the lifetime insight rate.
+        const response = await submitFeedbackApi(
+          planId,
+          {
+            date: todayISO(),
+            completion_rate: Math.max(0, Math.min(1, input.completionRate)),
+            stress_level: assessmentScore(assessment.stress),
+            energy_level: assessmentScore(assessment.energy),
+            free_text: input.freeText ?? null,
+            delay_reason: input.delayReason ?? null,
+          },
+          { streamReplan: true },
+        );
 
-      let cooldownMessage: string | null = null;
-      if (response.replan_triggered && response.replan_plan_id) {
-        const [plan, report] = await Promise.all([
-          getPlan(response.replan_plan_id),
-          getInsights(response.replan_plan_id),
-        ]);
-        applyPlan(plan);
-        setInsight(report);
-        try {
-          setFeedbackHistory(await listFeedback(response.replan_plan_id));
-        } catch {
-          setFeedbackHistory([]);
+        let replanPlanId = response.replan_plan_id;
+        let replanTriggered = response.replan_triggered;
+        // The replan graph now runs as a job; its completed result is the truth.
+        if (response.replan_job_id) {
+          const status = await runJob(jobHandleFromId(response.replan_job_id));
+          if (status.status === 'failed') throw new Error(status.error ?? '重排失败');
+          const jobResult = status.result as {
+            replan_triggered?: boolean;
+            replan_plan_id?: number | null;
+          } | null;
+          replanTriggered = Boolean(jobResult?.replan_triggered);
+          replanPlanId = jobResult?.replan_plan_id ?? null;
         }
-      } else if (response.replan_eligibility && !response.replan_eligibility.eligible) {
-        cooldownMessage = response.replan_eligibility.next_eligible_at
-          ? `重排冷却中，最早 ${response.replan_eligibility.next_eligible_at.slice(0, 16).replace('T', ' ')} 可以再排。`
-          : '重排冷却中，暂时不能再排。';
-      }
 
-      return {
-        replanTriggered: response.replan_triggered,
-        replanPlanId: response.replan_plan_id,
-        cooldownMessage,
-      };
+        let cooldownMessage: string | null = null;
+        if (replanPlanId != null) {
+          await adoptPlan(replanPlanId);
+        } else {
+          await refreshFeedbackHistory();
+          const eligibility = response.replan_eligibility;
+          if (eligibility && !eligibility.eligible) {
+            cooldownMessage = eligibility.next_eligible_at
+              ? `重排冷却中，最早 ${eligibility.next_eligible_at.slice(0, 16).replace('T', ' ')} 可以再排。`
+              : '重排冷却中，暂时不能再排。';
+          }
+        }
+
+        return { replanTriggered, replanPlanId, cooldownMessage };
+      } catch (caught) {
+        const message = errorMessage(caught, '反馈提交失败');
+        setActionError(message);
+        return { replanTriggered: false, replanPlanId: null, cooldownMessage: message };
+      }
     },
-    [planId, assessment, applyPlan],
+    [planId, assessment, adoptPlan, refreshFeedbackHistory],
   );
 
   const value = useMemo<PlanContextValue>(() => {
@@ -679,10 +958,14 @@ export function ApiPlanProvider({ children }: { children: React.ReactNode }) {
     const unsupported = () => undefined;
     return {
       mode: 'api',
-      canEditTasks: false,
+      canEditTasks: true,
+      canCreateTasks: false,
       loading: loading || session.status === 'loading',
       error: session.status === 'error' ? session.error : error,
+      actionError,
+      clearActionError,
       refresh,
+      retryConnection,
       user: session.user ?? FALLBACK_USER,
       tasks: ordered,
       energy,
@@ -698,6 +981,8 @@ export function ApiPlanProvider({ children }: { children: React.ReactNode }) {
       preferences,
       updatePreferences,
       planChanges,
+      lastConfirmedPlanId,
+      clearLastConfirmed,
       replanNow,
       feedbackHistory,
       refreshFeedbackHistory,
@@ -713,17 +998,17 @@ export function ApiPlanProvider({ children }: { children: React.ReactNode }) {
       assessment,
       setAssessment,
       submitFeedback,
-      submitGoal,
       updateWeight,
       addTask: unsupported,
       createTask: unsupported,
-      updateTask: unsupported,
+      updateTask,
+      updateStandard,
       deleteTask: unsupported,
       setDone,
       toggleDone,
       setSkipped,
       reorder: unsupported,
-      moveBy: unsupported,
+      moveBy,
       batchSetDone: unsupported,
       batchDelete: unsupported,
       batchReschedule: unsupported,
@@ -731,11 +1016,14 @@ export function ApiPlanProvider({ children }: { children: React.ReactNode }) {
     } satisfies PlanContextValue;
   }, [
     loading,
-    error,
     session.status,
     session.error,
     session.user,
+    error,
+    actionError,
+    clearActionError,
     refresh,
+    retryConnection,
     ordered,
     energy,
     lists,
@@ -749,6 +1037,11 @@ export function ApiPlanProvider({ children }: { children: React.ReactNode }) {
     preferences,
     updatePreferences,
     planChanges,
+    lastConfirmedPlanId,
+    clearLastConfirmed,
+    replanNow,
+    feedbackHistory,
+    refreshFeedbackHistory,
     goals,
     pendingTasks,
     addPendingTask,
@@ -760,14 +1053,13 @@ export function ApiPlanProvider({ children }: { children: React.ReactNode }) {
     effectivePreviewMeta,
     assessment,
     submitFeedback,
-    replanNow,
-    feedbackHistory,
-    refreshFeedbackHistory,
-    submitGoal,
     updateWeight,
+    updateTask,
+    updateStandard,
     setDone,
     toggleDone,
     setSkipped,
+    moveBy,
     logFocus,
   ]);
 

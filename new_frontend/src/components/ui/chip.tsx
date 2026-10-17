@@ -64,7 +64,7 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderRadius: Radius.pill,
     paddingHorizontal: Space.lg,
-    minHeight: 36,
+    minHeight: 44,
   },
   label: {
     fontSize: Type.labelLarge,

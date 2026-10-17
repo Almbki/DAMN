@@ -1,12 +1,21 @@
-import { useState } from 'react';
-import { StyleSheet, Text, View } from 'react-native';
+import { useRouter } from 'expo-router';
+import { useEffect, useState } from 'react';
+import {
+  ScrollView,
+  StyleSheet,
+  Text,
+  useWindowDimensions,
+  View,
+} from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { DecomposePreviewDialog } from '@/components/decompose-preview-dialog';
 import { TaskAddDialog, type PendingTaskInput } from '@/components/task-add-dialog';
 import { Button, ExtendedFab, Fab } from '@/components/ui/button';
 import { Icon } from '@/components/ui/icon';
+import { EmptyState, InlineNotice } from '@/components/ui/states';
 import { Surface } from '@/components/ui/surface';
-import { Fonts, Line, Space, Type } from '@/constants/tokens';
+import { Fonts, Layout, Line, Radius, Space, Type } from '@/constants/tokens';
 import { formatShort } from '@/domain/date';
 import type { DraftTask, PendingTask } from '@/domain/decompose';
 import { usePlan } from '@/state/plan';
@@ -14,6 +23,10 @@ import { useTheme } from '@/state/theme';
 
 export default function GoalScreen() {
   const { colors } = useTheme();
+  const router = useRouter();
+  const insets = useSafeAreaInsets();
+  const { width } = useWindowDimensions();
+  const wide = width > 0 && width >= Layout.breakpoint;
   const {
     mode,
     pendingTasks,
@@ -24,6 +37,10 @@ export default function GoalScreen() {
     adjustPreview,
     confirmPreview,
     previewMeta,
+    lastConfirmedPlanId,
+    clearLastConfirmed,
+    actionError,
+    clearActionError,
   } = usePlan();
 
   const [addOpen, setAddOpen] = useState(false);
@@ -34,6 +51,15 @@ export default function GoalScreen() {
 
   const editingItem = editingId == null ? undefined : pendingTasks.find((item) => item.id === editingId);
 
+  // Confirm (and the budget-exhausted adjust path) both land a plan id. Only
+  // then is it safe to drop the preview; a failed confirm keeps it open.
+  useEffect(() => {
+    if (lastConfirmedPlanId == null) return;
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- close the preview once confirm succeeds
+    setPreview(null);
+    setPreviewMessage(null);
+  }, [lastConfirmedPlanId]);
+
   function submit(input: PendingTaskInput) {
     if (editingId != null) updatePendingTask(editingId, input);
     else addPendingTask(input);
@@ -41,7 +67,13 @@ export default function GoalScreen() {
     setEditingId(null);
   }
 
+  function openAdd() {
+    setEditingId(null);
+    setAddOpen(true);
+  }
+
   async function startDecompose() {
+    clearLastConfirmed();
     setPreviewBusy(true);
     setPreviewMessage(null);
     try {
@@ -68,8 +100,6 @@ export default function GoalScreen() {
     setPreviewBusy(true);
     try {
       await confirmPreview();
-      setPreview(null);
-      setPreviewMessage(null);
     } finally {
       setPreviewBusy(false);
     }
@@ -77,48 +107,87 @@ export default function GoalScreen() {
 
   return (
     <View style={styles.page}>
-      <View style={styles.header}>
-        <Text style={[styles.title, { color: colors.ink }]}>待拆解</Text>
-        <Text style={[styles.body, { color: colors.inkMuted }]}>
-          写下想做的事，可以加多条。点「拆解」后，系统会把它们一起理解、拆成每天的任务。
-        </Text>
-      </View>
-
-      {pendingTasks.length === 0 ? (
-        <Surface level="level0" radius="lg" bordered>
-          <View style={styles.empty}>
-            <Text style={[styles.emptyTitle, { color: colors.ink }]}>还没有要拆解的任务</Text>
-            <Text style={[styles.body, { color: colors.inkMuted }]}>
-              点右下角的「＋」添加一个任务。加够之后，点「拆解」看系统怎么排。
-            </Text>
+      <ScrollView
+        style={styles.scroll}
+        contentContainerStyle={styles.scrollContent}
+        keyboardShouldPersistTaps="handled">
+        <View style={styles.header}>
+          <View style={styles.titleRow}>
+            <Text style={[styles.title, { color: colors.ink }]}>待拆解</Text>
+            {pendingTasks.length > 0 ? (
+              <View style={[styles.countPill, { backgroundColor: colors.secondaryContainer }]}>
+                <Text style={[styles.countText, { color: colors.onSecondaryContainer }]}>
+                  {pendingTasks.length} 条待处理
+                </Text>
+              </View>
+            ) : null}
           </View>
-        </Surface>
-      ) : (
-        <View style={styles.list}>
-          {pendingTasks.map((item) => (
-            <PendingCard
-              key={item.id}
-              item={item}
-              onEdit={() => {
-                setEditingId(item.id);
-                setAddOpen(true);
-              }}
-              onRemove={() => removePendingTask(item.id)}
-            />
-          ))}
+          <Text style={[styles.body, { color: colors.inkMuted }]}>
+            写下想做的事，可以加多条。点「拆解」后，系统会把它们一起理解、拆成每天的任务。
+          </Text>
         </View>
-      )}
 
-      <View style={styles.fabBar}>
-        <Fab
-          icon="plus"
-          label="添加任务"
-          variant="tonal"
-          onPress={() => {
-            setEditingId(null);
-            setAddOpen(true);
-          }}
-        />
+        {actionError && !preview ? (
+          <InlineNotice message={actionError} onDismiss={clearActionError} />
+        ) : null}
+
+        {lastConfirmedPlanId != null ? (
+          <Surface level="level2" radius="lg" bordered style={{ borderColor: colors.primary }}>
+            <View style={styles.success}>
+              <View style={styles.successHead}>
+                <View style={[styles.successIcon, { backgroundColor: colors.primaryContainer }]}>
+                  <Icon name="check" size={18} color={colors.onPrimaryContainer} strokeWidth={2.4} />
+                </View>
+                <Text style={[styles.successTitle, { color: colors.ink }]}>计划已生成</Text>
+              </View>
+              <Text style={[styles.body, { color: colors.inkMuted }]}>
+                任务已经排进待办。去待办看看每天做什么，还可以逐条调整。
+              </Text>
+              <View style={styles.successActions}>
+                <Button
+                  label="去待办"
+                  variant="filled"
+                  icon="arrowRight"
+                  onPress={() => {
+                    clearLastConfirmed();
+                    router.replace('/');
+                  }}
+                />
+                <Button label="继续添加" variant="text" onPress={clearLastConfirmed} />
+              </View>
+            </View>
+          </Surface>
+        ) : pendingTasks.length === 0 ? (
+          <EmptyState
+            title="还没有要拆解的任务"
+            body="先写一件想推进的事，可以一次加多条。加好后点右下角「拆解」，系统会先给一版可以预览、可以反馈的安排。"
+            actionLabel="添加第一条"
+            actionIcon="plus"
+            onAction={openAdd}
+          />
+        ) : (
+          <View style={styles.list}>
+            {pendingTasks.map((item) => (
+              <PendingCard
+                key={item.id}
+                item={item}
+                onEdit={() => {
+                  setEditingId(item.id);
+                  setAddOpen(true);
+                }}
+                onRemove={() => removePendingTask(item.id)}
+              />
+            ))}
+          </View>
+        )}
+      </ScrollView>
+
+      <View
+        style={[
+          styles.fabBar,
+          { bottom: Space.lg + (wide ? insets.bottom : 0) },
+        ]}>
+        <Fab icon="plus" label="添加任务" variant="tonal" onPress={openAdd} />
         <ExtendedFab
           icon="target"
           label={
@@ -127,7 +196,7 @@ export default function GoalScreen() {
                 ? `拆解中 · ${previewMeta.stage}`
                 : '拆解中…'
               : pendingTasks.length > 0
-                ? `拆解 · ${pendingTasks.length}`
+                ? `拆解 · ${pendingTasks.length} 条`
                 : '拆解'
           }
           disabled={pendingTasks.length === 0 || previewBusy}
@@ -156,6 +225,11 @@ export default function GoalScreen() {
           message={previewMessage}
           stage={previewMeta?.stage ?? null}
           warnings={previewMeta?.warnings ?? []}
+          violations={previewMeta?.violations ?? []}
+          estimatedTotalMinutes={previewMeta?.estimatedTotalMinutes ?? 0}
+          dailyLimitMinutes={previewMeta?.dailyLimitMinutes ?? null}
+          error={actionError}
+          onDismissError={clearActionError}
           onRegenerate={regenerate}
           onConfirm={confirm}
           onClose={() => {
@@ -219,15 +293,37 @@ function PriorityTag({ priority }: { priority: number }) {
 const styles = StyleSheet.create({
   page: {
     flex: 1,
+    minHeight: 0,
+  },
+  scroll: {
+    flex: 1,
+  },
+  scrollContent: {
     gap: Space.xl,
-    // Clear the two stacked FABs (56 + 16 + 56) plus their bottom inset.
-    paddingBottom: 160,
+    // Let the last card clear the fixed FAB stack.
+    paddingBottom: 180,
   },
   header: {
     gap: Space.sm,
   },
+  titleRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: Space.md,
+    flexWrap: 'wrap',
+  },
   title: {
     fontSize: Type.titleLarge,
+    fontWeight: '600',
+  },
+  countPill: {
+    borderRadius: Radius.pill,
+    paddingHorizontal: Space.md,
+    paddingVertical: Space.xs,
+  },
+  countText: {
+    fontSize: Type.labelMedium,
     fontWeight: '600',
   },
   body: {
@@ -235,13 +331,32 @@ const styles = StyleSheet.create({
     lineHeight: Type.bodyMedium * Line.relaxed,
     maxWidth: 560,
   },
-  empty: {
+  success: {
     padding: Space.xl,
-    gap: Space.sm,
+    gap: Space.md,
   },
-  emptyTitle: {
-    fontSize: Type.titleMedium,
+  successHead: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Space.md,
+  },
+  successIcon: {
+    width: 36,
+    height: 36,
+    borderRadius: Radius.pill,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  successTitle: {
+    fontSize: Type.headlineSmall,
     fontWeight: '600',
+  },
+  successActions: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    alignItems: 'center',
+    gap: Space.sm,
+    paddingTop: Space.xs,
   },
   list: {
     gap: Space.md,

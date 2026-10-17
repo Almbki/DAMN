@@ -7,6 +7,8 @@ from datetime import date, timedelta
 
 from fastapi.testclient import TestClient
 
+from tests.support import replan_and_wait
+
 
 def _create_plan(client: TestClient, headers: dict) -> int:
     response = client.post(
@@ -57,13 +59,9 @@ def test_manual_replan_succeeds_when_eligible(client: TestClient, auth_headers: 
     assert eligibility.status_code == 200
     assert eligibility.json()["eligible"] is True
 
-    response = client.post(
-        f"/api/v1/plans/{plan_id}/replan",
-        json={"reason": "manual replan test"},
-        headers=auth_headers,
+    body = replan_and_wait(
+        client, auth_headers, plan_id, {"reason": "manual replan test"}
     )
-    assert response.status_code == 201, response.text
-    body = response.json()
     assert body["old_version"] == 1
     assert body["new_version"] == 2
     assert body["plan_id"] != plan_id
@@ -77,13 +75,10 @@ def test_manual_replan_succeeds_when_eligible(client: TestClient, auth_headers: 
 def test_manual_replan_blocked_by_cooldown(client: TestClient, auth_headers: dict) -> None:
     """TEST 9: second replan is refused with a reason and a next-eligible time."""
     plan_id = _create_plan(client, auth_headers)
-    first = client.post(
-        f"/api/v1/plans/{plan_id}/replan",
-        json={"reason": "first replan"},
-        headers=auth_headers,
+    first = replan_and_wait(
+        client, auth_headers, plan_id, {"reason": "first replan"}
     )
-    assert first.status_code == 201, first.text
-    new_plan_id = first.json()["plan_id"]
+    new_plan_id = first["plan_id"]
 
     eligibility = client.get(
         f"/api/v1/plans/{new_plan_id}/replan/eligibility", headers=auth_headers

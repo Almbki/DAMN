@@ -11,7 +11,12 @@ import { todayISO } from '@/domain/date';
 import type { DraftTask, PendingTask } from '@/domain/decompose';
 import type { PlanChange } from '@/domain/plan-change';
 import type { Situation, SituationPoint } from '@/domain/situation';
-import { NO_REPEAT, type CognitiveLoad, type Task } from '@/domain/task';
+import {
+  NO_REPEAT,
+  type CognitiveLoad,
+  type Task,
+  type TaskStandard,
+} from '@/domain/task';
 
 function mapCognitiveLoad(value: string): CognitiveLoad {
   if (value === 'high') return 'high';
@@ -27,6 +32,13 @@ function mapCognitiveLoad(value: string): CognitiveLoad {
  * also used as the due time since the UI only shows one time.
  */
 export function taskFromApi(raw: TaskRead): Task {
+  const standards: TaskStandard[] = (raw.standards ?? []).map((standard) => ({
+    id: standard.id,
+    description: standard.description,
+    estimatedDuration: standard.estimated_duration,
+    completed: standard.completed,
+    orderIndex: standard.order_index,
+  }));
   return {
     id: raw.id,
     title: raw.title,
@@ -48,6 +60,10 @@ export function taskFromApi(raw: TaskRead): Task {
     tags: [],
     order: raw.order_index ?? 0,
     completedAt: null,
+    standards,
+    completionProbability: raw.completion_probability ?? null,
+    predictedDuration: raw.predicted_duration ?? null,
+    isFlexible: raw.is_flexible,
   };
 }
 
@@ -75,6 +91,36 @@ export function patchDone(done: boolean): TaskUpdateRequest {
 
 export function patchSkipped(): TaskUpdateRequest {
   return { status: 'skipped' };
+}
+
+/**
+ * Domain `Partial<Task>` → backend `TaskUpdateRequest`.
+ *
+ * Only the fields the backend exposes are forwarded; local-only concepts
+ * (`repeat`, `tags`, `startDate`, …) are ignored rather than sent blindly.
+ */
+export function taskPatchFromDomain(patch: Partial<Task>): TaskUpdateRequest {
+  const body: TaskUpdateRequest = {};
+
+  if (patch.title !== undefined) body.title = patch.title.trim() || '未命名任务';
+  if (patch.description !== undefined) body.description = patch.description;
+  else if (patch.notes !== undefined) body.description = patch.notes;
+  if (patch.estimatedMinutes !== undefined && patch.estimatedMinutes != null) {
+    body.estimated_duration = patch.estimatedMinutes;
+  }
+  if (patch.priority !== undefined) {
+    body.priority = Math.min(4, Math.max(1, Math.round(patch.priority)));
+  }
+  if (patch.cognitiveLoad !== undefined) body.cognitive_load = patch.cognitiveLoad;
+  if (patch.dueDate !== undefined) body.scheduled_date = patch.dueDate;
+  if (patch.startTime !== undefined) body.start_time = patch.startTime;
+  else if (patch.dueTime !== undefined) body.start_time = patch.dueTime;
+  if (patch.endTime !== undefined) body.end_time = patch.endTime;
+
+  if (patch.done !== undefined) Object.assign(body, patchDone(patch.done));
+  if (patch.skipped !== undefined) Object.assign(body, patchSkipped());
+
+  return body;
 }
 
 /** Backend `GoalDetailRead` → the 待拆解 `PendingTask` the goal screen edits. */
@@ -107,6 +153,7 @@ export function planChangeFromApi(raw: PlanChangeRead): PlanChange {
       moved: day.moved,
       removed: day.removed,
       summary: day.summary,
+      taskIds: day.task_ids,
     })),
   };
 }

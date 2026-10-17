@@ -30,11 +30,6 @@ class ScheduledTask(BaseModel):
     completion_probability: float = Field(default=1.0, ge=0.0, le=1.0)
     is_flexible: bool = True
 
-    @property
-    def deadline_risk(self) -> float:
-        """Placeholder hook for future DDL risk scoring (0..1)."""
-        return 0.0
-
 
 class CandidateSchedule(BaseModel):
     """Output of the Scheduler, input of every Rule."""
@@ -58,13 +53,3 @@ class CandidateSchedule(BaseModel):
     def days(self) -> list[date]:
         span = (self.end_date - self.start_date).days
         return [self.start_date + timedelta(days=i) for i in range(max(span + 1, 1))]
-
-
-class ScheduleResult(BaseModel):
-    """Full result returned by the pipeline (schedule + validation outcome)."""
-
-    schedule: CandidateSchedule
-    is_valid: bool = True
-    repaired: bool = False
-    confidence: float = Field(default=0.5, ge=0.0, le=1.0)
-    notes: list[str] = Field(default_factory=list)

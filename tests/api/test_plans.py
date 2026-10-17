@@ -6,6 +6,8 @@ from datetime import date
 
 from fastapi.testclient import TestClient
 
+from tests.support import generate_and_wait, replan_and_wait
+
 _GOALS = [
     {
         "title": "复习高数极限",
@@ -27,9 +29,7 @@ _GOALS = [
 def _generate(client: TestClient, headers: dict, **overrides) -> dict:
     payload = {"goals": _GOALS, "plan_title": "Test Plan"}
     payload.update(overrides)
-    response = client.post("/api/v1/plans/generate", json=payload, headers=headers)
-    assert response.status_code == 202, response.text
-    return response.json()
+    return generate_and_wait(client, headers, payload)
 
 
 def test_generate_plan_returns_job_and_plan(client: TestClient, auth_headers: dict) -> None:
@@ -80,6 +80,43 @@ def test_task_patch_records_completion(client: TestClient, auth_headers: dict) -
     assert response.status_code == 200, response.text
     assert response.json()["status"] == "completed"
 
+    # The completion must also be recorded as an execution row.
+    insights = client.get(f"/api/v1/plans/{plan_id}/insights", headers=auth_headers)
+    assert insights.status_code == 200, insights.text
+    assert insights.json()["total_actual_minutes"] == 75
+
+
+def test_task_patch_edits_and_reschedules(client: TestClient, auth_headers: dict) -> None:
+    body = _generate(client, auth_headers)
+    plan_id = body["plan_id"]
+    task_id = body["plan"]["tasks"][0]["id"]
+    day = date.today()
+    payload = {
+        "title": "编辑后的任务",
+        "estimated_duration": 45,
+        "priority": 4,
+        "scheduled_date": day.isoformat(),
+        "start_time": "09:30:00",
+        "end_time": "10:15:00",
+    }
+
+    response = client.patch(
+        f"/api/v1/plans/{plan_id}/tasks/{task_id}",
+        json=payload,
+        headers=auth_headers,
+    )
+    assert response.status_code == 200, response.text
+
+    detail = client.get(f"/api/v1/plans/{plan_id}", headers=auth_headers)
+    assert detail.status_code == 200, detail.text
+    task = next(item for item in detail.json()["tasks"] if item["id"] == task_id)
+    assert task["title"] == payload["title"]
+    assert task["estimated_duration"] == payload["estimated_duration"]
+    assert task["priority"] == payload["priority"]
+    assert task["scheduled_date"] == payload["scheduled_date"]
+    assert task["start_time"] == payload["start_time"]
+    assert task["end_time"] == payload["end_time"]
+
 
 def test_feedback_submission_and_history(client: TestClient, auth_headers: dict) -> None:
     body = _generate(client, auth_headers)
@@ -112,13 +149,10 @@ def test_replan_eligibility_and_replan(client: TestClient, auth_headers: dict) -
     assert eligibility.status_code == 200
     assert eligibility.json()["eligible"] is True
 
-    replanned = client.post(
-        f"/api/v1/plans/{plan_id}/replan",
-        json={"reason": "manual test"},
-        headers=auth_headers,
+    replanned = replan_and_wait(
+        client, auth_headers, plan_id, {"reason": "manual test"}
     )
-    assert replanned.status_code == 201, replanned.text
-    assert replanned.json()["new_version"] == 2
+    assert replanned["new_version"] == 2
 
 
 def test_insights(client: TestClient, auth_headers: dict) -> None:

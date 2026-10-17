@@ -1,10 +1,50 @@
-import { Pressable, StyleSheet, Text, type StyleProp, type ViewStyle, View } from 'react-native';
+import { useEffect, useRef } from 'react';
+import {
+  AccessibilityInfo,
+  findNodeHandle,
+  Platform,
+  Pressable,
+  StyleSheet,
+  Text,
+  type StyleProp,
+  type ViewStyle,
+  View,
+} from 'react-native';
 
 import { Icon, type IconName } from '@/components/ui/icon';
 import { useInteraction } from '@/components/ui/interaction';
 import { shadowFor } from '@/components/ui/surface';
 import { Elevation, Radius, Space, StateLayer, Type } from '@/constants/tokens';
 import { useTheme } from '@/state/theme';
+
+/**
+ * Move accessibility focus to a control when a dialog opens. On web the
+ * Pressable renders a focusable element, so the DOM `focus()` is enough; on
+ * native we hand the tag to the accessibility layer.
+ */
+function useAutoFocus(enabled: boolean) {
+  const ref = useRef<View>(null);
+  // Only the state at mount matters. Re-focusing when a button happens to
+  // become enabled would steal the caret from a nearby text field.
+  const enabledOnMount = useRef(enabled);
+
+  useEffect(() => {
+    if (!enabledOnMount.current) return;
+    const node = ref.current;
+    if (!node) return;
+    const timer = setTimeout(() => {
+      if (Platform.OS === 'web') {
+        (node as unknown as { focus?: () => void }).focus?.();
+      } else {
+        const tag = findNodeHandle(node);
+        if (tag != null) AccessibilityInfo.setAccessibilityFocus(tag);
+      }
+    }, 60);
+    return () => clearTimeout(timer);
+  }, []);
+
+  return ref;
+}
 
 /**
  * Material 3 button. Variants: filled / tonal / outlined / text.
@@ -26,6 +66,8 @@ type ButtonProps = {
   icon?: IconName;
   disabled?: boolean;
   size?: 'sm' | 'md';
+  /** Focus the control when it mounts (used by dialogs). */
+  autoFocus?: boolean;
   style?: StyleProp<ViewStyle>;
 };
 
@@ -36,10 +78,12 @@ export function Button({
   icon,
   disabled = false,
   size = 'md',
+  autoFocus = false,
   style,
 }: ButtonProps) {
   const { colors } = useTheme();
   const { focused, hovered, handlers } = useInteraction();
+  const ref = useAutoFocus(autoFocus);
   const kind = ALIASES[variant] ?? (variant as ButtonVariant);
 
   const background =
@@ -58,6 +102,7 @@ export function Button({
 
   return (
     <Pressable
+      ref={ref}
       accessibilityRole="button"
       accessibilityLabel={label}
       accessibilityState={{ disabled }}
@@ -122,6 +167,7 @@ export function IconButton({
   disabled = false,
   selected = false,
   size = 44,
+  autoFocus = false,
   style,
 }: {
   name: IconName;
@@ -130,12 +176,16 @@ export function IconButton({
   disabled?: boolean;
   selected?: boolean;
   size?: number;
+  /** Focus the icon button when it mounts (used by dialogs). */
+  autoFocus?: boolean;
   style?: StyleProp<ViewStyle>;
 }) {
   const { colors } = useTheme();
   const { focused, hovered, handlers } = useInteraction();
+  const ref = useAutoFocus(autoFocus);
   return (
     <Pressable
+      ref={ref}
       accessibilityRole="button"
       accessibilityLabel={label}
       accessibilityState={{ disabled, selected }}
@@ -268,7 +318,8 @@ const styles = StyleSheet.create({
     overflow: 'hidden',
   },
   sm: {
-    minHeight: 34,
+    // Keep the compact look but never shrink the touch target below 44.
+    minHeight: 44,
     paddingHorizontal: Space.lg,
   },
   label: {

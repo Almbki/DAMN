@@ -1,5 +1,7 @@
 import {
+  KeyboardAvoidingView,
   Modal,
+  Platform,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -7,10 +9,12 @@ import {
   useWindowDimensions,
   View,
 } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { IconButton } from '@/components/ui/button';
 import { Surface } from '@/components/ui/surface';
 import { Line, Radius, Space, Type } from '@/constants/tokens';
+import { useReducedMotion } from '@/hooks/use-reduced-motion';
 import { useTheme } from '@/state/theme';
 
 /**
@@ -36,43 +40,65 @@ export function BottomSheet({
 }) {
   const { colors } = useTheme();
   const { height } = useWindowDimensions();
+  const insets = useSafeAreaInsets();
+  const reducedMotion = useReducedMotion();
   if (!visible) return null;
 
   return (
-    <Modal transparent visible animationType="slide" onRequestClose={onClose}>
-      <View style={styles.root}>
+    <Modal
+      transparent
+      visible
+      animationType={reducedMotion ? 'none' : 'slide'}
+      onRequestClose={onClose}
+      statusBarTranslucent>
+      <View accessibilityViewIsModal style={styles.root}>
         <Pressable
-          accessibilityLabel="关闭"
+          accessible={false}
           style={[StyleSheet.absoluteFill, { backgroundColor: colors.scrim }]}
           onPress={onClose}
         />
-        <Surface
-          level="level3"
-          radius="xl"
-          tone="lowest"
-          style={[styles.sheet, { maxWidth, maxHeight: Math.max(280, height * 0.88) }]}>
-          <View style={[styles.handle, { backgroundColor: colors.outlineVariant }]} />
-          <View style={styles.header}>
-            <View style={styles.headerText}>
-              <Text style={[styles.title, { color: colors.ink }]}>{title}</Text>
-              {subtitle ? (
-                <Text style={[styles.subtitle, { color: colors.inkMuted }]}>{subtitle}</Text>
-              ) : null}
+
+        <KeyboardAvoidingView
+          behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+          style={styles.sheetWrap}
+          pointerEvents="box-none">
+          <Surface
+            level="level3"
+            radius="xl"
+            tone="lowest"
+            style={[
+              styles.sheet,
+              {
+                maxWidth,
+                maxHeight: Math.max(280, height * 0.88),
+                paddingBottom: insets.bottom,
+              },
+            ]}>
+            <View style={[styles.handle, { backgroundColor: colors.outlineVariant }]} />
+            <View style={styles.header}>
+              <View style={styles.headerText}>
+                <Text accessibilityRole="header" style={[styles.title, { color: colors.ink }]}>
+                  {title}
+                </Text>
+                {subtitle ? (
+                  <Text style={[styles.subtitle, { color: colors.inkMuted }]}>{subtitle}</Text>
+                ) : null}
+              </View>
+              <IconButton name="close" label="关闭" onPress={onClose} autoFocus />
             </View>
-            <IconButton name="close" label="关闭" onPress={onClose} />
-          </View>
 
-          <ScrollView
-            style={styles.scroll}
-            contentContainerStyle={styles.scrollContent}
-            keyboardShouldPersistTaps="handled">
-            {children}
-          </ScrollView>
+            <ScrollView
+              style={styles.scroll}
+              contentContainerStyle={styles.scrollContent}
+              keyboardShouldPersistTaps="handled">
+              {children}
+            </ScrollView>
 
-          {footer ? (
-            <View style={[styles.footer, { borderTopColor: colors.line }]}>{footer}</View>
-          ) : null}
-        </Surface>
+            {footer ? (
+              <View style={[styles.footer, { borderTopColor: colors.line }]}>{footer}</View>
+            ) : null}
+          </Surface>
+        </KeyboardAvoidingView>
       </View>
     </Modal>
   );
@@ -80,6 +106,9 @@ export function BottomSheet({
 
 const styles = StyleSheet.create({
   root: {
+    flex: 1,
+  },
+  sheetWrap: {
     flex: 1,
     justifyContent: 'flex-end',
     alignItems: 'center',

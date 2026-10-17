@@ -8,16 +8,63 @@ type ListKeyHandlers = {
   onSkip?: () => void;
 };
 
-function isTextEntry(target: EventTarget | null): boolean {
+const EDITABLE_SELECTOR = [
+  'input',
+  'textarea',
+  'select',
+  'button',
+  'a[href]',
+  'summary',
+  '[contenteditable="true"]',
+  '[contenteditable=""]',
+  '[contenteditable="plaintext-only"]',
+].join(',');
+
+const INTERACTIVE_ROLES = new Set([
+  'button',
+  'checkbox',
+  'combobox',
+  'listbox',
+  'menuitem',
+  'option',
+  'radio',
+  'searchbox',
+  'slider',
+  'spinbutton',
+  'switch',
+  'textbox',
+]);
+
+const INTERACTIVE_SELECTOR = [
+  EDITABLE_SELECTOR,
+  Array.from(INTERACTIVE_ROLES)
+    .map((role) => `[role="${role}"]`)
+    .join(','),
+].join(',');
+
+/** True for text entry and every control that already owns Space/arrow keys. */
+function isInteractiveTarget(target: EventTarget | null): boolean {
   if (typeof HTMLElement === 'undefined' || !(target instanceof HTMLElement)) return false;
-  const tag = target.tagName;
-  return tag === 'INPUT' || tag === 'TEXTAREA' || target.isContentEditable;
+  if (target.isContentEditable) return true;
+  if (target.closest(INTERACTIVE_SELECTOR)) return true;
+  const role = target.getAttribute('role');
+  return role != null && INTERACTIVE_ROLES.has(role);
+}
+
+/**
+ * List navigation is only a shortcut for page-level focus. A focused control
+ * (input, button, checkbox, link, contenteditable) keeps its own key behavior —
+ * especially Space, which must press buttons instead of toggling a task.
+ */
+function isListScope(target: EventTarget | null): boolean {
+  if (typeof HTMLElement === 'undefined' || !(target instanceof HTMLElement)) return false;
+  if (target === document.body || target === document.documentElement) return true;
+  return target.closest('[data-testid="todo-list"]') != null;
 }
 
 /**
  * Web-only roving list keys. Shortcuts are always a secondary path: every action
- * here is reachable by tap/click. Keys are ignored while typing, so the add-goal
- * input and textareas are never hijacked.
+ * here is reachable by tap/click.
  */
 export function useListKeys(handlers: ListKeyHandlers, enabled = true) {
   const handlersRef = useRef(handlers);
@@ -30,8 +77,10 @@ export function useListKeys(handlers: ListKeyHandlers, enabled = true) {
     if (Platform.OS !== 'web' || !enabled || typeof document === 'undefined') return;
 
     const onKeyDown = (event: KeyboardEvent) => {
-      if (isTextEntry(event.target)) return;
+      if (event.defaultPrevented) return;
       if (event.metaKey || event.ctrlKey || event.altKey) return;
+      if (isInteractiveTarget(event.target)) return;
+      if (!isListScope(event.target)) return;
 
       switch (event.key) {
         case 'j':
@@ -45,6 +94,12 @@ export function useListKeys(handlers: ListKeyHandlers, enabled = true) {
           handlersRef.current.onPrev?.();
           break;
         case ' ':
+        case 'Spacebar':
+          // Holding Space must not toggle repeatedly.
+          if (event.repeat) {
+            event.preventDefault();
+            return;
+          }
           event.preventDefault();
           handlersRef.current.onToggle?.();
           break;

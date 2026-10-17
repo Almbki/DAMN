@@ -3,8 +3,10 @@ import { StyleSheet, Text, View } from 'react-native';
 
 import { Timeline, type TimelineItem } from '@/components/timeline';
 import { Dialog } from '@/components/ui/dialog';
+import { InlineNotice } from '@/components/ui/states';
+import { Surface } from '@/components/ui/surface';
 import { TextField } from '@/components/ui/text-field';
-import { Line, Space, Type } from '@/constants/tokens';
+import { Fonts, Line, Radius, Space, Type } from '@/constants/tokens';
 import { formatShort } from '@/domain/date';
 import type { DraftTask } from '@/domain/decompose';
 import type { DataMode } from '@/state/plan-context';
@@ -24,7 +26,7 @@ function toItem(task: DraftTask): TimelineItem {
 
 /**
  * 拆解预览：把候选任务按天画成只读时间轴（照抄待办样式），下面留一个反馈框，
- * 可「重新生成」或「就先这样」。真正的拆解由后端智能体完成，当前为本地模拟。
+ * 可「重新生成」或「确认并生成计划」。真正的拆解由后端智能体完成，当前为本地模拟。
  */
 export function DecomposePreviewDialog({
   tasks,
@@ -33,7 +35,12 @@ export function DecomposePreviewDialog({
   busy,
   message,
   stage,
-  warnings,
+  warnings = [],
+  violations = [],
+  estimatedTotalMinutes = 0,
+  dailyLimitMinutes = null,
+  error,
+  onDismissError,
   onRegenerate,
   onConfirm,
   onClose,
@@ -45,13 +52,20 @@ export function DecomposePreviewDialog({
   message: string | null;
   /** Human label for the currently streaming generation stage (optional). */
   stage?: string | null;
-  warnings: string[];
+  warnings?: string[];
+  /** Hard-rule violations from the backend, already human-readable. */
+  violations?: string[];
+  estimatedTotalMinutes?: number;
+  dailyLimitMinutes?: number | null;
+  error?: string | null;
+  onDismissError?: () => void;
   onRegenerate: (feedback: string) => void;
   onConfirm: () => Promise<void> | void;
   onClose: () => void;
 }) {
   const { colors } = useTheme();
   const [feedback, setFeedback] = useState('');
+  const [closing, setClosing] = useState(false);
 
   const trimmedFeedback = feedback.trim();
   // The backend requires `feedback` to be non-empty (422 otherwise).
@@ -59,27 +73,91 @@ export function DecomposePreviewDialog({
 
   const days = Array.from(new Set(tasks.map((task) => task.dueDate))).sort();
 
+  function requestClose() {
+    if (busy) return;
+    setClosing(true);
+  }
+
   return (
     <Dialog
       visible
       width={640}
       title="拆解预览"
-      description={`共 ${tasks.length} 条，分布在 ${days.length} 天。预览仅供参考，不可编辑。`}
-      onRequestClose={onClose}
-      actions={[
-        {
-          label: canAdjust ? '重新生成' : '不能再调整',
-          variant: 'tonal',
-          disabled: !canRegenerate,
-          onPress: () => onRegenerate(trimmedFeedback),
-        },
-        {
-          label: busy ? '处理中…' : '就先这样',
-          variant: 'filled',
-          disabled: busy,
-          onPress: onConfirm,
-        },
-      ]}>
+      description={
+        closing
+          ? '关闭后需要重新拆解，当前这版预览和写下的反馈都不会保留。'
+          : `共 ${tasks.length} 条，分布在 ${days.length} 天。预览仅供参考，不可编辑。`
+      }
+      closable={!busy}
+      onRequestClose={requestClose}
+      actions={
+        closing
+          ? [
+              {
+                label: '继续编辑',
+                variant: 'tonal',
+                onPress: () => setClosing(false),
+              },
+              {
+                label: '关闭预览',
+                variant: 'filled',
+                onPress: onClose,
+              },
+            ]
+          : [
+              {
+                label: canAdjust ? '重新生成' : '不能再调整',
+                variant: 'tonal',
+                disabled: !canRegenerate,
+                onPress: () => onRegenerate(trimmedFeedback),
+              },
+              {
+                label: busy ? '生成中…' : '确认并生成计划',
+                variant: 'filled',
+                disabled: busy,
+                onPress: onConfirm,
+              },
+            ]
+      }>
+      <Surface level="level0" radius="md" bordered>
+        <View style={styles.summary}>
+          <Text style={[styles.summaryTitle, { color: colors.ink }]}>这次拆解</Text>
+          <Text style={[styles.meta, { color: colors.inkMuted }]}>
+            共 <Text style={styles.mono}>{tasks.length}</Text> 条 · 分布在{' '}
+            <Text style={styles.mono}>{days.length}</Text> 天
+          </Text>
+          <Text style={[styles.meta, { color: colors.inkMuted }]}>
+            预计总时长 <Text style={styles.mono}>{estimatedTotalMinutes}</Text> 分钟
+            {dailyLimitMinutes != null ? (
+              <>
+                {' '}
+                · 单日上限 <Text style={styles.mono}>{dailyLimitMinutes}</Text> 分钟
+              </>
+            ) : null}
+          </Text>
+          {busy && stage ? (
+            <Text style={[styles.meta, { color: colors.primary }]}>拆解中 · {stage}</Text>
+          ) : stage ? (
+            <Text style={[styles.meta, { color: colors.primary }]}>当前阶段：{stage}</Text>
+          ) : null}
+        </View>
+      </Surface>
+
+      {violations.length > 0 ? (
+        <View
+          accessibilityRole="alert"
+          style={[styles.alert, { backgroundColor: colors.errorContainer, borderColor: colors.error }]}>
+          <Text style={[styles.alertTitle, { color: colors.onErrorContainer }]}>规则提醒</Text>
+          {violations.map((violation, index) => (
+            <Text
+              key={`violation-${index}-${violation}`}
+              style={[styles.alertText, { color: colors.onErrorContainer }]}>
+              · {violation}
+            </Text>
+          ))}
+        </View>
+      ) : null}
+
       <View style={styles.preview}>
         {days.map((date) => (
           <View key={date} style={styles.dayBlock}>
@@ -100,26 +178,70 @@ export function DecomposePreviewDialog({
         multiline
         background={colors.surfaceContainerLowest}
       />
+      {canAdjust && trimmedFeedback.length === 0 ? (
+        <Text style={[styles.hint, { color: colors.inkMuted }]}>
+          先写一句想改什么，再点「重新生成」。
+        </Text>
+      ) : null}
+
+      {warnings.length > 0 ? (
+        <View style={styles.warningGroup}>
+          <Text style={[styles.groupLabel, { color: colors.inkMuted }]}>补充提示</Text>
+          {warnings.map((warning, index) => (
+            <Text
+              key={`warning-${index}-${warning}`}
+              style={[styles.notice, { color: colors.inkMuted }]}>
+              · {warning}
+            </Text>
+          ))}
+        </View>
+      ) : null}
+
+      {error ? <InlineNotice message={error} onDismiss={onDismissError} /> : null}
+      {message ? <Text style={[styles.notice, { color: colors.primary }]}>{message}</Text> : null}
 
       <Text style={[styles.notice, { color: colors.inkMuted }]}>
         {mode === 'api'
           ? '拆解由后端智能体完成；「重新生成」会把你的反馈交给它重排，确认后才会落库。'
           : '本地模拟预览（mock 模式），用于后端不可用时兜底。'}
       </Text>
-      {busy && stage ? (
-        <Text style={[styles.notice, { color: colors.primary }]}>{`拆解中 · ${stage}`}</Text>
-      ) : null}
-      {message ? <Text style={[styles.notice, { color: colors.primary }]}>{message}</Text> : null}
-      {warnings.map((warning) => (
-        <Text key={warning} style={[styles.notice, { color: colors.inkMuted }]}>
-          {warning}
-        </Text>
-      ))}
+      <Text style={[styles.notice, { color: colors.inkMuted }]}>
+        确认后会生成正式计划；到了待办页，还可以逐条编辑时间、优先级和完成标准。
+      </Text>
     </Dialog>
   );
 }
 
 const styles = StyleSheet.create({
+  summary: {
+    padding: Space.lg,
+    gap: Space.xs,
+  },
+  summaryTitle: {
+    fontSize: Type.titleMedium,
+    fontWeight: '600',
+  },
+  meta: {
+    fontSize: Type.labelLarge,
+    lineHeight: Type.labelLarge * Line.normal,
+  },
+  mono: {
+    fontFamily: Fonts.mono,
+  },
+  alert: {
+    borderWidth: 1,
+    borderRadius: Radius.sm,
+    padding: Space.md,
+    gap: Space.xs,
+  },
+  alertTitle: {
+    fontSize: Type.labelLarge,
+    fontWeight: '600',
+  },
+  alertText: {
+    fontSize: Type.labelMedium,
+    lineHeight: Type.labelMedium * Line.relaxed,
+  },
   preview: {
     gap: Space.xl,
   },
@@ -128,6 +250,17 @@ const styles = StyleSheet.create({
   },
   dayTitle: {
     fontSize: Type.titleMedium,
+    fontWeight: '600',
+  },
+  hint: {
+    fontSize: Type.labelMedium,
+    lineHeight: Type.labelMedium * Line.normal,
+  },
+  warningGroup: {
+    gap: Space.xs,
+  },
+  groupLabel: {
+    fontSize: Type.labelMedium,
     fontWeight: '600',
   },
   notice: {

@@ -83,16 +83,30 @@ export async function loadPreferencesRemote(): Promise<SchedulingPreferences> {
 }
 
 /**
- * Persist preferences. The offline cache is always written; api mode also
- * write-throughs to the server best-effort, silently keeping the local value if
- * the request fails.
+ * PUTs are serialised so rapid stepper clicks arrive in order; each call carries
+ * the full (functional) next value, so the last write wins deterministically.
  */
-export async function savePreferencesRemote(preferences: SchedulingPreferences): Promise<void> {
+let putQueue: Promise<unknown> = Promise.resolve();
+
+/**
+ * Persist preferences. The offline cache is always written; api mode also
+ * write-throughs to the server. Resolves `false` when the server rejected the
+ * update so the provider can surface it as `actionError`.
+ */
+export async function savePreferencesRemote(preferences: SchedulingPreferences): Promise<boolean> {
   savePreferences(preferences);
-  if (dataSource !== 'api') return;
+  if (dataSource !== 'api') return true;
+
+  const request = putQueue.then(() => putPreferences(toApi(preferences)));
+  putQueue = request.then(
+    () => undefined,
+    () => undefined,
+  );
   try {
-    await putPreferences(toApi(preferences));
+    await request;
+    return true;
   } catch {
     // Offline cache keeps the value; the next change retries.
+    return false;
   }
 }

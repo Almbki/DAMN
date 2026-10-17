@@ -30,7 +30,6 @@ class AgentEvent(BaseModel):
     status: str = "completed"
     summary: str = ""
     payload: dict = Field(default_factory=dict)
-    progress: float = 0.0
     timestamp: datetime = Field(default_factory=lambda: datetime.now(UTC))
 
     @classmethod

@@ -19,9 +19,16 @@ export function completionRate(tasks: Task[]): number {
   return closed === 0 ? 0 : done / closed;
 }
 
+/**
+ * Tasks completed today. The API mapper never sets `completedAt`, so the due
+ * date is the primary signal; `completedAt` covers local/mock completions whose
+ * task has no due date.
+ */
 export function completedToday(tasks: Task[]): number {
   const today = todayISO();
-  return tasks.filter((task) => task.done && task.completedAt === today).length;
+  return tasks.filter(
+    (task) => task.done && (task.dueDate === today || task.completedAt === today),
+  ).length;
 }
 
 export function minutesInRange(completions: Completion[], from: string, to: string): number {

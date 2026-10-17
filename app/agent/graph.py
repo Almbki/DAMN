@@ -31,7 +31,6 @@ from __future__ import annotations
 import dataclasses
 import threading
 import uuid
-from datetime import UTC, datetime
 from typing import Any
 
 from app.agent.checkpointer import get_checkpointer
@@ -53,12 +52,11 @@ from app.agent.nodes import (
     user_situation_analysis_node,
 )
 from app.agent.router import route_after_adjustment, route_after_preview, should_repair
-from app.agent.schemas import FinalPlanPayload, PreviewPayload
+from app.agent.schemas import PreviewPayload
 from app.agent.state import (
     PlannerContext,
     PlannerRequest,
     PlannerState,
-    RunMetadata,
 )
 
 GRAPH_A_VERSION = "initial-plan-v1"
@@ -271,14 +269,6 @@ class PlannerGraph:
             "notes": [],
             "errors": [],
             "tool_results": [],
-            "metadata": RunMetadata(
-                run_id=run_id,
-                user_id=request.user_id,
-                trigger_type=request.trigger_type.value,
-                graph_version=graph_version,
-                prompt_version=config.prompt_version,
-                started_at=datetime.now(UTC),
-            ),
         }
 
     @staticmethod
@@ -295,13 +285,6 @@ class PlannerGraph:
         value = getattr(interrupt, "value", interrupt)
         payload = PreviewPayload.model_validate(value)
         return payload
-
-    @staticmethod
-    def extract_final_plan(result: Any) -> FinalPlanPayload | None:
-        if not isinstance(result, dict):
-            return None
-        final = result.get("final_plan")
-        return final if isinstance(final, FinalPlanPayload) else None
 
     def pending_state(self, thread_id: str) -> PlannerState | None:
         """State of a paused preview, or ``None`` when the thread is finished.
@@ -405,63 +388,10 @@ class PlannerGraph:
         ctx.publish("replanning.completed", {"run_id": run_id})
         return result
 
-    # -- low level (kept for compatibility) --------------------------------
-    def invoke(
-        self,
-        request: PlannerRequest,
-        *,
-        user_features: Any = None,
-        goal_id_map: dict[int, int] | None = None,
-    ) -> PlannerState:
-        """Non-interactive run of graph A (no preview pause).
-
-        Used by tests and by callers that do not need user confirmation.
-        """
-        state = self._seed_state(
-            request,
-            graph_version=GRAPH_A_VERSION,
-            run_id=uuid.uuid4().hex,
-            goal_id_map=goal_id_map,
-        )
-        ctx = self._with_emit(None)
-        return self.initial_graph.invoke(state, self._config(uuid.uuid4().hex), context=ctx)
-
-    def run_with_events(
-        self,
-        request: PlannerRequest,
-        *,
-        user_features: Any = None,
-        goal_id_map: dict[int, int] | None = None,
-    ) -> tuple[PlannerState, list[dict]]:
-        """Non-interactive run that also returns the emitted event list."""
-        events: list[dict] = []
-
-        def sink(name: str, payload: dict) -> None:
-            events.append({"event": name, **payload})
-
-        state = self._seed_state(
-            request,
-            graph_version=GRAPH_A_VERSION,
-            run_id=uuid.uuid4().hex,
-            goal_id_map=goal_id_map,
-        )
-        ctx = self._with_emit(sink)
-        result = self.initial_graph.invoke(
-            state, self._config(uuid.uuid4().hex), context=ctx
-        )
-        return result, events
-
-
-def create_planner_graph(context: PlannerContext, **kwargs: Any) -> PlannerGraph:
-    """Convenience factory used by the Service layer."""
-    return PlannerGraph(context, **kwargs)
-
-
 __all__ = [
     "GRAPH_A_VERSION",
     "GRAPH_B_VERSION",
     "PlannerGraph",
     "build_feedback_loop_graph",
     "build_initial_plan_graph",
-    "create_planner_graph",
 ]

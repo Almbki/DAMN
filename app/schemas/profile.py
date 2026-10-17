@@ -7,7 +7,7 @@ grows - they must never be presented as a psychological diagnosis.
 
 from __future__ import annotations
 
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, Field
 
 #: The four MBTI dimension keys accepted in ``mbti_dims``.
 MBTI_DIMENSION_KEYS: frozenset[str] = frozenset({"ie", "sn", "tf", "jp"})
@@ -33,17 +33,6 @@ def validate_mbti_dims(value: dict[str, float] | None) -> dict[str, float] | Non
     if unknown:
         raise ValueError(f"unknown mbti_dims keys: {sorted(unknown)}")
     return {key: max(0.0, min(1.0, float(weight))) for key, weight in value.items()}
-
-
-class ProfileUpdate(BaseModel):
-    """Partial portrait update (fields omitted keep their stored value)."""
-
-    mbti_type: str | None = Field(default=None, max_length=4, examples=["INTP"])
-    mbti_dims: dict[str, float] | None = None
-    identity: str | None = Field(default=None, max_length=200)
-
-    _normalise_type = field_validator("mbti_type")(normalise_mbti_type)
-    _validate_dims = field_validator("mbti_dims")(validate_mbti_dims)
 
 
 class ProfileRead(BaseModel):
@@ -93,7 +82,6 @@ class ProfileRead(BaseModel):
 __all__ = [
     "MBTI_DIMENSION_KEYS",
     "ProfileRead",
-    "ProfileUpdate",
     "normalise_mbti_type",
     "validate_mbti_dims",
 ]

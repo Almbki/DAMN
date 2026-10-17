@@ -54,7 +54,9 @@ from app.domain.models import (
     TaskStandard,
 )
 from app.domain.models.enums import (
+    CognitiveLoad,
     PlanStatus,
+    Priority,
     ReplanTriggerType,
     TaskStatus,
 )
@@ -415,19 +417,23 @@ class PlanService:
     # ------------------------------------------------------------------
     # Backwards-compatible convenience: preview + auto-confirm
     # ------------------------------------------------------------------
-    def generate_plan(
-        self, user_id: int, request: PlannerRequest, user_features: Any = None
-    ) -> PlanDetail:
-        detail, _preview = self.generate_plan_with_events(user_id, request)
-        return detail
-
     def generate_plan_with_events(
-        self, user_id: int, request: PlannerRequest, user_features: Any = None
+        self, user_id: int, request: PlannerRequest, *, emit=None
     ) -> tuple[PlanDetail, RunEvents]:
-        """Generate and immediately confirm (used by the SSE endpoint)."""
+        """Generate and immediately confirm (used by the SSE endpoint).
+
+        Every event is recorded on the returned ``events`` and mirrored to
+        ``emit`` (the async job's live sink) when one is supplied.
+        """
         events = RunEvents()
-        result = self.generate_preview(user_id, request, emit=events.sink)
-        confirmed = self.confirm_plan(user_id, result.thread_id, emit=events.sink)
+
+        def sink(name: str, payload: dict) -> None:
+            events.sink(name, payload)
+            if emit is not None:
+                emit(name, payload)
+
+        result = self.generate_preview(user_id, request, emit=sink)
+        confirmed = self.confirm_plan(user_id, result.thread_id, emit=sink)
         if confirmed.pending_preview is not None:  # pragma: no cover - auto-confirm
             raise RuntimeError("auto-confirm left the graph paused")
         return confirmed.detail, events
@@ -583,6 +589,13 @@ class PlanService:
             changes.setdefault("status", TaskStatus.COMPLETED)
         if "status" in changes and isinstance(changes["status"], str):
             changes["status"] = TaskStatus(changes["status"])
+        # Explicit user override: persist as-is, only normalise enum values.
+        if "priority" in changes and not isinstance(changes["priority"], Priority):
+            changes["priority"] = Priority(int(changes["priority"]))
+        if "cognitive_load" in changes and not isinstance(
+            changes["cognitive_load"], CognitiveLoad
+        ):
+            changes["cognitive_load"] = CognitiveLoad(changes["cognitive_load"])
         if changes:
             updated = self._tasks.update_fields(task_id, **changes)
             task = updated or task

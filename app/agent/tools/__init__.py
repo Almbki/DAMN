@@ -16,7 +16,6 @@ from app.agent.tools.rule_validator import RuleValidatorTool
 from app.agent.tools.schedule_generator import ScheduleGeneratorTool
 from app.agent.tools.task_decomposer import TaskDecomposerTool
 from app.agent.tools.task_duration_predictor import TaskDurationPredictorTool
-from app.agent.tools.user_statistics import UserStatisticsTool
 from app.agent.tools.workload_estimator import WorkloadEstimatorTool
 from app.domain.rules.base import RuleEngine
 from app.domain.scheduling.scheduler import Scheduler
@@ -38,7 +37,6 @@ def default_registry(
         PlanDrafterTool(llm),
         ScheduleGeneratorTool(scheduler),
         RuleValidatorTool(rule_engine),
-        UserStatisticsTool(),
         MemoryRetrieverTool(),
         TaskDurationPredictorTool(predictors),
     ):
@@ -57,7 +55,6 @@ __all__ = [
     "TaskDurationPredictorTool",
     "ToolRegistry",
     "ToolResult",
-    "UserStatisticsTool",
     "WorkloadEstimatorTool",
     "default_registry",
 ]

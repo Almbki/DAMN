@@ -21,7 +21,6 @@ from app.ml.base import AdjustmentPrediction, AdjustmentRoute, AdjustmentSeverit
 RouteName = Literal["no_change", "micro_adjust", "full_replan"]
 RepairRoute = Literal["repair", "continue"]
 PreviewRoute = Literal["finalize", "revise"]
-IntentRoute = Literal["initial", "feedback", "replan"]
 
 
 @dataclass(slots=True)
@@ -168,20 +167,6 @@ def route_after_preview(state: PlannerState) -> PreviewRoute:
     return "finalize"
 
 
-def route_after_classify(state: PlannerState) -> IntentRoute:
-    """Edge out of ``classify_request`` (first graph)."""
-    intent = state.get("classify")
-    if intent is None:
-        return "initial"
-    if intent.intent in {RequestIntent.ADJUST_PREVIEW, RequestIntent.USER_ADJUSTMENT}:
-        return "initial"
-    if intent.intent is RequestIntent.FEEDBACK_DRIVEN:
-        return "feedback"
-    if intent.intent is RequestIntent.REPLAN_REQUEST:
-        return "replan"
-    return "initial"
-
-
 class ClassifyPolicy:
     """Deterministic request classifier (no LLM in the first version)."""
 
@@ -211,13 +196,11 @@ class ClassifyPolicy:
 __all__ = [
     "AdjustmentRouter",
     "ClassifyPolicy",
-    "IntentRoute",
     "PreviewRoute",
     "RepairRoute",
     "RouteDecision",
     "RouteName",
     "route_after_adjustment",
-    "route_after_classify",
     "route_after_preview",
     "should_repair",
 ]

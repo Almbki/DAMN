@@ -3,7 +3,6 @@ import { addDays, daysAgoISO, todayISO } from '@/domain/date';
 import type { Goal } from '@/domain/goal';
 import type { FeedbackSample } from '@/domain/insight';
 import type { PlanChange } from '@/domain/plan-change';
-import type { SchedulingPreferences } from '@/domain/preferences';
 import type { Completion } from '@/domain/stats';
 import { NO_REPEAT, type Task } from '@/domain/task';
 
@@ -78,15 +77,6 @@ export const energyLabel: Record<EnergyLevel, string> = {
   high: '精力不错',
 };
 
-export const mockPreferences: SchedulingPreferences = {
-  availableMinutesPerDay: 480,
-  dailyLimitMinutes: 300,
-  bufferMinutes: 15,
-  highCognitiveMaxPerDay: 2,
-  sleepStart: '23:30',
-  sleepEnd: '07:30',
-};
-
 const today = todayISO();
 
 export const mockGoals: Goal[] = [
@@ -132,7 +122,10 @@ export const mockGoals: Goal[] = [
   },
 ];
 
-export const mockTasks: Task[] = [
+const mockTaskSeeds: Omit<
+  Task,
+  'standards' | 'completionProbability' | 'predictedDuration' | 'isFlexible'
+>[] = [
   {
     id: 1,
     title: '慢跑 4 公里',
@@ -311,6 +304,14 @@ export const mockTasks: Task[] = [
   },
 ];
 
+export const mockTasks: Task[] = mockTaskSeeds.map((task) => ({
+  ...task,
+  standards: [],
+  completionProbability: null,
+  predictedDuration: null,
+  isFlexible: true,
+}));
+
 /** A few past days so streak / weekly report have something to show. */
 export const mockCompletions: Completion[] = [
   { id: 1, taskId: 1, date: daysAgoISO(0), minutes: 33 },
@@ -348,6 +349,7 @@ export const mockPlanChanges: PlanChange[] = [
         moved: 2,
         removed: 0,
         summary: '把两项高认知任务挪到下午，新增一项 10 分钟短任务。',
+        taskIds: [2, 4, 5],
       },
       {
         date: addDays(today, 2),
@@ -355,6 +357,7 @@ export const mockPlanChanges: PlanChange[] = [
         moved: 1,
         removed: 1,
         summary: '移除一项偏重的任务，另一项顺延到本周末。',
+        taskIds: [6, 7],
       },
     ],
   },

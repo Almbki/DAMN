@@ -322,12 +322,3 @@ class Scheduler:
             ) in pairs:
                 return True
         return False
-
-
-def schedule_tasks(
-    tasks: list[Task],
-    context: RuleContext,
-    config: SchedulerConfig | None = None,
-) -> CandidateSchedule:
-    """Convenience wrapper: ``Scheduler(config).schedule(tasks, context)``."""
-    return Scheduler(config).schedule(tasks, context)

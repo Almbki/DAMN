@@ -106,7 +106,7 @@ export function StateDashboardSection() {
   return (
     <View style={styles.section}>
       <View style={styles.head}>
-        <Text style={[styles.title, { color: colors.ink }]}>状态仪表盘</Text>
+        <Text style={[styles.title, { color: colors.ink }]}>画像估计（EWMA）</Text>
         {state && isDegraded(state) ? (
           <View style={[styles.badge, { backgroundColor: colors.surfaceContainerHigh }]}>
             <View style={[styles.badgeDot, { backgroundColor: colors.warning }]} />
@@ -115,7 +115,7 @@ export function StateDashboardSection() {
         ) : null}
       </View>
       <Text style={[styles.body, { color: colors.inkMuted }]}>
-        一组会随反馈更新的用户模型数字，用来预估用时和完成概率。不是评分，只是系统当下的判断。
+        系统按时间加权（EWMA）平滑后的用户模型数字，用来预估用时和完成概率。它会吸收每天的反馈，但不会像「近期趋势」那样跟着单日波动，所以两边可能对不上。
       </Text>
 
       {loading ? (

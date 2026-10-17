@@ -117,10 +117,6 @@ class PreviewResponse(BaseModel):
     warnings: list[str] = Field(default_factory=list)
 
 
-class ConfirmRequest(BaseModel):
-    thread_id: str = Field(min_length=1)
-
-
 class ConfirmResponse(BaseModel):
     plan: PlanRead
     adjustment_count: int = 0
@@ -264,6 +260,7 @@ class PlanGenerateResponse(BaseModel):
     status: str
     plan_id: int | None = None
     events_url: str
+    status_url: str | None = None
     plan: PlanRead | None = None
 
 
@@ -309,7 +306,6 @@ class ReplanEligibilityRead(BaseModel):
 class ReplanRequest(BaseModel):
     trigger_type: ReplanTriggerType = ReplanTriggerType.MANUAL
     reason: str | None = Field(default=None, max_length=1000)
-    from_date: date | None = None
 
 
 class ReplanResponse(BaseModel):

@@ -54,10 +54,12 @@ const initialStore: ops.StoreState = {
 
 function MockPlanProvider({ children }: { children: React.ReactNode }) {
   const [state, setState] = useState<ops.StoreState>(initialStore);
-  const [assessment, setAssessment] = useState<Assessment>({ energy: 1, mood: 2, stress: 1 });
+  const [assessment, setAssessment] = useState<Assessment>({ energy: 5, mood: 3, stress: 4 });
   const [goals, setGoals] = useState<Goal[]>(mockGoals);
   const [pendingTasks, setPendingTasks] = useState<PendingTask[]>([]);
   const [preferences, setPreferences] = useState<SchedulingPreferences>(() => loadPreferences());
+  const [actionError, setActionError] = useState<string | null>(null);
+  const [lastConfirmedPlanId, setLastConfirmedPlanId] = useState<number | null>(null);
 
   const ordered = useMemo(() => {
     const seen = new Set<number>();
@@ -78,11 +80,18 @@ function MockPlanProvider({ children }: { children: React.ReactNode }) {
 
   const stats = useMemo(() => {
     const weekStart = addDays(today, -6);
+    const todayTasks = state.tasks.filter((task) => task.dueDate === today);
+    const todayDone = todayTasks.filter((task) => task.done).length;
+    const todayOpen = todayTasks.filter((task) => !isClosed(task)).length;
+    const todayTotal = todayDone + todayOpen;
     return {
       completedToday: completedToday(state.tasks),
       openCount: state.tasks.filter((task) => !isClosed(task)).length,
       doneCount: state.tasks.filter((task) => task.done).length,
       rate: completionRate(state.tasks),
+      todayDone,
+      todayTotal,
+      todayRate: todayTotal === 0 ? 0 : todayDone / todayTotal,
       streak: currentStreak(state.completions, today),
       longest: longestStreak(state.completions),
       weekly: dailyBuckets(state.completions, 7),
@@ -115,6 +124,18 @@ function MockPlanProvider({ children }: { children: React.ReactNode }) {
   const updateTask = useCallback((id: number, patch: Partial<Task>) => {
     setState((prev) => ops.updateTask(prev, id, patch));
   }, []);
+  const updateStandard = useCallback(
+    async (taskId: number, standardId: number, completed: boolean) => {
+      setState((prev) =>
+        ops.updateTask(prev, taskId, {
+          standards: (prev.tasks.find((task) => task.id === taskId)?.standards ?? []).map(
+            (standard) => (standard.id === standardId ? { ...standard, completed } : standard),
+          ),
+        }),
+      );
+    },
+    [],
+  );
   const deleteTask = useCallback((id: number) => {
     setState((prev) => ops.deleteTask(prev, id));
   }, []);
@@ -173,8 +194,20 @@ function MockPlanProvider({ children }: { children: React.ReactNode }) {
   const [mockPreview, setMockPreview] = useState<DraftTask[] | null>(null);
 
   const previewMeta = useMemo(
-    () => ({ canAdjust: true, adjustmentCount: 0, maxAdjustments: 99, warnings: [] as string[] }),
-    [],
+    () => ({
+      canAdjust: true,
+      adjustmentCount: 0,
+      maxAdjustments: 99,
+      warnings: [] as string[],
+      violations: [] as string[],
+      threadId: 'mock',
+      estimatedTotalMinutes: (mockPreview ?? []).reduce(
+        (sum, task) => sum + task.estimatedMinutes,
+        0,
+      ),
+      dailyLimitMinutes: preferences.dailyLimitMinutes,
+    }),
+    [mockPreview, preferences.dailyLimitMinutes],
   );
 
   const decomposePreview = useCallback(async () => {
@@ -236,10 +269,12 @@ function MockPlanProvider({ children }: { children: React.ReactNode }) {
     });
     setPendingTasks([]);
     setMockPreview(null);
+    setLastConfirmedPlanId(mockPlanId);
   }, [goals, pendingTasks, mockPreview]);
 
   const updatePreferences = useCallback(
     async (patch: Partial<SchedulingPreferences>) => {
+      setActionError(null);
       setPreferences((prev) => {
         const next = { ...prev, ...patch };
         savePreferences(next);
@@ -262,9 +297,13 @@ function MockPlanProvider({ children }: { children: React.ReactNode }) {
     () => ({
       mode: 'mock',
       canEditTasks: true,
+      canCreateTasks: true,
       loading: false,
       error: null,
+      actionError,
+      clearActionError: () => setActionError(null),
       refresh: () => undefined,
+      retryConnection: () => undefined,
       user: mockUser as UserRead,
       tasks: ordered,
       energy: 'medium',
@@ -280,6 +319,8 @@ function MockPlanProvider({ children }: { children: React.ReactNode }) {
       preferences,
       updatePreferences,
       planChanges: mockPlanChanges,
+      lastConfirmedPlanId,
+      clearLastConfirmed: () => setLastConfirmedPlanId(null),
       replanNow: async () => '演示模式：重排需要连接后端。',
       feedbackHistory: [],
       refreshFeedbackHistory: async () => undefined,
@@ -295,11 +336,11 @@ function MockPlanProvider({ children }: { children: React.ReactNode }) {
       assessment,
       setAssessment,
       submitFeedback,
-      submitGoal: (title: string) => addTask(title, { dueDate: todayISO() }),
       updateWeight: async () => undefined,
       addTask,
       createTask,
       updateTask,
+      updateStandard,
       deleteTask,
       setDone,
       toggleDone,
@@ -323,6 +364,8 @@ function MockPlanProvider({ children }: { children: React.ReactNode }) {
       situation,
       preferences,
       updatePreferences,
+      actionError,
+      lastConfirmedPlanId,
       goals,
       pendingTasks,
       addPendingTask,
@@ -337,6 +380,7 @@ function MockPlanProvider({ children }: { children: React.ReactNode }) {
       addTask,
       createTask,
       updateTask,
+      updateStandard,
       deleteTask,
       setDone,
       toggleDone,

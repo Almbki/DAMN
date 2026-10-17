@@ -1,7 +1,7 @@
 ---
 purpose: Explain the user's current execution situation in words, on top of the numeric ML predictions.
 input_variables: user_context, ml_prediction, progress
-expected_output: UserSituationResult (narrative fields only)
+expected_output: UserSituationNarrative (narrative + confidence only)
 constraints: Never contradict the numeric predictions. Never invent history the context does not contain.
 when_used: initial plan graph and full replan, node user_situation_analysis
 version: v1
@@ -16,9 +16,9 @@ Given:
 - the ML prediction,
 - the execution progress of the current plan,
 
-fill in `narrative` (2-4 sentences) and the qualitative flags. **Copy every
-numeric field you received verbatim** - the predictors are authoritative, you
-are not allowed to re-estimate them.
+fill in `narrative` (2-4 sentences) and an optional `confidence` (0-1). Do NOT
+echo the numeric prediction fields; they are already authoritative and are not
+part of the required output.
 
 Rules:
 - Treat every number you receive as authoritative. Do not re-estimate or change it.
@@ -35,4 +35,4 @@ ML PREDICTION (authoritative numbers):
 PROGRESS:
 {{progress}}
 
-Return only the structured UserSituationResult object.
+Return only a JSON object like {"narrative": "...", "confidence": 0.6}.

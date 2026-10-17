@@ -4,7 +4,9 @@ import { IBMPlexMono_600SemiBold } from '@expo-google-fonts/ibm-plex-mono/600Sem
 import { useFonts } from 'expo-font';
 import { Slot } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
+import { useEffect, useState } from 'react';
 import { StyleSheet, View } from 'react-native';
+import { SafeAreaProvider, useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { AppShell } from '@/components/shell/app-shell';
 import { ErrorState, LoadingState } from '@/components/ui/states';
@@ -23,37 +25,55 @@ export default function RootLayout() {
   });
 
   return (
-    <ThemeProvider>
-      <PlanProvider>
-        <ProfileProvider>
-          <RootShell />
-        </ProfileProvider>
-      </PlanProvider>
-    </ThemeProvider>
+    <SafeAreaProvider>
+      <ThemeProvider>
+        <PlanProvider>
+          <ProfileProvider>
+            <RootShell />
+          </ProfileProvider>
+        </PlanProvider>
+      </ThemeProvider>
+    </SafeAreaProvider>
   );
 }
 
 function RootShell() {
   const { colors, resolved } = useTheme();
-  const { mode, loading, error, refresh } = usePlan();
+  const { mode, loading, error, retryConnection } = usePlan();
+  const insets = useSafeAreaInsets();
+  // The first connect owns the full screen. Later refreshes keep the current
+  // page mounted and update it in place.
+  const [booted, setBooted] = useState(false);
+
+  useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- flip once, after the first load settles
+    if (mode === 'api' && !loading) setBooted(true);
+  }, [mode, loading]);
+
+  const safePadding = {
+    paddingTop: insets.top + Space.xl,
+    paddingBottom: insets.bottom + Space.xl,
+    paddingLeft: insets.left + Space.xl,
+    paddingRight: insets.right + Space.xl,
+  };
 
   if (mode === 'api' && error) {
     return (
-      <View style={[styles.center, { backgroundColor: colors.paper }]}>
+      <View style={[styles.center, safePadding, { backgroundColor: colors.paper }]}>
         <View style={styles.panel}>
           <ErrorState
             title="连不上后端"
             body={`${error} 检查那台电脑是否在跑后端，以及是否同一局域网。`}
-            onRetry={refresh}
+            onRetry={retryConnection}
           />
         </View>
       </View>
     );
   }
 
-  if (mode === 'api' && loading) {
+  if (mode === 'api' && loading && !booted) {
     return (
-      <View style={[styles.center, { backgroundColor: colors.paper }]}>
+      <View style={[styles.center, safePadding, { backgroundColor: colors.paper }]}>
         <LoadingState label="正在连接后端…" />
       </View>
     );
@@ -74,7 +94,6 @@ const styles = StyleSheet.create({
     flex: 1,
     alignItems: 'center',
     justifyContent: 'center',
-    padding: Space.xl,
   },
   panel: {
     width: '100%',

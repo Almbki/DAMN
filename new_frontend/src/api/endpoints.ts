@@ -1,4 +1,5 @@
 import { apiPollJob, apiRequest, apiStream, isApiError } from '@/api/client';
+import { apiPrefix } from '@/api/config';
 import type {
   ConfirmPlanResponse,
   FeedbackCreate,
@@ -12,7 +13,6 @@ import type {
   JobStatus,
   PlanChangeRead,
   PlanGenerateRequest,
-  PlanGenerateResponse,
   PlanListItem,
   PlanRead,
   ProfileRead,
@@ -20,7 +20,6 @@ import type {
   RegisterRequest,
   ReplanEligibilityRead,
   ReplanRequest,
-  ReplanResponse,
   SchedulingPreferences,
   SituationTrendRead,
   TaskRead,
@@ -29,6 +28,13 @@ import type {
   UpdateGoalRequest,
   UserRead,
 } from '@/api/types';
+
+/** Minimal handle needed to stream/poll an async generation job. */
+export type JobHandle = {
+  job_id: string;
+  events_url: string;
+  status_url: string;
+};
 
 export function register(body: RegisterRequest) {
   return apiRequest<UserRead>('/auth/register', { method: 'POST', body, auth: false });
@@ -116,10 +122,6 @@ export function getPlanChanges(planId: number) {
   return apiRequest<PlanChangeRead[]>(`/plans/${planId}/changes`);
 }
 
-export function generatePlan(body: PlanGenerateRequest) {
-  return apiRequest<PlanGenerateResponse>('/plans/generate', { method: 'POST', body });
-}
-
 /** 落库：草稿 → 正式计划（`POST /plans/preview/{thread_id}/confirm`）。 */
 export function confirmPreview(threadId: string) {
   return apiRequest<ConfirmPlanResponse>(`/plans/preview/${threadId}/confirm`, { method: 'POST' });
@@ -133,8 +135,17 @@ export function patchTask(planId: number, taskId: number, body: TaskUpdateReques
   return apiRequest<TaskRead>(`/plans/${planId}/tasks/${taskId}`, { method: 'PATCH', body });
 }
 
-export function submitFeedback(planId: number, body: FeedbackCreate) {
-  return apiRequest<FeedbackSubmitResponse>(`/plans/${planId}/feedback`, {
+/**
+ * `opts.streamReplan` defers the replan graph to an async job; the response then
+ * carries `replan_job_id` and the caller drives it with `runJob`.
+ */
+export function submitFeedback(
+  planId: number,
+  body: FeedbackCreate,
+  opts: { streamReplan?: boolean } = {},
+) {
+  const query = opts.streamReplan ? '?stream_replan=true' : '';
+  return apiRequest<FeedbackSubmitResponse>(`/plans/${planId}/feedback${query}`, {
     method: 'POST',
     body,
   });
@@ -149,7 +160,8 @@ export function replanEligibility(planId: number) {
 }
 
 export function replan(planId: number, body: ReplanRequest) {
-  return apiRequest<ReplanResponse>(`/plans/${planId}/replan`, { method: 'POST', body });
+  // 202 + job handle; the `ReplanResponse` lives in the job result.
+  return apiRequest<JobAccepted>(`/plans/${planId}/replan`, { method: 'POST', body });
 }
 
 // --- async generation jobs (stream first, poll as fallback) ----------------
@@ -168,7 +180,32 @@ export function submitAdjustPreview(threadId: string, feedback: string) {
 }
 
 /** Errors that mean "the stream cannot carry this", so polling is safe. */
-const FALLBACK_CODES = new Set(['no_stream', 'network_error', 'stream_error']);
+const FALLBACK_CODES = new Set([
+  'no_stream',
+  'network_error',
+  'stream_error',
+  'stream_timeout',
+]);
+
+/**
+ * Backend URLs are rooted at `/api/v1` while `apiRequest`/`apiStream` add the
+ * prefix themselves. Normalise an absolute or prefixed URL back to a path.
+ */
+function toApiPath(url: string | null | undefined): string {
+  if (!url) return '';
+  const withoutOrigin = url.replace(/^[a-z]+:\/\/[^/]+/i, '');
+  const path = withoutOrigin.startsWith(apiPrefix)
+    ? withoutOrigin.slice(apiPrefix.length)
+    : withoutOrigin;
+  if (!path) return '/';
+  return path.startsWith('/') ? path : `/${path}`;
+}
+
+/** Build a job handle when only the feedback response's `replan_job_id` is known. */
+export function jobHandleFromId(jobId: string): JobHandle {
+  const base = `/plans/generation/${jobId}`;
+  return { job_id: jobId, events_url: `${base}/events`, status_url: base };
+}
 
 /**
  * Drive a job to completion: stream its SSE stages, then read the final status.
@@ -176,17 +213,15 @@ const FALLBACK_CODES = new Set(['no_stream', 'network_error', 'stream_error']);
  * Returns the finished `JobStatus` (its `result` holds the payload).
  */
 export async function runJob(
-  job: JobAccepted,
+  job: JobHandle,
   onStage?: (stage: string, data: any) => void,
   signal?: AbortSignal,
 ): Promise<JobStatus> {
-  const statusPath = `/plans/generation/${job.job_id}`;
+  const fallbackBase = `/plans/generation/${job.job_id}`;
+  const eventsPath = toApiPath(job.events_url) || `${fallbackBase}/events`;
+  const statusPath = toApiPath(job.status_url) || fallbackBase;
   try {
-    await apiStream(
-      `/plans/generation/${job.job_id}/events`,
-      { onStage: onStage ?? (() => undefined) },
-      signal,
-    );
+    await apiStream(eventsPath, { onStage: onStage ?? (() => undefined) }, signal);
   } catch (error) {
     // Re-throw real failures (401/404/aborted); only recover from stream gaps.
     if (!(isApiError(error) && FALLBACK_CODES.has(error.code))) throw error;
