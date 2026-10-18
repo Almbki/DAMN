@@ -2,12 +2,13 @@
 
 from __future__ import annotations
 
-from datetime import date, time
+from datetime import date, datetime, time
 from typing import TYPE_CHECKING
 
 from sqlalchemy import (
     Boolean,
     Date,
+    DateTime,
     Enum,
     Float,
     ForeignKey,
@@ -18,7 +19,7 @@ from sqlalchemy import (
 )
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
-from app.domain.models.enums import CognitiveLoad, Priority, TaskStatus
+from app.domain.models.enums import CognitiveLoad, Priority, TaskKind, TaskStatus
 from app.infrastructure.database.base import Base, enum_values
 
 if TYPE_CHECKING:
@@ -65,7 +66,23 @@ class Task(Base):
     )
     completion_probability: Mapped[float | None] = mapped_column(Float, nullable=True)
     is_flexible: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
+    task_kind: Mapped[TaskKind] = mapped_column(
+        Enum(TaskKind, values_callable=enum_values, native_enum=False, length=32),
+        nullable=False,
+        default=TaskKind.ONE_OFF,
+        server_default=TaskKind.ONE_OFF.value,
+    )
+    series_id: Mapped[str | None] = mapped_column(String(64), nullable=True, index=True)
+    series_index: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    occurrence_date: Mapped[date | None] = mapped_column(Date, nullable=True)
+    target_amount: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    target_unit: Mapped[str | None] = mapped_column(String(64), nullable=True)
     order_index: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    # Soft delete: rows stay so TaskExecution / TaskStandard (ML data) survive.
+    deleted_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True, index=True
+    )
+    deleted_reason: Mapped[str | None] = mapped_column(String(255), nullable=True)
 
     plan: Mapped[Plan] = relationship("Plan", back_populates="tasks")
     goal: Mapped[Goal | None] = relationship("Goal", back_populates="tasks")

@@ -21,6 +21,7 @@ class FeedbackRepository(RepositoryBase):
             stress_level=feedback.stress_level,
             energy_level=feedback.energy_level,
             delay_reason=feedback.delay_reason,
+            task_reasons=feedback.task_reasons,
             free_text=feedback.free_text,
             sleep_hours=feedback.sleep_hours,
             dominant_time_of_day=feedback.dominant_time_of_day,

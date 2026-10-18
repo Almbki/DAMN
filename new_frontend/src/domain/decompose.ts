@@ -1,4 +1,5 @@
 import { addDays, parseISO, todayISO } from '@/domain/date';
+import type { TaskKind } from '@/domain/task';
 
 /**
  * Local stand-in for the backend decomposition agent. The real 拆解 (multiple
@@ -15,6 +16,13 @@ export interface PendingTask {
   /** Deadline hint; the agent decides actual daily placement. */
   dueDate: string | null;
   notes: string;
+  taskKind: TaskKind;
+  startDate: string | null;
+  dailyTargetMinutes: number | null;
+  /** 0 = Monday … 6 = Sunday. */
+  recurrenceWeekdays: number[] | null;
+  targetAmount: number | null;
+  targetUnit: string | null;
 }
 
 export interface DraftTask {
@@ -27,6 +35,12 @@ export interface DraftTask {
   endTime: string;
   estimatedMinutes: number;
   priority: number;
+  taskKind: TaskKind;
+  seriesId: string | null;
+  seriesIndex: number | null;
+  occurrenceDate: string | null;
+  targetAmount: number | null;
+  targetUnit: string | null;
 }
 
 const MORNING_SLOTS = ['09:00', '10:30', '14:00', '15:30', '16:30'];
@@ -97,6 +111,12 @@ export function decomposePending(pending: PendingTask[], feedback = ''): DraftTa
         endTime: addMinutes(slot, minutes),
         estimatedMinutes: minutes,
         priority: item.priority,
+        taskKind: item.taskKind,
+        seriesId: null,
+        seriesIndex: null,
+        occurrenceDate: item.taskKind === 'one_off' ? null : date,
+        targetAmount: item.targetAmount,
+        targetUnit: item.targetUnit,
       });
       counter += 1;
     });

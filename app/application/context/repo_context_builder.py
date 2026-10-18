@@ -9,7 +9,7 @@ context.
 
 from __future__ import annotations
 
-from datetime import date, time
+from datetime import date, time, timedelta
 
 from sqlalchemy.orm import Session
 
@@ -29,11 +29,13 @@ from app.agent.memory import (
 from app.application.preferences import effective_scheduling_preferences
 from app.domain.models import AgentMemory, Goal, Task
 from app.domain.models.enums import TaskStatus
+from app.domain.scheduling.fixed_events import expand_fixed_events
 from app.infrastructure.database.repositories import (
     AgentMemoryRepository,
     FeedbackRepository,
     GoalRepository,
     PlanRepository,
+    ScheduleEventRepository,
     TaskExecutionRepository,
     TaskRepository,
     UserRepository,
@@ -44,6 +46,8 @@ DEFAULT_DAY_START = time(8, 0)
 DEFAULT_DAY_END = time(22, 0)
 #: How many recent check-ins the planner sees.
 FEEDBACK_WINDOW = 14
+#: Fixed calendar events are expanded over today .. today + this many days.
+FIXED_EVENT_WINDOW_DAYS = 90
 
 
 def merge_memory(derived: list[MemoryItem], stored: list[AgentMemory]) -> list[MemoryItem]:
@@ -96,6 +100,7 @@ class RepoContextBuilder:
         self._tasks = TaskRepository(session)
         self._goals = GoalRepository(session)
         self._memories = AgentMemoryRepository(session)
+        self._schedule_events = ScheduleEventRepository(session)
         # Imported lazily to keep this module free of a service-level cycle.
         from app.application.services.profile_service import ProfileService
 
@@ -148,6 +153,14 @@ class RepoContextBuilder:
         # back to the legacy free-form profile key.
         mbti = (user.mbti_type if user else None) or profile.get("mbti")
 
+        today = date.today()
+        window_end = today + timedelta(days=FIXED_EVENT_WINDOW_DAYS)
+        fixed_events = expand_fixed_events(
+            self._schedule_events.list_range(user_id, today, window_end),
+            today,
+            window_end,
+        )
+
         return PlanningContext(
             user_id=user_id,
             mbti=mbti,
@@ -174,6 +187,7 @@ class RepoContextBuilder:
                 self._snapshot(plan, tasks, goal_by_id) if plan is not None else None
             ),
             recent_feedback=self._recent_feedback(feedbacks),
+            fixed_events=fixed_events,
             user_note=user_note,
             profile_prompt=profile_snapshot,
             profile_replan=profile_decision.decision,
@@ -230,6 +244,13 @@ class RepoContextBuilder:
                     predicted_duration=task.predicted_duration,
                     scheduled_date=task.scheduled_date,
                     subject=subject,
+                    is_flexible=task.is_flexible,
+                    task_kind=task.task_kind,
+                    series_id=task.series_id,
+                    series_index=task.series_index,
+                    occurrence_date=task.occurrence_date,
+                    target_amount=task.target_amount,
+                    target_unit=task.target_unit,
                 )
             )
         return CurrentPlanSnapshot(
@@ -263,4 +284,9 @@ class RepoContextBuilder:
         )
 
 
-__all__ = ["FEEDBACK_WINDOW", "RepoContextBuilder", "merge_memory"]
+__all__ = [
+    "FEEDBACK_WINDOW",
+    "FIXED_EVENT_WINDOW_DAYS",
+    "RepoContextBuilder",
+    "merge_memory",
+]

@@ -2,7 +2,11 @@ import { Platform } from 'react-native';
 
 import { dataSource } from '@/api/config';
 import { getPreferences, putPreferences } from '@/api/endpoints';
-import { DEFAULT_PREFERENCES, type SchedulingPreferences } from '@/domain/preferences';
+import {
+  DEFAULT_PREFERENCES,
+  normalizePreferences,
+  type SchedulingPreferences,
+} from '@/domain/preferences';
 
 /**
  * Persistence for scheduling preferences. In api mode the backend is the source
@@ -21,17 +25,21 @@ type ApiPreferences = {
   high_cognitive_max_per_day: number;
   sleep_start?: string | null;
   sleep_end?: string | null;
+  feedback_time?: string | null;
+  feedback_enabled?: boolean;
 };
 
 function fromApi(raw: ApiPreferences): SchedulingPreferences {
-  return {
+  return normalizePreferences({
     availableMinutesPerDay: raw.available_minutes_per_day,
     dailyLimitMinutes: raw.daily_limit_minutes,
     bufferMinutes: raw.buffer_minutes,
     highCognitiveMaxPerDay: raw.high_cognitive_max_per_day,
     sleepStart: raw.sleep_start ?? DEFAULT_PREFERENCES.sleepStart,
     sleepEnd: raw.sleep_end ?? DEFAULT_PREFERENCES.sleepEnd,
-  };
+    feedbackTime: raw.feedback_time ?? null,
+    feedbackEnabled: raw.feedback_enabled ?? DEFAULT_PREFERENCES.feedbackEnabled,
+  });
 }
 
 function toApi(preferences: SchedulingPreferences): ApiPreferences {
@@ -42,6 +50,8 @@ function toApi(preferences: SchedulingPreferences): ApiPreferences {
     high_cognitive_max_per_day: preferences.highCognitiveMaxPerDay,
     sleep_start: preferences.sleepStart,
     sleep_end: preferences.sleepEnd,
+    feedback_time: preferences.feedbackTime,
+    feedback_enabled: preferences.feedbackEnabled,
   };
 }
 
@@ -50,7 +60,10 @@ export function loadPreferences(): SchedulingPreferences {
   try {
     const raw = window.localStorage.getItem(KEY);
     if (!raw) return DEFAULT_PREFERENCES;
-    return { ...DEFAULT_PREFERENCES, ...(JSON.parse(raw) as Partial<SchedulingPreferences>) };
+    return normalizePreferences({
+      ...DEFAULT_PREFERENCES,
+      ...(JSON.parse(raw) as Partial<SchedulingPreferences>),
+    });
   } catch {
     return DEFAULT_PREFERENCES;
   }

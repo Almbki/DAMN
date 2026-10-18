@@ -1,8 +1,8 @@
-"""Task endpoints (patch a single task)."""
+"""Task endpoints (patch / delete a single task)."""
 
 from __future__ import annotations
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, Query
 from fastapi import status as http_status
 
 from app.api.deps import get_current_user, get_plan_service
@@ -58,3 +58,27 @@ def update_task(
         if item.task.id == task.id:
             return task_read(item)
     return TaskRead.model_validate(task)
+
+
+@router.delete(
+    "/{plan_id}/tasks/{task_id}",
+    status_code=http_status.HTTP_204_NO_CONTENT,
+    summary="Soft-delete a task",
+    description=(
+        "Marks the task as deleted without removing the row, so its "
+        "TaskExecution history (ML training data) and TaskStandard rows are "
+        "preserved. Deleted tasks disappear from plan reads, insights and plan "
+        "change diffs. Idempotent: deleting it again still returns 204."
+    ),
+    responses={**_AUTH, **_NOT_FOUND, 403: {"model": ErrorResponse}},
+)
+def delete_task(
+    plan_id: int,
+    task_id: int,
+    reason: str | None = Query(default=None, max_length=255),
+    current_user: User = Depends(get_current_user),
+    plan_service: PlanService = Depends(get_plan_service),
+) -> None:
+    plan_service.delete_task(
+        current_user.id or 0, plan_id, task_id, reason=reason
+    )

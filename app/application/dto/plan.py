@@ -46,16 +46,25 @@ class PlanChange(BaseModel):
     days: list[PlanChangeDay] = Field(default_factory=list)
 
 
+def _task_key(task: Task) -> tuple:
+    """Cross-version identity: series occurrence, else normalised title."""
+    if task.series_id is not None and task.occurrence_date is not None:
+        return ("series", task.series_id, task.occurrence_date)
+    return ("title", task.title.strip().lower())
+
+
 def diff_days(old_tasks: list[Task], new_tasks: list[Task]) -> list[PlanChangeDay]:
     """Compare two plan versions and report the change per calendar day.
 
-    Tasks are matched across versions by normalised title - plan versions store
-    independent task rows with no cross-version id link, so the title is the only
-    stable key. A task counted as `moved` is attributed to its **new** date; a
-    `removed` task to its old date. Days with no change are omitted.
+    Tasks are matched across versions by ``(series_id, occurrence_date)`` when
+    they belong to a split goal, else by normalised title. Plan versions store
+    independent task rows with no cross-version id link, so titles alone would
+    collide for repeated occurrences of the same series. A task counted as
+    `moved` is attributed to its **new** date; a `removed` task to its old date.
+    Days with no change are omitted.
     """
-    old_by_title = {task.title.strip().lower(): task for task in old_tasks}
-    new_by_title = {task.title.strip().lower(): task for task in new_tasks}
+    old_by_title = {_task_key(task): task for task in old_tasks}
+    new_by_title = {_task_key(task): task for task in new_tasks}
     days: dict[date, PlanChangeDay] = {}
 
     def bucket(day: date) -> PlanChangeDay:

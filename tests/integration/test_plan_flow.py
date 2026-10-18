@@ -62,6 +62,7 @@ def test_full_adaptive_loop(client: TestClient, auth_headers: dict) -> None:
     )
     assert feedback.status_code == 201, feedback.text
     body = feedback.json()
+    assert body["replan_decision"] == "full_replan"
     assert body["replan_triggered"] is True
     assert body["replan_plan_id"] is not None
     new_plan_id = body["replan_plan_id"]

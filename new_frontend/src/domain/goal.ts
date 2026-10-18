@@ -1,4 +1,4 @@
-import type { Task } from '@/domain/task';
+import type { Task, TaskKind } from '@/domain/task';
 
 export type GoalStatus = 'active' | 'draft' | 'completed' | 'archived' | 'cancelled';
 
@@ -11,6 +11,14 @@ export interface Goal {
   estimatedMinutes: number | null;
   priority: number;
   createdAt: string;
+  /** Repetition contract carried through to plan generation. */
+  taskKind: TaskKind;
+  startDate: string | null;
+  dailyTargetMinutes: number | null;
+  /** 0 = Monday … 6 = Sunday. */
+  recurrenceWeekdays: number[] | null;
+  targetAmount: number | null;
+  targetUnit: string | null;
 }
 
 export interface GoalProgress {

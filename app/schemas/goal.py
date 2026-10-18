@@ -6,7 +6,7 @@ from datetime import date, datetime
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
-from app.domain.models.enums import GoalStatus, GoalType
+from app.domain.models.enums import GoalStatus, GoalType, TaskKind
 
 
 class GoalDetailRead(BaseModel):
@@ -23,6 +23,12 @@ class GoalDetailRead(BaseModel):
     deadline: date | None = None
     priority: int = 2
     estimated_minutes: int | None = None
+    start_date: date | None = None
+    task_kind: TaskKind | None = None
+    daily_target_minutes: int | None = None
+    recurrence_weekdays: list[int] | None = None
+    target_amount: int | None = None
+    target_unit: str | None = None
     created_at: datetime
 
     @field_validator("deadline", mode="before")
@@ -45,6 +51,12 @@ class GoalCreate(BaseModel):
     task_type: str | None = None
     #: `draft` creates a "待拆解" item; `active` a real goal.
     status: GoalStatus = GoalStatus.ACTIVE
+    start_date: date | None = None
+    task_kind: TaskKind | None = None
+    daily_target_minutes: int | None = Field(default=None, ge=1)
+    recurrence_weekdays: list[int] | None = None
+    target_amount: int | None = Field(default=None, ge=0)
+    target_unit: str | None = Field(default=None, max_length=64)
 
 
 class GoalUpdate(BaseModel):
@@ -58,6 +70,12 @@ class GoalUpdate(BaseModel):
     estimated_minutes: int | None = Field(default=None, ge=1)
     subject: str | None = None
     task_type: str | None = None
+    start_date: date | None = None
+    task_kind: TaskKind | None = None
+    daily_target_minutes: int | None = Field(default=None, ge=1)
+    recurrence_weekdays: list[int] | None = None
+    target_amount: int | None = Field(default=None, ge=0)
+    target_unit: str | None = Field(default=None, max_length=64)
 
 
 __all__ = ["GoalCreate", "GoalDetailRead", "GoalUpdate"]

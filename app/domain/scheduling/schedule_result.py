@@ -6,6 +6,7 @@ schedule), the Rule Engine (validates it) and the Plan service (persists it).
 
 from __future__ import annotations
 
+from dataclasses import dataclass
 from datetime import date, time, timedelta
 
 from pydantic import BaseModel, Field
@@ -13,6 +14,16 @@ from pydantic import BaseModel, Field
 from app.domain.models.enums import CognitiveLoad, Priority
 
 SCHEMA_VERSION = "1.0"
+
+
+@dataclass(frozen=True)
+class FixedEvent:
+    """A concrete immutable calendar interval (course, exam, busy block)."""
+
+    date: date
+    start_time: time
+    end_time: time
+    title: str = ""
 
 
 class ScheduledTask(BaseModel):
@@ -53,3 +64,6 @@ class CandidateSchedule(BaseModel):
     def days(self) -> list[date]:
         span = (self.end_date - self.start_date).days
         return [self.start_date + timedelta(days=i) for i in range(max(span + 1, 1))]
+
+
+__all__ = ["CandidateSchedule", "FixedEvent", "SCHEMA_VERSION", "ScheduledTask"]

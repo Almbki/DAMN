@@ -2,8 +2,8 @@ import { useRouter } from 'expo-router';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { StyleSheet, Text, View, useWindowDimensions } from 'react-native';
 
-import { DailyFeedbackSheet } from '@/components/daily-feedback-sheet';
 import { PlanChangeSheet } from '@/components/plan-change-sheet';
+import { ScheduleSection } from '@/components/schedule/schedule-section';
 import { TaskRow } from '@/components/task-row';
 import { Banner } from '@/components/task/banner';
 import { QuickTaskDialog } from '@/components/task/quick-task-dialog';
@@ -14,7 +14,7 @@ import { Button } from '@/components/ui/button';
 import { Dialog } from '@/components/ui/dialog';
 import { Segmented } from '@/components/ui/segmented';
 import { EmptyState } from '@/components/ui/states';
-import { Fonts, Layout, Line, Space, Type } from '@/constants/tokens';
+import { Fonts, Layout, Line, Radius, Space, Type } from '@/constants/tokens';
 import { formatShort, parseISO, todayISO } from '@/domain/date';
 import { groupByGoal, weekDates } from '@/domain/selectors';
 import { isClosed, type Task } from '@/domain/task';
@@ -42,6 +42,9 @@ function toItem(task: Task): TimelineItem {
     endTime: task.endTime,
     estimatedMinutes: task.estimatedMinutes,
     priority: task.priority,
+    taskKind: task.taskKind,
+    seriesIndex: task.seriesIndex,
+    occurrenceDate: task.occurrenceDate,
   };
 }
 
@@ -77,6 +80,7 @@ export default function TodoScreen() {
     moveBy,
     replanNow,
     createTask,
+    deleteTask,
   } = usePlan();
   const isApi = mode === 'api';
 
@@ -84,16 +88,18 @@ export default function TodoScreen() {
   const [filter, setFilter] = useState<FilterKey>('open');
   const [grouped, setGrouped] = useState(false);
   const [changeOpen, setChangeOpen] = useState(false);
-  const [feedbackOpen, setFeedbackOpen] = useState(false);
   const [replanBusy, setReplanBusy] = useState(false);
   const [replanMessage, setReplanMessage] = useState<string | null>(null);
   const [replanConfirmOpen, setReplanConfirmOpen] = useState(false);
   const [activeId, setActiveId] = useState<number | null>(null);
   const [detailId, setDetailId] = useState<number | null>(null);
+  const [deleteTargetId, setDeleteTargetId] = useState<number | null>(null);
+  const [deleteNotice, setDeleteNotice] = useState<{ id: number; title: string } | null>(null);
   const [undo, setUndo] = useState<{ id: number; title: string } | null>(null);
   const undoTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [addHintOpen, setAddHintOpen] = useState(false);
   const [quickAddOpen, setQuickAddOpen] = useState(false);
+  const [scheduleOverlayOpen, setScheduleOverlayOpen] = useState(false);
 
   const dismissUndo = useCallback(() => {
     if (undoTimer.current) {
@@ -142,6 +148,28 @@ export default function TodoScreen() {
   const handleOpen = useCallback((id: number) => {
     setDetailId(id);
   }, []);
+
+  // The confirmation lives on this screen: the sheet asks, we close it, and the
+  // dialog is the only modal in the tree while the user decides.
+  const requestDelete = useCallback((id: number) => {
+    setDeleteTargetId(id);
+    setDetailId(null);
+  }, []);
+
+  const confirmDelete = useCallback(() => {
+    if (deleteTargetId == null) return;
+    const task = tasks.find((item) => item.id === deleteTargetId) ?? null;
+    if (!task) {
+      setDeleteTargetId(null);
+      return;
+    }
+    clearActionError();
+    deleteTask(task.id);
+    setDetailId(null);
+    setActiveId(null);
+    setDeleteTargetId(null);
+    setDeleteNotice({ id: task.id, title: task.title });
+  }, [deleteTargetId, tasks, deleteTask, clearActionError]);
 
   const goGoal = useCallback(() => {
     setAddHintOpen(false);
@@ -218,6 +246,8 @@ export default function TodoScreen() {
   );
 
   const detailTask = detailId == null ? null : (tasks.find((task) => task.id === detailId) ?? null);
+  const deleteTargetTask =
+    deleteTargetId == null ? null : (tasks.find((task) => task.id === deleteTargetId) ?? null);
 
   const move = useCallback(
     (delta: number) => {
@@ -249,11 +279,12 @@ export default function TodoScreen() {
   const keysEnabled =
     view === 0 &&
     detailTask == null &&
-    !feedbackOpen &&
     !changeOpen &&
     !addHintOpen &&
     !quickAddOpen &&
-    !replanConfirmOpen;
+    !replanConfirmOpen &&
+    deleteTargetId == null &&
+    !scheduleOverlayOpen;
 
   useListKeys(
     {
@@ -369,6 +400,16 @@ export default function TodoScreen() {
         />
       ) : null}
 
+      {deleteNotice && !actionError && !tasks.some((task) => task.id === deleteNotice.id) ? (
+        <Banner
+          tone="success"
+          icon="check"
+          title="已删除待办"
+          body={`「${deleteNotice.title}」已从当前计划移除，执行记录会保留。`}
+          onDismiss={() => setDeleteNotice(null)}
+        />
+      ) : null}
+
       {replanMessage ? (
         <Banner
           tone="info"
@@ -445,6 +486,8 @@ export default function TodoScreen() {
           </Text>
         ) : null}
       </View>
+
+      <ScheduleSection onOverlayChange={setScheduleOverlayOpen} />
 
       {view === 0 ? (
         <View style={styles.body} testID="todo-list">
@@ -530,7 +573,7 @@ export default function TodoScreen() {
           </Text>{' '}
           · 连续 <Text style={styles.mono}>{stats.streak}</Text> 天
         </Text>
-        <Button label="写今日反馈" variant="filled" onPress={() => setFeedbackOpen(true)} />
+        <Button label="写今日反馈" variant="filled" onPress={() => router.push('/feedback')} />
       </View>
 
       {wide && view === 0 ? (
@@ -544,8 +587,6 @@ export default function TodoScreen() {
         changes={planChanges}
         onClose={() => setChangeOpen(false)}
       />
-      <DailyFeedbackSheet visible={feedbackOpen} onClose={() => setFeedbackOpen(false)} />
-
       {quickAddOpen ? (
         <QuickTaskDialog
           onClose={() => setQuickAddOpen(false)}
@@ -581,6 +622,7 @@ export default function TodoScreen() {
             moveBy(id, 1);
             setDetailId(null);
           }}
+          onRequestDelete={requestDelete}
         />
       ) : null}
 
@@ -611,6 +653,34 @@ export default function TodoScreen() {
           },
         ]}
       />
+
+      <Dialog
+        visible={deleteTargetId != null}
+        title="删除这个待办？"
+        description="删除后不会出现在当前计划里，执行记录会保留。确定删除？"
+        onRequestClose={() => setDeleteTargetId(null)}
+        actions={[
+          { label: '取消', variant: 'text', onPress: () => setDeleteTargetId(null) },
+          { label: '删除', variant: 'filled', onPress: confirmDelete },
+        ]}>
+        {deleteTargetTask ? (
+          <View
+            style={[
+              styles.deleteSummary,
+              {
+                borderColor: colors.outlineVariant,
+                backgroundColor: colors.surfaceContainerLow,
+              },
+            ]}>
+            <Text style={[styles.deleteTitle, { color: colors.ink }]} numberOfLines={2}>
+              {deleteTargetTask.title}
+            </Text>
+            <Text style={[styles.deleteMeta, { color: colors.inkMuted }]}>
+              任务 #{deleteTargetTask.id}
+            </Text>
+          </View>
+        ) : null}
+      </Dialog>
     </View>
   );
 }
@@ -711,6 +781,21 @@ const styles = StyleSheet.create({
     fontFamily: Fonts.mono,
   },
   keys: {
+    fontSize: Type.labelMedium,
+  },
+  deleteSummary: {
+    borderWidth: 1,
+    borderRadius: Radius.md,
+    padding: Space.md,
+    gap: Space.xs,
+  },
+  deleteTitle: {
+    fontSize: Type.bodyLarge,
+    lineHeight: Type.bodyLarge * Line.normal,
+    fontWeight: '600',
+  },
+  deleteMeta: {
+    fontFamily: Fonts.monoRegular,
     fontSize: Type.labelMedium,
   },
 });

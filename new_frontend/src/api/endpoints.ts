@@ -1,4 +1,4 @@
-import { apiPollJob, apiRequest, apiStream, isApiError } from '@/api/client';
+import { apiPollJob, apiRequest, apiStream, apiUpload, isApiError } from '@/api/client';
 import { apiPrefix } from '@/api/config';
 import type {
   ConfirmPlanResponse,
@@ -20,6 +20,8 @@ import type {
   RegisterRequest,
   ReplanEligibilityRead,
   ReplanRequest,
+  ScheduleEventRead,
+  ScheduleImportResult,
   SchedulingPreferences,
   SituationTrendRead,
   TaskRead,
@@ -135,6 +137,11 @@ export function patchTask(planId: number, taskId: number, body: TaskUpdateReques
   return apiRequest<TaskRead>(`/plans/${planId}/tasks/${taskId}`, { method: 'PATCH', body });
 }
 
+/** Soft-delete a task (204 on success, idempotent). */
+export function deleteTask(planId: number, taskId: number) {
+  return apiRequest<void>(`/plans/${planId}/tasks/${taskId}`, { method: 'DELETE' });
+}
+
 /**
  * `opts.streamReplan` defers the replan graph to an async job; the response then
  * carries `replan_job_id` and the caller drives it with `runJob`.
@@ -162,6 +169,55 @@ export function replanEligibility(planId: number) {
 export function replan(planId: number, body: ReplanRequest) {
   // 202 + job handle; the `ReplanResponse` lives in the job result.
   return apiRequest<JobAccepted>(`/plans/${planId}/replan`, { method: 'POST', body });
+}
+
+// --- schedule / timetable ------------------------------------------------
+
+/**
+ * A picked file ready for upload. Web passes the DOM `File`; native passes a
+ * `Blob` read from the cached URI (so `expo/fetch` can serialise it).
+ */
+export type ScheduleUploadFile = {
+  uri: string;
+  name: string;
+  mimeType?: string | null;
+  file?: Blob | null;
+};
+
+/** Events that can occur inside `[from, to]` (weekly recurrences included). */
+export function listSchedules(from: string, to: string) {
+  const query = `from=${encodeURIComponent(from)}&to=${encodeURIComponent(to)}`;
+  return apiRequest<ScheduleEventRead[]>(`/schedules?${query}`);
+}
+
+/**
+ * Upload a CSV/XLSX timetable. The backend parses the file, so the client only
+ * has to attach it; `dry_run` validates without storing.
+ */
+export function importSchedules(
+  file: ScheduleUploadFile,
+  opts: { dryRun?: boolean } = {},
+) {
+  const form = new FormData();
+  if (file.file) {
+    form.append('file', file.file, file.name);
+  } else {
+    // Last-resort React Native descriptor. The normal native path supplies a
+    // Blob (see `ScheduleUploadFile.file`), but keep this so a caller that only
+    // has a URI still produces a valid multipart part on RN.
+    form.append('file', {
+      uri: file.uri,
+      name: file.name,
+      type: file.mimeType ?? 'application/octet-stream',
+    } as unknown as Blob);
+  }
+  const query = opts.dryRun ? '?dry_run=true' : '';
+  return apiUpload<ScheduleImportResult>(`/schedules/import${query}`, form);
+}
+
+/** Soft-delete an imported event (`204` on success). */
+export function deleteSchedule(id: number) {
+  return apiRequest<void>(`/schedules/${id}`, { method: 'DELETE' });
 }
 
 // --- async generation jobs (stream first, poll as fallback) ----------------

@@ -73,6 +73,13 @@ def drafts_to_tasks(
                 end_time=None,
                 status=TaskStatus.SCHEDULED,
                 completion_probability=draft.completion_probability,
+                is_flexible=draft.is_flexible,
+                task_kind=draft.task_kind,
+                series_id=draft.series_id,
+                series_index=draft.series_index,
+                occurrence_date=draft.occurrence_date,
+                target_amount=draft.target_amount,
+                target_unit=draft.target_unit,
                 order_index=draft.order_index,
             )
         )
@@ -156,12 +163,15 @@ def build_rule_context(
 
     task_subjects: dict[int, str] = {}
     task_deadlines: dict[int, date] = {}
+    task_earliest_dates: dict[int, date] = {}
     for draft in drafts:
         task_id = draft.order_index + 1  # PROVISIONAL TASK ID CONTRACT
         if draft.subject:
             task_subjects[task_id] = draft.subject
         if draft.deadline is not None:
             task_deadlines[task_id] = draft.deadline.date()
+        if draft.occurrence_date is not None:
+            task_earliest_dates[task_id] = draft.occurrence_date
 
     context: PlanningContext | None = state.get("user_context")
     profile = (context.profile if context is not None else None) or {}
@@ -178,6 +188,7 @@ def build_rule_context(
         }
 
     return RuleContext(
+        fixed_events=list(context.fixed_events) if context is not None else [],
         daily_limit_minutes=preferences.daily_limit_minutes,
         buffer_minutes=preferences.buffer_minutes,
         high_cognitive_max_per_day=preferences.high_cognitive_max_per_day,
@@ -186,6 +197,7 @@ def build_rule_context(
         day_end=preferences.day_end,
         task_subjects=task_subjects,
         task_deadlines=task_deadlines,
+        task_earliest_dates=task_earliest_dates,
         completed_task_ids=completed,
         conflicting_subject_pairs=conflicts,
     )

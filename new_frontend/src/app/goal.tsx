@@ -11,13 +11,15 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { DecomposePreviewDialog } from '@/components/decompose-preview-dialog';
 import { TaskAddDialog, type PendingTaskInput } from '@/components/task-add-dialog';
+import { weekdaysSummary } from '@/components/task/weekday-picker';
 import { Button, ExtendedFab, Fab } from '@/components/ui/button';
 import { Icon } from '@/components/ui/icon';
 import { EmptyState, InlineNotice } from '@/components/ui/states';
 import { Surface } from '@/components/ui/surface';
 import { Fonts, Layout, Line, Radius, Space, Type } from '@/constants/tokens';
-import { formatShort } from '@/domain/date';
+import { formatShort, parseISO } from '@/domain/date';
 import type { DraftTask, PendingTask } from '@/domain/decompose';
+import { TASK_KIND_LABEL } from '@/domain/task';
 import { usePlan } from '@/state/plan';
 import { useTheme } from '@/state/theme';
 
@@ -242,6 +244,11 @@ export default function GoalScreen() {
   );
 }
 
+function formatCalendarDay(date: string): string {
+  const day = parseISO(date);
+  return `${day.getMonth() + 1} 月 ${day.getDate()} 日`;
+}
+
 function PendingCard({
   item,
   onEdit,
@@ -252,6 +259,17 @@ function PendingCard({
   onRemove: () => void;
 }) {
   const { colors } = useTheme();
+  const isSeries = item.taskKind !== 'one_off';
+  const seriesBits = [
+    weekdaysSummary(item.recurrenceWeekdays),
+    item.dailyTargetMinutes != null ? `每天 ${item.dailyTargetMinutes} 分钟` : null,
+    item.targetAmount != null
+      ? `目标 ${item.targetAmount}${item.targetUnit ? ` ${item.targetUnit}` : ''}`
+      : null,
+  ]
+    .filter(Boolean)
+    .join(' · ');
+
   return (
     <Surface level="level1" radius="lg">
       <View style={styles.card}>
@@ -265,9 +283,22 @@ function PendingCard({
           </Text>
         ) : null}
         <View style={styles.cardFooter}>
-          <Text style={[styles.cardMeta, { color: colors.inkMuted }]}>
-            {item.dueDate ? `截止 ${formatShort(item.dueDate)}` : '无截止'}
-          </Text>
+          <View style={styles.cardMetaBlock}>
+            <Text style={[styles.cardMeta, { color: colors.inkMuted }]}>
+              {isSeries ? `${TASK_KIND_LABEL[item.taskKind]} · ` : ''}
+              {item.dueDate
+                ? `${isSeries ? '结束' : '截止'} ${formatShort(item.dueDate)}`
+                : isSeries
+                  ? '不设结束'
+                  : '无截止'}
+            </Text>
+            {isSeries ? (
+              <Text style={[styles.cardSeries, { color: colors.inkFaint }]}>
+                {item.startDate ? `开始 ${formatCalendarDay(item.startDate)} · ` : ''}
+                {seriesBits}
+              </Text>
+            ) : null}
+          </View>
           <View style={styles.cardActions}>
             <Button label="编辑" variant="text" size="sm" onPress={onEdit} />
             <Button label="删除" variant="text" size="sm" onPress={onRemove} />
@@ -396,9 +427,18 @@ const styles = StyleSheet.create({
     flexWrap: 'wrap',
     gap: Space.sm,
   },
+  cardMetaBlock: {
+    flexShrink: 1,
+    minWidth: 0,
+    gap: 2,
+  },
   cardMeta: {
     fontFamily: Fonts.monoRegular,
     fontSize: Type.labelMedium,
+  },
+  cardSeries: {
+    fontSize: Type.labelMedium,
+    lineHeight: Type.labelMedium * Line.normal,
   },
   cardActions: {
     flexDirection: 'row',

@@ -12,6 +12,30 @@ export type RepeatFreq = 'none' | 'daily' | 'weekly' | 'monthly' | 'custom';
 export type RepeatEnd = 'never' | 'until' | 'count';
 export type CognitiveLoad = 'low' | 'medium' | 'high';
 
+/** Mirrors the backend `TaskKind` (how a goal/task repeats over time). */
+export type TaskKind = 'one_off' | 'long_term' | 'routine';
+
+export const TASK_KIND_LABEL: Record<TaskKind, string> = {
+  one_off: '一次性',
+  long_term: '长期',
+  routine: '常规',
+};
+
+/** Backend goal types use different names than task kinds. */
+export function taskKindFromGoalType(goalType: string | null | undefined): TaskKind {
+  if (goalType === 'long_term') return 'long_term';
+  if (goalType === 'habit') return 'routine';
+  return 'one_off';
+}
+
+/** Inverse of `taskKindFromGoalType`; `undefined` keeps the backend default. */
+export function goalTypeFromTaskKind(kind: TaskKind | null | undefined): string | undefined {
+  if (kind === 'long_term') return 'long_term';
+  if (kind === 'routine') return 'habit';
+  if (kind === 'one_off') return 'short_term';
+  return undefined;
+}
+
 export interface Repeat {
   freq: RepeatFreq;
   /** Every N days/weeks/months (custom = every N days). */
@@ -54,6 +78,16 @@ export interface Task {
   /** Mirrors the backend `cognitive_load`; drives the insight panel. */
   cognitiveLoad: CognitiveLoad;
   repeat: Repeat;
+  /** How the task repeats over time (`TaskRead.task_kind`). */
+  taskKind: TaskKind;
+  /** Backend series identity for `long_term` / `routine` occurrences. */
+  seriesId: string | null;
+  seriesIndex: number | null;
+  /** The occurrence day inside a series (`TaskRead.occurrence_date`). */
+  occurrenceDate: string | null;
+  /** Optional quantity target, e.g. 3 × `次/周`. */
+  targetAmount: number | null;
+  targetUnit: string | null;
   tags: string[];
   /** Display order inside a list. Lower comes first. */
   order: number;

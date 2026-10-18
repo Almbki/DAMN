@@ -9,6 +9,7 @@ from app.application.services.memory_service import MemoryService
 from app.application.services.plan_service import PlanService
 from app.application.services.profile_service import ProfileService
 from app.application.services.replan_service import ReplanService
+from app.application.services.schedule_event_service import ScheduleEventService
 from app.application.services.situation_service import SituationService
 
 __all__ = [
@@ -21,5 +22,6 @@ __all__ = [
     "PlanService",
     "ProfileService",
     "ReplanService",
+    "ScheduleEventService",
     "SituationService",
 ]

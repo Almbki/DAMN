@@ -22,6 +22,16 @@ export function todayISO(): string {
   return toISO(new Date());
 }
 
+/**
+ * The start of `date`'s week as a local ISO date. Defaults to Monday, matching
+ * the timetable and the backend's `weekdays` (0 = Monday).
+ */
+export function startOfWeek(date: string, weekStartsOn = 1): string {
+  const parsed = parseISO(date);
+  const offset = (parsed.getDay() - weekStartsOn + 7) % 7;
+  return addDays(date, -offset);
+}
+
 export function addDays(date: string, days: number): string {
   const next = parseISO(date);
   next.setDate(next.getDate() + days);

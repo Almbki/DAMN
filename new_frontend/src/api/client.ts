@@ -171,6 +171,78 @@ export async function apiRequest<T>(path: string, options: RequestOptions = {}):
   }
 }
 
+type UploadOptions = {
+  auth?: boolean;
+  timeoutMs?: number;
+  signal?: AbortSignal;
+};
+
+/**
+ * Multipart upload wrapper. Deliberately does **not** set `Content-Type`:
+ * the browser / `expo/fetch` must add the multipart boundary itself.
+ *
+ * The error envelope, 401 handling and timeout semantics match `apiRequest`,
+ * so callers can treat both failures the same way.
+ */
+export async function apiUpload<T>(
+  path: string,
+  form: FormData,
+  options: UploadOptions = {},
+): Promise<T> {
+  const { auth = true, timeoutMs = requestTimeoutMs, signal } = options;
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  const abortFromCaller = () => controller.abort();
+  if (signal) {
+    if (signal.aborted) controller.abort();
+    else signal.addEventListener('abort', abortFromCaller, { once: true });
+  }
+
+  try {
+    const headers: Record<string, string> = { Accept: 'application/json' };
+    if (auth && authToken) headers.Authorization = `Bearer ${authToken}`;
+
+    const response = await expoFetch(`${apiBaseUrl}${apiPrefix}${path}`, {
+      method: 'POST',
+      headers,
+      signal: controller.signal,
+      body: form,
+    });
+
+    const text = await response.text();
+    const data = text ? parseJson(text) : null;
+
+    if (!response.ok) {
+      if (response.status === 401 && auth) notifyUnauthorized();
+      const envelope = (data ?? {}) as { code?: string; message?: string; detail?: unknown };
+      throw new ApiError(
+        response.status,
+        envelope.code ?? 'http_error',
+        envelope.message ?? `请求失败（HTTP ${response.status}）`,
+        envelope.detail ?? null,
+      );
+    }
+
+    return data as T;
+  } catch (error) {
+    if (error instanceof ApiError) throw error;
+    // `expo/fetch` reports aborts as a generic FetchError, so the controller is
+    // the reliable signal. A caller abort must not be reported as a timeout.
+    if (controller.signal.aborted) {
+      if (signal?.aborted) throw abortError();
+      throw new ApiError(0, 'timeout', '上传超时，后端没有响应。');
+    }
+    if (error instanceof Error && error.name === 'AbortError') {
+      if (signal?.aborted) throw abortError();
+      throw new ApiError(0, 'timeout', '上传超时，后端没有响应。');
+    }
+    throw new ApiError(0, 'network_error', '连不上后端，检查网络或后端地址。');
+  } finally {
+    clearTimeout(timer);
+    signal?.removeEventListener('abort', abortFromCaller);
+  }
+}
+
 type StreamHandlers = {
   onStage: (stage: string, data: any) => void;
 };

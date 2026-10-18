@@ -3,9 +3,19 @@
 from __future__ import annotations
 
 from datetime import date, datetime
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
-from sqlalchemy import Date, DateTime, Enum, Float, ForeignKey, Index, Integer, String
+from sqlalchemy import (
+    JSON,
+    Date,
+    DateTime,
+    Enum,
+    Float,
+    ForeignKey,
+    Index,
+    Integer,
+    String,
+)
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.domain.models.base import utcnow
@@ -31,6 +41,10 @@ class Feedback(Base):
     stress_level: Mapped[int | None] = mapped_column(Integer, nullable=True)
     energy_level: Mapped[int | None] = mapped_column(Integer, nullable=True)
     delay_reason: Mapped[str | None] = mapped_column(String(500), nullable=True)
+    #: Per-unfinished-task reasons; additive nullable JSON (existing rows are NULL).
+    task_reasons: Mapped[list[dict[str, Any]] | None] = mapped_column(
+        JSON, nullable=True, default=None
+    )
     free_text: Mapped[str | None] = mapped_column(String(2000), nullable=True)
     sleep_hours: Mapped[float | None] = mapped_column(Float, nullable=True)
     dominant_time_of_day: Mapped[TimeOfDay | None] = mapped_column(

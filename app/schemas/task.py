@@ -6,7 +6,7 @@ from datetime import date, datetime, time
 
 from pydantic import BaseModel, ConfigDict, Field
 
-from app.domain.models.enums import CognitiveLoad, Priority, TaskStatus
+from app.domain.models.enums import CognitiveLoad, Priority, TaskKind, TaskStatus
 
 
 class TaskStandardRead(BaseModel):
@@ -43,6 +43,12 @@ class TaskRead(BaseModel):
     status: TaskStatus
     completion_probability: float | None = None
     is_flexible: bool = True
+    task_kind: TaskKind = TaskKind.ONE_OFF
+    series_id: str | None = None
+    series_index: int | None = None
+    occurrence_date: date | None = None
+    target_amount: int | None = None
+    target_unit: str | None = None
     order_index: int = 0
     standards: list[TaskStandardRead] = Field(default_factory=list)
 

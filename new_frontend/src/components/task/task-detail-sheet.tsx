@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { StyleSheet, Text, View } from 'react-native';
+import { Pressable, StyleSheet, Text, View } from 'react-native';
 
 import { Banner } from '@/components/task/banner';
 import { isEndAfterStart, isValidTime, parseEstimatedMinutes } from '@/components/task/task-form';
@@ -7,18 +7,24 @@ import { BottomSheet } from '@/components/ui/bottom-sheet';
 import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
 import { DateTimeField } from '@/components/ui/date-time-field';
+import { useInteraction } from '@/components/ui/interaction';
 import { Progress } from '@/components/ui/progress';
 import { Segmented } from '@/components/ui/segmented';
 import { TextField } from '@/components/ui/text-field';
 import { Fonts, Line, Radius, Space, Type } from '@/constants/tokens';
-import { formatShort } from '@/domain/date';
-import type { Task } from '@/domain/task';
+import { formatShort, parseISO } from '@/domain/date';
+import { TASK_KIND_LABEL, type Task } from '@/domain/task';
 import { usePlan } from '@/state/plan';
 import { useTheme } from '@/state/theme';
 
 const PRIORITIES = ['低', '中', '高'];
 const PRIORITY_LABEL = ['低', '中', '高'];
 const COGNITIVE_LABEL = { low: '低', medium: '中', high: '高' } as const;
+
+function formatCalendarDay(date: string): string {
+  const day = parseISO(date);
+  return `${day.getMonth() + 1} 月 ${day.getDate()} 日`;
+}
 
 /**
  * The single place where a task can be inspected and acted on. Every action is
@@ -34,6 +40,7 @@ export function TaskDetailSheet({
   onToggleDone,
   onSetSkipped,
   onMoveTomorrow,
+  onRequestDelete,
 }: {
   task: Task;
   goalTitle: string | null;
@@ -44,6 +51,8 @@ export function TaskDetailSheet({
   onToggleDone: (id: number) => void;
   onSetSkipped: (id: number, skipped: boolean) => void;
   onMoveTomorrow: (id: number) => void;
+  /** Ask the screen to confirm deletion; this sheet never opens its own modal. */
+  onRequestDelete?: (id: number) => void;
 }) {
   const { colors } = useTheme();
   const { actionError, clearActionError } = usePlan();
@@ -88,6 +97,21 @@ export function TaskDetailSheet({
     : task.endTime
       ? `到 ${task.endTime}`
       : '未排时间';
+
+  const seriesText =
+    [
+      task.seriesIndex != null ? `第 ${task.seriesIndex + 1} 天` : null,
+      task.occurrenceDate ? formatCalendarDay(task.occurrenceDate) : null,
+    ]
+      .filter(Boolean)
+      .join(' · ') || '未记录';
+
+  const dailyTargetText =
+    task.targetAmount != null
+      ? `${task.targetAmount}${task.targetUnit ? ` ${task.targetUnit}` : ''}`
+      : task.estimatedMinutes != null
+        ? `${task.estimatedMinutes} 分钟`
+        : '未设置';
 
   function save() {
     const nextTitle = title.trim();
@@ -214,6 +238,7 @@ export function TaskDetailSheet({
 
       <View style={styles.metaGrid}>
         <MetaItem label="目标" value={goalTitle ?? '未归入目标'} />
+        <MetaItem label="类型" value={TASK_KIND_LABEL[task.taskKind]} />
         <MetaItem label="计划日期" value={task.dueDate ? formatShort(task.dueDate) : '未排日期'} />
         <MetaItem label="时间" value={timeText} mono />
         <MetaItem
@@ -221,6 +246,12 @@ export function TaskDetailSheet({
           value={task.estimatedMinutes != null ? `${task.estimatedMinutes} 分钟` : '未设置'}
           mono={task.estimatedMinutes != null}
         />
+        {task.taskKind === 'long_term' ? (
+          <MetaItem label="系列进度" value={seriesText} mono />
+        ) : null}
+        {task.taskKind !== 'one_off' ? (
+          <MetaItem label="每日目标" value={dailyTargetText} mono={task.targetAmount != null} />
+        ) : null}
         <MetaItem label="优先级" value={PRIORITY_LABEL[priority - 1] ?? '中'} />
         <MetaItem label="认知负荷" value={COGNITIVE_LABEL[task.cognitiveLoad]} />
         {task.predictedDuration != null ? (
@@ -391,7 +422,42 @@ export function TaskDetailSheet({
       ) : (
         <Text style={[styles.note, { color: colors.inkMuted }]}>当前计划是只读的。</Text>
       )}
+
+      {canEdit && onRequestDelete ? (
+        <>
+          <View style={[styles.divider, { backgroundColor: colors.line }]} />
+          <View style={styles.danger}>
+            <Text style={[styles.sectionTitle, { color: colors.error }]}>删除这个待办</Text>
+            <Text style={[styles.note, { color: colors.inkMuted }]}>
+              只从当前计划里移除，执行记录会保留。确认前会再问你一次。
+            </Text>
+            <DangerButton label="删除这个待办" onPress={() => onRequestDelete(task.id)} />
+          </View>
+        </>
+      ) : null}
     </BottomSheet>
+  );
+}
+
+function DangerButton({ label, onPress }: { label: string; onPress: () => void }) {
+  const { colors } = useTheme();
+  const { focused, hovered, handlers } = useInteraction();
+  return (
+    <Pressable
+      accessibilityRole="button"
+      accessibilityLabel={label}
+      onPress={onPress}
+      {...handlers}
+      style={[
+        styles.dangerButton,
+        {
+          borderColor: colors.error,
+          backgroundColor: hovered ? colors.errorContainer : 'transparent',
+          boxShadow: focused ? `0 0 0 2px ${colors.focusRing}` : undefined,
+        },
+      ]}>
+      <Text style={[styles.dangerButtonText, { color: colors.error }]}>{label}</Text>
+    </Pressable>
   );
 }
 
@@ -510,6 +576,22 @@ const styles = StyleSheet.create({
   },
   edit: {
     gap: Space.lg,
+  },
+  danger: {
+    gap: Space.sm,
+  },
+  dangerButton: {
+    alignSelf: 'flex-start',
+    minHeight: 44,
+    paddingHorizontal: Space.xl,
+    borderWidth: 1,
+    borderRadius: Radius.pill,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  dangerButtonText: {
+    fontSize: Type.labelLarge,
+    fontWeight: '600',
   },
   timeRow: {
     flexDirection: 'row',

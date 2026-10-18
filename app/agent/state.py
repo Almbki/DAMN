@@ -41,7 +41,7 @@ from app.agent.schemas import (
     TheoreticalAnalysisResult,
     UserSituationResult,
 )
-from app.domain.models.enums import GoalType, Priority
+from app.domain.models.enums import GoalType, Priority, TaskKind
 from app.domain.rules.base import RuleEngine, RuleViolation
 from app.domain.scheduling.schedule_result import CandidateSchedule
 from app.domain.scheduling.scheduler import Scheduler
@@ -123,6 +123,13 @@ class GoalInput(BaseModel):
     estimated_minutes: int | None = Field(default=None, ge=1)
     subject: str | None = None
     task_type: str | None = None
+    # Repetition contract (all optional: omission keeps the one-off default).
+    start_date: date | None = None
+    task_kind: TaskKind | None = None
+    daily_target_minutes: int | None = Field(default=None, ge=1)
+    recurrence_weekdays: list[int] | None = None
+    target_amount: int | None = Field(default=None, ge=0)
+    target_unit: str | None = None
 
 
 class PreferenceInput(BaseModel):

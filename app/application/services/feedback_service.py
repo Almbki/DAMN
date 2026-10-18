@@ -1,10 +1,17 @@
 """Feedback service: daily check-in submission and history.
 
-After persisting the check-in the service runs the agent feedback cycle
-(graph B): ML prediction -> adjustment router -> NO_CHANGE / MICRO_ADJUST /
-FULL_REPLAN. Cooldown (``ReplanEligibility``) gates **manual** replans; the
-feedback-driven route is bounded by the adjustment policy instead (it needs
-elapsed days plus a low completion rate before it escalates to a full replan).
+The check-in is **always** persisted first. Afterwards a pure policy
+(:func:`app.domain.feedback.policy.decide_feedback_replan`) decides whether the
+saved feedback justifies running the agent feedback cycle (graph B) at all:
+
+* ``none``          -> record only; the plan is untouched
+* ``micro_adjust``  -> run graph B (ML + router + scheduler/rules)
+* ``full_replan``   -> run graph B (ML + router + planner)
+
+The policy is driven by the check-in's stress/energy plus the portrait model
+(duration bias and recent completion rates). Completion rate alone never
+triggers a replan, and free text is prompt context only. Explicit manual
+replans bypass this policy and still force ``FULL_REPLAN``.
 """
 
 from __future__ import annotations
@@ -13,6 +20,11 @@ from sqlalchemy.orm import Session
 
 from app.application.dto.feedback import FeedbackSubmitResult
 from app.application.exceptions import NotFoundError, PermissionDeniedError
+from app.core.config import get_settings
+from app.domain.feedback.policy import (
+    FeedbackReplanDecision,
+    decide_feedback_replan,
+)
 from app.domain.models import Feedback
 from app.infrastructure.database.repositories import (
     FeedbackRepository,
@@ -70,16 +82,30 @@ class FeedbackService:
         if self._replan_service is not None:
             eligibility = self._replan_service.check_eligibility(user_id, plan_id)
 
+        decision = self._decide_replan(user_id, saved)
+
         adjustment = None
-        if not defer_replan and self._plan_service is not None:
+        if (
+            not defer_replan
+            and self._plan_service is not None
+            and decision.route != "none"
+        ):
+            # Free text is context for the prompt only: it no longer sets
+            # `user_adjustment`, so it cannot force a FULL_REPLAN by itself.
             outcome = self._plan_service.process_feedback_cycle(
                 user_id, plan_id, note=saved.free_text
             )
+            if not outcome.reasons:
+                outcome.reasons = [decision.reason]
             adjustment = outcome
             if outcome.new_plan_id is not None and self._replan_service is not None:
                 eligibility = self._replan_service.check_eligibility(
                     user_id, outcome.new_plan_id
                 )
+
+        replan_reason = decision.reason
+        if adjustment is not None and adjustment.reasons:
+            replan_reason = adjustment.reasons[0]
 
         return FeedbackSubmitResult(
             feedback=saved,
@@ -87,6 +113,8 @@ class FeedbackService:
             replan_plan_id=adjustment.new_plan_id if adjustment else None,
             replan_eligibility=eligibility,
             adjustment=adjustment,
+            replan_decision=decision.route,
+            replan_reason=replan_reason,
         )
 
     def list_feedback(self, user_id: int, plan_id: int) -> list[Feedback]:
@@ -96,6 +124,42 @@ class FeedbackService:
         if plan.user_id != user_id:
             raise PermissionDeniedError("plan belongs to another user")
         return self._feedback.list_by_plan(plan_id)
+
+    def _decide_replan(
+        self, user_id: int, feedback: Feedback
+    ) -> FeedbackReplanDecision:
+        """Gate the agent cycle with the feedback policy.
+
+        Reads the portrait through ``ProfileService`` (duration bias + recent
+        completion rates). Best-effort: a portrait failure must never invalidate
+        the already-persisted check-in, so we fall back to a no-history portrait.
+        """
+        from app.application.services.profile_service import ProfileService
+
+        duration_bias = 0.0
+        portrait_decision = "none"
+        try:
+            profiles = ProfileService(self._session)
+            duration_bias = profiles.duration_bias(user_id)
+            portrait_decision = profiles.replan_decision_for(
+                user_id, duration_bias=duration_bias
+            ).decision
+        except Exception:  # noqa: BLE001 - the feedback row is the record of truth
+            self._session.rollback()
+
+        settings = get_settings()
+        return decide_feedback_replan(
+            stress=feedback.stress_level,
+            energy=feedback.energy_level,
+            completion_rate=feedback.completion_rate or 0.0,
+            duration_bias=duration_bias,
+            portrait_decision=portrait_decision,
+            stress_high=settings.agent_feedback_stress_high,
+            energy_low=settings.agent_feedback_energy_low,
+            stress_severe=settings.agent_feedback_stress_severe,
+            energy_critical=settings.agent_feedback_energy_critical,
+            duration_bias_high=settings.agent_feedback_duration_bias_high,
+        )
 
     def _refresh_memory(self, user_id: int) -> None:
         """Update persisted memory; never let it break a feedback submission."""

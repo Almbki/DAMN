@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from datetime import date
+
 from app.agent.router import (
     AdjustmentRouter,
     ClassifyPolicy,
@@ -10,6 +12,7 @@ from app.agent.router import (
     should_repair,
 )
 from app.agent.schemas import ClassifyResult, RequestIntent
+from app.agent.state import PlannerRequest
 from app.ml.base import (
     AdjustmentPrediction,
     AdjustmentRoute,
@@ -40,14 +43,38 @@ def test_router_forces_replan_when_no_current_plan() -> None:
     assert decision.overridden is True
 
 
-def test_router_user_note_wins() -> None:
+def _request(intent: RequestIntent) -> PlannerRequest:
+    return PlannerRequest(
+        user_id=1,
+        plan_id=7,
+        trigger_type=intent,
+        start_date=date.today(),
+        end_date=date.today(),
+    )
+
+
+def test_router_free_text_does_not_force_replan() -> None:
+    """Free text is prompt context only; it is not an explicit requirement."""
     state = {
         "ml_prediction": _prediction(AdjustmentRoute.NO_CHANGE),
         "current_plan": object(),
+        "request": _request(RequestIntent.FEEDBACK_DRIVEN),
         "user_adjustment": "please change everything",
     }
     decision = AdjustmentRouter().decide(state)  # type: ignore[arg-type]
+    assert decision.route is AdjustmentRoute.NO_CHANGE
+    assert decision.overridden is False
+
+
+def test_router_explicit_manual_replan_wins() -> None:
+    state = {
+        "ml_prediction": _prediction(AdjustmentRoute.NO_CHANGE),
+        "current_plan": object(),
+        "request": _request(RequestIntent.REPLAN_REQUEST),
+    }
+    decision = AdjustmentRouter().decide(state)  # type: ignore[arg-type]
     assert decision.route is AdjustmentRoute.FULL_REPLAN
+    assert decision.overridden is True
 
 
 def test_router_does_not_escalate_a_fresh_plan() -> None:
@@ -61,15 +88,17 @@ def test_router_does_not_escalate_a_fresh_plan() -> None:
     assert decision.route is AdjustmentRoute.NO_CHANGE
 
 
-def test_router_escalates_a_persistently_failing_plan() -> None:
+def test_router_completion_alone_does_not_escalate() -> None:
+    """Completion history is gated by the service policy, not the router."""
     state = {
         "ml_prediction": _prediction(AdjustmentRoute.MICRO_ADJUST),
         "current_plan": object(),
+        "request": _request(RequestIntent.FEEDBACK_DRIVEN),
         "progress": PlanProgress(days_elapsed=4, completion_rate=0.1),
     }
     decision = AdjustmentRouter().decide(state)  # type: ignore[arg-type]
-    assert decision.route is AdjustmentRoute.FULL_REPLAN
-    assert decision.overridden is True
+    assert decision.route is AdjustmentRoute.MICRO_ADJUST
+    assert decision.overridden is False
 
 
 def test_router_escalates_after_too_many_micro_adjustments() -> None:

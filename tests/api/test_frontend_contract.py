@@ -34,6 +34,8 @@ def test_preferences_defaults_then_roundtrip(client: TestClient, auth_headers: d
         "high_cognitive_max_per_day": 2,
         "sleep_start": None,
         "sleep_end": None,
+        "feedback_time": None,
+        "feedback_enabled": False,
     }
 
     updated = client.put(
@@ -45,15 +47,36 @@ def test_preferences_defaults_then_roundtrip(client: TestClient, auth_headers: d
             "high_cognitive_max_per_day": 1,
             "sleep_start": "23:30",
             "sleep_end": "07:00",
+            "feedback_time": "20:15",
+            "feedback_enabled": True,
         },
         headers=auth_headers,
     )
     assert updated.status_code == 200, updated.text
     assert updated.json()["daily_limit_minutes"] == 120
+    assert updated.json()["feedback_time"] == "20:15"
+    assert updated.json()["feedback_enabled"] is True
 
     reread = client.get("/api/v1/users/me/preferences", headers=auth_headers)
     assert reread.json()["daily_limit_minutes"] == 120
     assert reread.json()["sleep_start"] == "23:30"
+    assert reread.json()["feedback_time"] == "20:15"
+    assert reread.json()["feedback_enabled"] is True
+
+
+def test_bad_feedback_time_is_rejected(client: TestClient, auth_headers: dict) -> None:
+    response = client.put(
+        "/api/v1/users/me/preferences",
+        json={
+            "available_minutes_per_day": 240,
+            "daily_limit_minutes": 120,
+            "buffer_minutes": 20,
+            "high_cognitive_max_per_day": 1,
+            "feedback_time": "24:00",
+        },
+        headers=auth_headers,
+    )
+    assert response.status_code == 422
 
 
 def test_profile_patch_does_not_wipe_preferences(

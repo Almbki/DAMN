@@ -239,6 +239,7 @@ function NavLink({
           />
         </View>
         <Text
+          numberOfLines={1}
           style={[
             isRail ? styles.railLabel : styles.barLabel,
             {
@@ -346,7 +347,8 @@ const styles = StyleSheet.create({
     height: 32,
   },
   indicatorBar: {
-    width: 64,
+    // Five tabs have to share narrow phones; keep the pill inside its slot.
+    width: 56,
     height: 32,
   },
   railLabel: {
@@ -368,11 +370,13 @@ const styles = StyleSheet.create({
   },
   barItem: {
     flex: 1,
+    minWidth: 0,
     alignItems: 'center',
     justifyContent: 'center',
     gap: Space.xs,
   },
   barLabel: {
+    maxWidth: '100%',
     fontSize: Type.labelMedium,
     lineHeight: Type.labelMedium * Line.tight,
   },

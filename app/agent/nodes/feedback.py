@@ -22,9 +22,11 @@ def process_feedback_node(state: PlannerState, runtime: object) -> dict:
     note = (request.user_note or "").strip()
 
     updates: dict = {}
-    if note:
-        updates["replan_reason"] = f"user feedback: {note}"
-        updates["user_adjustment"] = note
+    # Free text is prompt context, never a routing override: it must not set
+    # `user_adjustment` (which the router treats as an explicit requirement).
+    updates["replan_reason"] = (
+        f"user feedback: {note}" if note else "feedback cycle"
+    )
 
     recent = context.recent_feedback if context is not None else []
     summary = f"{len(recent)} recent check-in(s)"

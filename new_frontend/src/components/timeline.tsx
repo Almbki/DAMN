@@ -1,11 +1,13 @@
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 
 import { DotsButton } from '@/components/task/dots-button';
+import { TaskKindBadge } from '@/components/task/task-kind-badge';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Icon } from '@/components/ui/icon';
 import { useInteraction } from '@/components/ui/interaction';
 import { Surface } from '@/components/ui/surface';
 import { Fonts, Line, Radius, Space, Type } from '@/constants/tokens';
+import type { TaskKind } from '@/domain/task';
 import { useTheme } from '@/state/theme';
 
 /** Minimal shape the timeline draws — real tasks and preview drafts both map to it. */
@@ -20,6 +22,10 @@ export type TimelineItem = {
   estimatedMinutes: number | null;
   /** 1 low · 2 medium · 3 high */
   priority: number;
+  /** Optional kind marker; preview drafts may omit it. */
+  taskKind?: TaskKind;
+  seriesIndex?: number | null;
+  occurrenceDate?: string | null;
 };
 
 export function Timeline({
@@ -153,6 +159,13 @@ function TimelineRow({
               {item.title}
             </Text>
             <View style={styles.metaRow}>
+              {item.taskKind && item.taskKind !== 'one_off' ? (
+                <TaskKindBadge
+                  taskKind={item.taskKind}
+                  seriesIndex={item.seriesIndex ?? null}
+                  occurrenceDate={item.occurrenceDate ?? null}
+                />
+              ) : null}
               {item.startTime ? (
                 <Text style={[styles.range, { color: colors.inkMuted }]}>
                   {item.startTime}

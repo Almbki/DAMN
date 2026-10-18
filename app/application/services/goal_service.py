@@ -50,6 +50,12 @@ class GoalService:
             priority=payload.priority,
             status=payload.status,
             estimated_minutes=payload.estimated_minutes,
+            start_date=payload.start_date,
+            task_kind=payload.task_kind,
+            daily_target_minutes=payload.daily_target_minutes,
+            recurrence_weekdays=payload.recurrence_weekdays,
+            target_amount=payload.target_amount,
+            target_unit=payload.target_unit,
             options={"subject": payload.subject, "task_type": payload.task_type},
         )
         created = self._goals.create(goal)
@@ -61,7 +67,18 @@ class GoalService:
         updates: dict[str, object] = {}
         provided = payload.model_dump(exclude_unset=True)
 
-        for field in ("title", "description", "deadline", "estimated_minutes"):
+        for field in (
+            "title",
+            "description",
+            "deadline",
+            "estimated_minutes",
+            "start_date",
+            "task_kind",
+            "daily_target_minutes",
+            "recurrence_weekdays",
+            "target_amount",
+            "target_unit",
+        ):
             if field in provided:
                 updates[field] = provided[field]
         if "priority" in provided and provided["priority"] is not None:
@@ -92,6 +109,9 @@ class GoalService:
             raise ConflictError(
                 "goal is referenced by a plan task; remove or replan that task first"
             )
+        # Soft-deleted tasks still reference the goal row; detach them (their
+        # rows/executions stay intact) so the FK does not block the deletion.
+        self._tasks.detach_deleted_from_goal(goal_id)
         self._goals.delete(goal_id)
         self._session.commit()
 

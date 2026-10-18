@@ -16,6 +16,7 @@ from app.agent.nodes.prediction import _task_features
 from app.agent.schemas import GoalAnalysisResult, PlanGenerationResult, UserSituationResult
 from app.agent.state import AgentConfig, PlannerContext, PlannerRequest
 from app.core.config import Settings
+from app.domain.feedback.policy import decide_feedback_replan
 from app.domain.models.enums import TaskStatus
 from app.domain.rules.base import RuleEngine
 from app.domain.scheduling.scheduler import Scheduler
@@ -157,7 +158,12 @@ def test_one_bad_day_lightens_the_load_instead_of_rebuilding() -> None:
     assert any("check-in" in reason for reason in prediction.reasons)
 
 
-def test_sustained_low_completion_triggers_a_rebuild() -> None:
+def test_sustained_low_completion_is_only_a_predictor_signal() -> None:
+    """The ML predictor may propose a rebuild, but it is not the trigger.
+
+    Completion history alone is gated by the feedback policy: no current
+    pressure means the graph never runs, regardless of the predictor's route.
+    """
     signals = [
         FeedbackSignal(date=date(2026, 9, day), completion_rate=0.4) for day in (18, 19, 20)
     ]
@@ -165,6 +171,15 @@ def test_sustained_low_completion_triggers_a_rebuild() -> None:
         _adjustment_request(signals)
     )
     assert prediction.route is AdjustmentRoute.FULL_REPLAN
+
+    decision = decide_feedback_replan(
+        stress=None,
+        energy=None,
+        completion_rate=0.4,
+        duration_bias=0.0,
+        portrait_decision="full_replan",
+    )
+    assert decision.route == "none"
 
 
 def test_no_feedback_is_no_change() -> None:

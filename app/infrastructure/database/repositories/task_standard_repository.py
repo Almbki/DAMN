@@ -31,7 +31,8 @@ class TaskStandardRepository(RepositoryBase):
     def list_by_task(self, task_id: int) -> list[TaskStandard]:
         stmt = (
             select(TaskStandardORM)
-            .where(TaskStandardORM.task_id == task_id)
+            .join(TaskORM, TaskStandardORM.task_id == TaskORM.id)
+            .where(TaskStandardORM.task_id == task_id, TaskORM.deleted_at.is_(None))
             .order_by(TaskStandardORM.order_index, TaskStandardORM.id)
         )
         return [TaskStandard.model_validate(orm) for orm in self._session.scalars(stmt).all()]
@@ -40,7 +41,7 @@ class TaskStandardRepository(RepositoryBase):
         stmt = (
             select(TaskStandardORM)
             .join(TaskORM, TaskStandardORM.task_id == TaskORM.id)
-            .where(TaskORM.plan_id == plan_id)
+            .where(TaskORM.plan_id == plan_id, TaskORM.deleted_at.is_(None))
             .order_by(TaskStandardORM.task_id, TaskStandardORM.order_index, TaskStandardORM.id)
         )
         return [TaskStandard.model_validate(orm) for orm in self._session.scalars(stmt).all()]

@@ -16,3 +16,7 @@ class FeedbackSubmitResult(BaseModel):
     replan_eligibility: ReplanEligibility | None = None
     #: Agent decision from the feedback loop (route / severity / reasons).
     adjustment: FeedbackCycleOutcome | None = None
+    #: Service-level policy route: "none" / "micro_adjust" / "full_replan".
+    replan_decision: str = "none"
+    #: Why the policy chose that route (or the graph's reason when it ran).
+    replan_reason: str | None = None

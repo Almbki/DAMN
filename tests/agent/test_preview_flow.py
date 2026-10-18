@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from datetime import date, timedelta
+
 from fastapi.testclient import TestClient
 
 from app.ml.base import AdjustmentRoute
@@ -51,6 +53,79 @@ def test_preview_then_confirm_creates_plan_v1(
     assert plan["status"] == "active"
     # ML completion probability must survive persistence (regression guard).
     assert [task["completion_probability"] for task in plan["tasks"]] == [0.65, 0.65]
+
+
+def test_long_term_goal_persists_daily_occurrences(
+    client: TestClient, auth_headers: dict
+) -> None:
+    """A dated long-term goal becomes one task per day (series), not one giant task."""
+    override_plan_service(client)
+    start = date.today()
+    end = start + timedelta(days=6)
+    payload = {
+        "goals": [
+            {
+                "title": "高等数学复习",
+                "goal_type": "long_term",
+                "start_date": start.isoformat(),
+                "deadline": end.isoformat(),
+                "daily_target_minutes": 60,
+                "estimated_minutes": 420,
+                "subject": "math",
+                "priority": 3,
+            }
+        ],
+        "start_date": start.isoformat(),
+        "end_date": end.isoformat(),
+    }
+
+    body = preview_of(client, auth_headers, payload)
+    tasks = body["preview"]["tasks"]
+    expected_days = [(start + timedelta(days=offset)).isoformat() for offset in range(7)]
+
+    assert len(tasks) == 7
+    assert {task["series_id"] for task in tasks} == {"goal-1-long_term"}
+    assert {task["task_kind"] for task in tasks} == {"long_term"}
+    assert {task["is_flexible"] for task in tasks} == {False}
+    assert [task["occurrence_date"] for task in tasks] == expected_days
+    assert [task["scheduled_date"] for task in tasks] == expected_days
+    assert all(task["standards"] for task in tasks)
+
+    confirmed = client.post(
+        f"/api/v1/plans/preview/{body['thread_id']}/confirm", headers=auth_headers
+    )
+    assert confirmed.status_code == 201, confirmed.text
+    persisted = confirmed.json()["plan"]["tasks"]
+
+    assert [task["occurrence_date"] for task in persisted] == expected_days
+    assert {task["series_id"] for task in persisted} == {"goal-1-long_term"}
+    assert {task["task_kind"] for task in persisted} == {"long_term"}
+    assert [task["scheduled_date"] for task in persisted] == expected_days
+
+
+def test_one_off_goal_stays_one_task(
+    client: TestClient, auth_headers: dict
+) -> None:
+    override_plan_service(client)
+    payload = {
+        "goals": [
+            {
+                "title": "去超市买酱油",
+                "goal_type": "short_term",
+                "estimated_minutes": 30,
+            }
+        ],
+        "start_date": date.today().isoformat(),
+        "end_date": (date.today() + timedelta(days=6)).isoformat(),
+    }
+
+    body = preview_of(client, auth_headers, payload)
+    tasks = body["preview"]["tasks"]
+
+    assert len(tasks) == 1
+    assert tasks[0]["task_kind"] == "one_off"
+    assert tasks[0]["series_id"] is None
+    assert tasks[0]["occurrence_date"] is None
 
 
 def test_preview_adjust_then_confirm(

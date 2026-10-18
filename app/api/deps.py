@@ -19,6 +19,7 @@ from app.application.services import (
     PlanService,
     ProfileService,
     ReplanService,
+    ScheduleEventService,
     SituationService,
 )
 from app.core.security import InvalidTokenError, decode_access_token
@@ -88,6 +89,12 @@ def get_feedback_service(
     plan_service: PlanService = Depends(get_plan_service),
 ) -> FeedbackService:
     return FeedbackService(db, replan_service=replan_service, plan_service=plan_service)
+
+
+def get_schedule_event_service(
+    db: Session = Depends(get_db),
+) -> ScheduleEventService:
+    return ScheduleEventService(db)
 
 
 def get_insight_service(db: Session = Depends(get_db)) -> InsightService:

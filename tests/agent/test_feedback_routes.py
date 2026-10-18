@@ -19,27 +19,44 @@ def _create_plan(client: TestClient, headers: dict, payload: dict) -> int:
     return confirmed.json()["plan"]["id"]
 
 
-def _submit_feedback(client: TestClient, headers: dict, plan_id: int, rate: float) -> dict:
+def _submit_feedback(
+    client: TestClient,
+    headers: dict,
+    plan_id: int,
+    rate: float,
+    *,
+    stress: int | None = None,
+    energy: int | None = None,
+    free_text: str | None = None,
+) -> dict:
+    payload: dict = {"date": date.today().isoformat(), "completion_rate": rate}
+    if stress is not None:
+        payload["stress_level"] = stress
+    if energy is not None:
+        payload["energy_level"] = energy
+    if free_text is not None:
+        payload["free_text"] = free_text
     response = client.post(
         f"/api/v1/plans/{plan_id}/feedback",
-        json={"date": date.today().isoformat(), "completion_rate": rate},
+        json=payload,
         headers=headers,
     )
     assert response.status_code == 201, response.text
     return response.json()
 
 
-def test_feedback_no_change_keeps_plan(
+def test_feedback_no_pressure_is_recorded_without_a_replan(
     client: TestClient, auth_headers: dict, preview_payload: dict
 ) -> None:
-    """TEST 3: NO_CHANGE -> no LLM, no new plan version."""
-    override_plan_service(client, route=AdjustmentRoute.NO_CHANGE)
+    """TEST 3: no pressure signal -> graph B is not run, plan untouched."""
+    override_plan_service(client, route=AdjustmentRoute.FULL_REPLAN)
     plan_id = _create_plan(client, auth_headers, preview_payload)
 
     body = _submit_feedback(client, auth_headers, plan_id, 0.9)
 
-    assert body["adjustment"]["route"] == "NO_CHANGE"
-    assert body["adjustment"]["new_plan_id"] is None
+    assert body["adjustment"] is None
+    assert body["replan_decision"] == "none"
+    assert body["replan_reason"]
     assert body["replan_triggered"] is False
     # The plan is untouched.
     plan = client.get(f"/api/v1/plans/{plan_id}", headers=auth_headers).json()
@@ -58,9 +75,13 @@ def test_feedback_micro_adjust_creates_light_version(
     )
     plan_id = _create_plan(client, auth_headers, preview_payload)
 
-    body = _submit_feedback(client, auth_headers, plan_id, 0.7)
+    # High stress opens the pressure gate without being severe.
+    body = _submit_feedback(
+        client, auth_headers, plan_id, 0.7, stress=7, energy=4
+    )
     new_plan_id = body["adjustment"]["new_plan_id"]
 
+    assert body["replan_decision"] == "micro_adjust"
     assert body["adjustment"]["route"] == "MICRO_ADJUST"
     assert new_plan_id is not None
     assert new_plan_id != plan_id
@@ -85,9 +106,13 @@ def test_feedback_full_replan_creates_v2(
     )
     plan_id = _create_plan(client, auth_headers, preview_payload)
 
-    body = _submit_feedback(client, auth_headers, plan_id, 0.2)
+    # Severe stress/energy pressure + low completion -> full replan.
+    body = _submit_feedback(
+        client, auth_headers, plan_id, 0.2, stress=9, energy=2
+    )
     new_plan_id = body["adjustment"]["new_plan_id"]
 
+    assert body["replan_decision"] == "full_replan"
     assert body["adjustment"]["route"] == "FULL_REPLAN"
     assert body["adjustment"]["degraded"] is False
     assert new_plan_id is not None
@@ -105,8 +130,70 @@ def test_feedback_includes_agent_adjustment_payload(
 ) -> None:
     override_plan_service(client, route=AdjustmentRoute.NO_CHANGE)
     plan_id = _create_plan(client, auth_headers, preview_payload)
-    body = _submit_feedback(client, auth_headers, plan_id, 0.9)
+    body = _submit_feedback(
+        client, auth_headers, plan_id, 0.9, stress=7, energy=6
+    )
 
     adjustment = body["adjustment"]
     assert adjustment["source"]
     assert adjustment["reasons"]
+
+
+def test_completion_only_low_does_not_replan_but_is_persisted(
+    client: TestClient, auth_headers: dict, preview_payload: dict
+) -> None:
+    override_plan_service(client, route=AdjustmentRoute.FULL_REPLAN)
+    plan_id = _create_plan(client, auth_headers, preview_payload)
+
+    body = _submit_feedback(client, auth_headers, plan_id, 0.1)
+
+    assert body["replan_decision"] == "none"
+    assert body["replan_triggered"] is False
+    assert body["replan_plan_id"] is None
+    assert body["adjustment"] is None
+
+    plan = client.get(f"/api/v1/plans/{plan_id}", headers=auth_headers).json()
+    assert plan["version"] == 1
+
+    history = client.get(
+        f"/api/v1/plans/{plan_id}/feedback", headers=auth_headers
+    ).json()
+    assert len(history) == 1
+    assert history[0]["completion_rate"] == 0.1
+
+
+def test_free_text_alone_does_not_force_a_full_replan(
+    client: TestClient, auth_headers: dict, preview_payload: dict
+) -> None:
+    override_plan_service(client, route=AdjustmentRoute.FULL_REPLAN)
+    plan_id = _create_plan(client, auth_headers, preview_payload)
+
+    body = _submit_feedback(
+        client,
+        auth_headers,
+        plan_id,
+        0.9,
+        stress=5,
+        energy=6,
+        free_text="please rebuild the whole plan",
+    )
+
+    assert body["replan_decision"] == "none"
+    assert body["replan_triggered"] is False
+    assert body["adjustment"] is None
+
+
+def test_high_stress_and_low_energy_trigger_a_replan(
+    client: TestClient, auth_headers: dict, preview_payload: dict
+) -> None:
+    override_plan_service(client, route=AdjustmentRoute.FULL_REPLAN)
+    plan_id = _create_plan(client, auth_headers, preview_payload)
+
+    body = _submit_feedback(
+        client, auth_headers, plan_id, 0.5, stress=9, energy=2
+    )
+
+    assert body["replan_decision"] == "full_replan"
+    assert body["replan_triggered"] is True
+    assert body["replan_plan_id"] is not None
+    assert body["adjustment"]["new_plan_id"] == body["replan_plan_id"]

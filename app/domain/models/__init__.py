@@ -11,6 +11,7 @@ from app.domain.models.enums import (
     PlanStatus,
     Priority,
     ReplanTriggerType,
+    TaskKind,
     TaskStatus,
     TimeOfDay,
     ViolationSeverity,
@@ -21,6 +22,7 @@ from app.domain.models.goal import Goal
 from app.domain.models.plan import Plan
 from app.domain.models.prediction_log import PredictionLog
 from app.domain.models.replan_event import ReplanEvent
+from app.domain.models.schedule_event import ScheduleEvent
 from app.domain.models.task import Task
 from app.domain.models.task_standard import TaskStandard
 from app.domain.models.user import User
@@ -41,8 +43,10 @@ __all__ = [
     "Priority",
     "ReplanEvent",
     "ReplanTriggerType",
+    "ScheduleEvent",
     "Task",
     "TaskExecution",
+    "TaskKind",
     "TaskStandard",
     "TaskStatus",
     "TimeOfDay",

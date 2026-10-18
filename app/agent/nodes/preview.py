@@ -50,6 +50,13 @@ def build_preview_payload(state: PlannerState, max_adjustments: int) -> PreviewP
                 scheduled_date=slot.scheduled_date if slot else None,
                 start_time=slot.start_time if slot else None,
                 end_time=slot.end_time if slot else None,
+                task_kind=draft.task_kind,
+                series_id=draft.series_id,
+                series_index=draft.series_index,
+                occurrence_date=draft.occurrence_date,
+                target_amount=draft.target_amount,
+                target_unit=draft.target_unit,
+                is_flexible=draft.is_flexible,
             )
         )
 

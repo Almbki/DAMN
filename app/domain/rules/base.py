@@ -18,6 +18,7 @@ from typing import TYPE_CHECKING
 from pydantic import BaseModel, Field
 
 from app.domain.models.enums import ViolationSeverity
+from app.domain.scheduling.schedule_result import FixedEvent
 
 if TYPE_CHECKING:  # pragma: no cover
     from app.domain.scheduling.schedule_result import CandidateSchedule
@@ -60,12 +61,17 @@ class RuleContext(BaseModel):
     task_subjects: dict[int, str] = Field(default_factory=dict)
     # task_id -> hard deadline (exclusive upper bound: cannot be scheduled after).
     task_deadlines: dict[int, date] = Field(default_factory=dict)
+    # task_id -> earliest day the task may be scheduled on (occurrence series).
+    task_earliest_dates: dict[int, date] = Field(default_factory=dict)
     # Tasks already completed must never be re-scheduled.
     completed_task_ids: set[int] = Field(default_factory=set)
     # Subjects that must not share the same day, e.g. [("math", "algorithm")].
     conflicting_subject_pairs: list[tuple[str, str]] = Field(
         default_factory=lambda: [("math", "algorithm")]
     )
+    # Immovable calendar events (courses, exams, busy blocks). Tasks must never
+    # overlap one of these intervals.
+    fixed_events: list[FixedEvent] = Field(default_factory=list)
 
 
 class Rule(ABC):
@@ -139,6 +145,8 @@ def default_rules() -> list[Rule]:
     from app.domain.rules.completed_tasks import CompletedTaskRule
     from app.domain.rules.daily_limit import AvailableTimeRule, DailyLimitRule
     from app.domain.rules.deadline import DeadlineRule
+    from app.domain.rules.earliest_start import EarliestStartRule
+    from app.domain.rules.fixed_event_overlap import FixedEventOverlapRule
     from app.domain.rules.same_day_conflict import SameDayConflictRule
 
     return [
@@ -148,5 +156,7 @@ def default_rules() -> list[Rule]:
         AvailableTimeRule(),
         BufferTimeRule(),
         DeadlineRule(),
+        EarliestStartRule(),
         CompletedTaskRule(),
+        FixedEventOverlapRule(),
     ]

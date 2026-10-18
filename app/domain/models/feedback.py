@@ -21,6 +21,9 @@ class Feedback(DomainModel):
     stress_level: int | None = Field(default=None, ge=0, le=10)
     energy_level: int | None = Field(default=None, ge=0, le=10)
     delay_reason: str | None = None
+    #: Per-unfinished-task reasons (``[{task_id, reason, note?}, ...]``).
+    #: Stored for analysis only; never used to route the replan policy.
+    task_reasons: list[dict] | None = None
     free_text: str | None = None
     # Optional context used as ML features later.
     sleep_hours: float | None = Field(default=None, ge=0, le=24)

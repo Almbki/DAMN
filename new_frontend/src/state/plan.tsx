@@ -177,6 +177,12 @@ function MockPlanProvider({ children }: { children: React.ReactNode }) {
           priority: input.priority,
           dueDate: input.dueDate,
           notes: input.notes,
+          taskKind: input.taskKind ?? 'one_off',
+          startDate: input.startDate ?? null,
+          dailyTargetMinutes: input.dailyTargetMinutes ?? null,
+          recurrenceWeekdays: input.recurrenceWeekdays ?? null,
+          targetAmount: input.targetAmount ?? null,
+          targetUnit: input.targetUnit ?? null,
         },
       ]);
     },
@@ -248,6 +254,12 @@ function MockPlanProvider({ children }: { children: React.ReactNode }) {
         estimatedMinutes: null,
         priority: item.priority,
         createdAt: new Date().toISOString(),
+        taskKind: item.taskKind,
+        startDate: item.startDate,
+        dailyTargetMinutes: item.dailyTargetMinutes,
+        recurrenceWeekdays: item.recurrenceWeekdays,
+        targetAmount: item.targetAmount,
+        targetUnit: item.targetUnit,
       });
     }
 
@@ -263,6 +275,12 @@ function MockPlanProvider({ children }: { children: React.ReactNode }) {
           startTime: task.startTime,
           endTime: task.endTime,
           estimatedMinutes: task.estimatedMinutes,
+          taskKind: task.taskKind,
+          seriesId: task.seriesId,
+          seriesIndex: task.seriesIndex,
+          occurrenceDate: task.occurrenceDate,
+          targetAmount: task.targetAmount,
+          targetUnit: task.targetUnit,
         }).state;
       });
       return next;
@@ -289,6 +307,11 @@ function MockPlanProvider({ children }: { children: React.ReactNode }) {
       replanTriggered: false,
       replanPlanId: null,
       cooldownMessage: null,
+      saved: true,
+      mode: 'recorded',
+      route: 'none',
+      reasons: [],
+      replanError: null,
     }),
     [],
   );

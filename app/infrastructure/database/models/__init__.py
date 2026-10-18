@@ -13,6 +13,7 @@ from app.infrastructure.database.models.goal import Goal
 from app.infrastructure.database.models.plan import Plan
 from app.infrastructure.database.models.prediction_log import PredictionLog
 from app.infrastructure.database.models.replan_event import ReplanEvent
+from app.infrastructure.database.models.schedule_event import ScheduleEvent
 from app.infrastructure.database.models.task import Task
 from app.infrastructure.database.models.task_standard import TaskStandard
 from app.infrastructure.database.models.user import User
@@ -26,6 +27,7 @@ __all__ = [
     "Plan",
     "PredictionLog",
     "ReplanEvent",
+    "ScheduleEvent",
     "Task",
     "TaskExecution",
     "TaskStandard",

@@ -13,6 +13,7 @@ from app.domain.models.enums import (
     PlanStatus,
     Priority,
     ReplanTriggerType,
+    TaskKind,
     TimeOfDay,
 )
 from app.schemas.common import ViolationRead
@@ -35,6 +36,13 @@ class PlanGoalCreate(BaseModel):
     estimated_minutes: int | None = Field(default=None, ge=1)
     subject: str | None = None
     task_type: str | None = None
+    # Repetition contract (optional: omission keeps the one-off behaviour).
+    start_date: date | None = None
+    task_kind: TaskKind | None = None
+    daily_target_minutes: int | None = Field(default=None, ge=1)
+    recurrence_weekdays: list[int] | None = None
+    target_amount: int | None = Field(default=None, ge=0)
+    target_unit: str | None = Field(default=None, max_length=64)
 
 
 class GoalRead(BaseModel):
@@ -48,6 +56,12 @@ class GoalRead(BaseModel):
     priority: Priority
     status: GoalStatus
     estimated_minutes: int | None = None
+    start_date: date | None = None
+    task_kind: TaskKind | None = None
+    daily_target_minutes: int | None = None
+    recurrence_weekdays: list[int] | None = None
+    target_amount: int | None = None
+    target_unit: str | None = None
 
 
 class PlanGenerateRequest(BaseModel):
@@ -89,6 +103,13 @@ class PreviewTaskRead(BaseModel):
     scheduled_date: date | None = None
     start_time: time | None = None
     end_time: time | None = None
+    task_kind: TaskKind = TaskKind.ONE_OFF
+    series_id: str | None = None
+    series_index: int | None = None
+    occurrence_date: date | None = None
+    target_amount: int | None = None
+    target_unit: str | None = None
+    is_flexible: bool = True
 
 
 class PreviewRead(BaseModel):
@@ -164,6 +185,12 @@ class DecomposeGoal(BaseModel):
     priority: int = Field(default=2, ge=1, le=3)
     deadline: date | None = None
     notes: str | None = Field(default=None, max_length=1000)
+    start_date: date | None = None
+    task_kind: TaskKind | None = None
+    daily_target_minutes: int | None = Field(default=None, ge=1)
+    recurrence_weekdays: list[int] | None = None
+    target_amount: int | None = Field(default=None, ge=0)
+    target_unit: str | None = Field(default=None, max_length=64)
 
 
 class DecomposeRequest(BaseModel):

@@ -8,11 +8,13 @@ import { useEffect, useState } from 'react';
 import { StyleSheet, View } from 'react-native';
 import { SafeAreaProvider, useSafeAreaInsets } from 'react-native-safe-area-context';
 
+import { FeedbackGate } from '@/components/feedback/feedback-gate';
 import { AppShell } from '@/components/shell/app-shell';
 import { ErrorState, LoadingState } from '@/components/ui/states';
 import { Space } from '@/constants/tokens';
 import { PlanProvider, usePlan } from '@/state/plan';
 import { ProfileProvider } from '@/state/profile';
+import { ScheduleProvider } from '@/state/schedule';
 import { ThemeProvider, useTheme } from '@/state/theme';
 
 export default function RootLayout() {
@@ -29,7 +31,9 @@ export default function RootLayout() {
       <ThemeProvider>
         <PlanProvider>
           <ProfileProvider>
-            <RootShell />
+            <ScheduleProvider>
+              <RootShell />
+            </ScheduleProvider>
           </ProfileProvider>
         </PlanProvider>
       </ThemeProvider>
@@ -85,6 +89,7 @@ function RootShell() {
       <AppShell>
         <Slot />
       </AppShell>
+      <FeedbackGate />
     </View>
   );
 }

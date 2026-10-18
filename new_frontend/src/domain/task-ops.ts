@@ -1,7 +1,13 @@
 import { todayISO } from '@/domain/date';
 import { parseQuickAdd } from '@/domain/quick-add';
 import type { Completion } from '@/domain/stats';
-import { NO_REPEAT, type CognitiveLoad, type Repeat, type Task } from '@/domain/task';
+import {
+  NO_REPEAT,
+  type CognitiveLoad,
+  type Repeat,
+  type Task,
+  type TaskKind,
+} from '@/domain/task';
 
 /**
  * Pure state transitions for the local task store. No React, no side effects —
@@ -35,6 +41,12 @@ export interface NewTaskInput {
   estimatedMinutes?: number | null;
   cognitiveLoad?: CognitiveLoad;
   repeat?: Repeat;
+  taskKind?: TaskKind;
+  seriesId?: string | null;
+  seriesIndex?: number | null;
+  occurrenceDate?: string | null;
+  targetAmount?: number | null;
+  targetUnit?: string | null;
   tags?: string[];
 }
 
@@ -72,6 +84,12 @@ export function makeTask(state: StoreState, input: NewTaskInput): { state: Store
     actualMinutes: null,
     cognitiveLoad: input.cognitiveLoad ?? 'medium',
     repeat: input.repeat ?? NO_REPEAT,
+    taskKind: input.taskKind ?? 'one_off',
+    seriesId: input.seriesId ?? null,
+    seriesIndex: input.seriesIndex ?? null,
+    occurrenceDate: input.occurrenceDate ?? null,
+    targetAmount: input.targetAmount ?? null,
+    targetUnit: input.targetUnit ?? null,
     tags: input.tags ?? [],
     order: maxOrder + 1,
     completedAt: null,

@@ -1,17 +1,33 @@
 import { useRouter } from 'expo-router';
 import { useEffect, useRef, useState } from 'react';
-import { StyleSheet, Text, View } from 'react-native';
+import { Platform, StyleSheet, Text, View } from 'react-native';
 
+import { ReminderSwitch } from '@/components/feedback/reminder-switch';
 import { Button } from '@/components/ui/button';
 import { InlineNotice, SaveStatus, type SaveState } from '@/components/ui/states';
 import { Surface } from '@/components/ui/surface';
 import { TextField } from '@/components/ui/text-field';
 import { Fonts, Line, Space, Type } from '@/constants/tokens';
-import { PREFERENCE_BOUNDS, clampPreference } from '@/domain/preferences';
+import {
+  PREFERENCE_BOUNDS,
+  clampPreference,
+  normalizeClockTime,
+} from '@/domain/preferences';
+import {
+  cancelDailyFeedbackReminder,
+  getFeedbackNotificationStatus,
+  requestFeedbackNotificationPermission,
+  scheduleDailyFeedbackReminder,
+} from '@/notifications/feedback-reminder';
 import { usePlan } from '@/state/plan';
 import { useTheme } from '@/state/theme';
 
 const TIME_RE = /^([01]\d|2[0-3]):([0-5]\d)$/;
+
+type ReminderNotice = {
+  tone: 'info' | 'success' | 'error';
+  text: string;
+};
 
 function sleepHours(start: string, end: string): number | null {
   if (!TIME_RE.test(start) || !TIME_RE.test(end)) return null;
@@ -27,12 +43,18 @@ export default function ProfileDetailsScreen() {
   const { preferences, updatePreferences, actionError, clearActionError } = usePlan();
   const [start, setStart] = useState(preferences.sleepStart);
   const [end, setEnd] = useState(preferences.sleepEnd);
+  const [reminderTime, setReminderTime] = useState(preferences.feedbackTime ?? '');
+  const [reminderBusy, setReminderBusy] = useState(false);
+  const [reminderNotice, setReminderNotice] = useState<ReminderNotice | null>(null);
   const [saveState, setSaveState] = useState<SaveState>('idle');
   const touchedRef = useRef(false);
+  const reminderTouchedRef = useRef(false);
+  const reminderReconciledRef = useRef(false);
   const prefsRef = useRef(preferences);
   const actionErrorRef = useRef(actionError);
   const pendingSavesRef = useRef(0);
   const idleTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const isWeb = Platform.OS === 'web';
 
   // Seed the local time fields from the provider until the user edits them.
   useEffect(() => {
@@ -40,6 +62,71 @@ export default function ProfileDetailsScreen() {
     setStart(preferences.sleepStart);
     setEnd(preferences.sleepEnd);
   }, [preferences.sleepStart, preferences.sleepEnd]);
+
+  useEffect(() => {
+    if (reminderTouchedRef.current) return;
+    setReminderTime(preferences.feedbackTime ?? '');
+  }, [preferences.feedbackTime]);
+
+  // Reconcile an already-enabled reminder once the preference is available. Do
+  // not prompt for permission here: only re-create the schedule when permission
+  // was already granted.
+  useEffect(() => {
+    if (reminderReconciledRef.current) return;
+    if (!preferences.feedbackEnabled) return;
+    const time = normalizeClockTime(preferences.feedbackTime);
+    if (!time) return;
+    reminderReconciledRef.current = true;
+    let cancelled = false;
+
+    void (async () => {
+      const status = await getFeedbackNotificationStatus();
+      if (cancelled) return;
+
+      if (!status.supported) {
+        setReminderNotice({
+          tone: 'info',
+          text:
+            status.reason === 'web'
+              ? '网页版不支持系统通知；到点后仍会在应用内提醒你写反馈。'
+              : '当前设备不支持本地通知；应用内提醒仍会生效。',
+        });
+        return;
+      }
+
+      if (status.permission === 'granted') {
+        if (status.scheduled) {
+          setReminderNotice({ tone: 'success', text: `每日 ${time} 的反馈提醒已开启。` });
+          return;
+        }
+        const scheduled = await scheduleDailyFeedbackReminder(time);
+        if (!cancelled) {
+          setReminderNotice({
+            tone: scheduled.ok ? 'success' : 'error',
+            text: scheduled.message,
+          });
+        }
+        return;
+      }
+
+      if (status.permission === 'denied') {
+        setReminderNotice({
+          tone: 'error',
+          text: '系统通知权限未开启；应用内提醒仍会生效。',
+        });
+        return;
+      }
+
+      setReminderNotice({
+        tone: 'info',
+        text: '系统通知权限还没授予；应用内提醒已生效。',
+      });
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [preferences.feedbackEnabled, preferences.feedbackTime]);
 
   useEffect(() => {
     if (saveState === 'saving') return;
@@ -100,6 +187,89 @@ export default function ProfileDetailsScreen() {
     void runSave(() => updatePreferences({ availableMinutesPerDay: next }));
   }
 
+  function commitReminderTime(value: string) {
+    reminderTouchedRef.current = true;
+    setReminderTime(value);
+    const normalized = normalizeClockTime(value);
+    if (!normalized || normalized === preferences.feedbackTime) return;
+
+    if (preferences.feedbackEnabled) {
+      setReminderNotice({ tone: 'info', text: `正在改为每天 ${normalized} 提醒…` });
+    }
+
+    void runSave(async () => {
+      await updatePreferences({ feedbackTime: normalized });
+      if (!preferences.feedbackEnabled) return;
+      const scheduled = await scheduleDailyFeedbackReminder(normalized);
+      setReminderNotice({
+        tone: scheduled.ok ? 'success' : scheduled.permission === 'unsupported' ? 'info' : 'error',
+        text: scheduled.message,
+      });
+    });
+  }
+
+  function toggleReminder(next: boolean) {
+    if (reminderBusy) return;
+    reminderReconciledRef.current = true;
+    setReminderBusy(true);
+    setReminderNotice(null);
+
+    void runSave(async () => {
+      if (!next) {
+        await updatePreferences({ feedbackEnabled: false });
+        const canceled = await cancelDailyFeedbackReminder();
+        setReminderNotice({
+          tone: 'info',
+          text: canceled.ok
+            ? '已关闭每日反馈提醒。'
+            : '已关闭每日反馈提醒；当前平台没有系统通知可取消。',
+        });
+        return;
+      }
+
+      const typed = normalizeClockTime(reminderTime);
+      const stored = normalizeClockTime(preferences.feedbackTime);
+      const normalized = typed ?? stored ?? '21:00';
+      reminderTouchedRef.current = true;
+      setReminderTime(normalized);
+      await updatePreferences({ feedbackEnabled: true, feedbackTime: normalized });
+
+      const permission = await requestFeedbackNotificationPermission();
+      if (!permission.supported) {
+        setReminderNotice({
+          tone: 'info',
+          text: '当前平台不支持系统通知；到点后仍会在应用内提醒你写反馈。',
+        });
+        return;
+      }
+      if (permission.permission !== 'granted') {
+        setReminderNotice({
+          tone: 'error',
+          text: '通知权限没有开启；应用内提醒仍会生效。',
+        });
+        return;
+      }
+
+      const scheduled = await scheduleDailyFeedbackReminder(normalized);
+      setReminderNotice({
+        tone: scheduled.ok ? 'success' : 'error',
+        text: scheduled.message,
+      });
+    }).finally(() => {
+      setReminderBusy(false);
+    });
+  }
+
+  const normalizedReminderTime = normalizeClockTime(reminderTime);
+  const reminderHelper =
+    reminderTime.trim().length === 0
+      ? '例如 21:00。开启后，到点会在应用里挡住页面，提醒你写反馈。'
+      : !normalizedReminderTime
+        ? '时间格式用 HH:MM，例如 21:00。'
+        : preferences.feedbackEnabled
+          ? `每天 ${normalizedReminderTime} 在应用内提醒。`
+          : `保存为 ${normalizedReminderTime}，打开开关后生效。`;
+
   const saveError = saveState === 'error' ? (actionError ?? '保存失败，请稍后重试。') : null;
 
   return (
@@ -154,6 +324,49 @@ export default function ProfileDetailsScreen() {
               ? '时间格式用 HH:MM，例如 23:30。'
               : `大约 ${hours} 小时睡眠。`}
           </Text>
+        </View>
+      </Surface>
+
+      <Surface level="level1" radius="lg">
+        <View style={styles.card}>
+          <View style={styles.reminderHead}>
+            <View style={styles.reminderCopy}>
+              <Text style={[styles.title, { color: colors.ink }]}>反馈提醒</Text>
+              <Text style={[styles.body, { color: colors.inkMuted }]}>
+                到点后提醒你写今天的反馈。
+                {isWeb
+                  ? '网页版没有系统通知，但应用内提醒照样生效。'
+                  : '应用内提醒一定生效，系统通知取决于权限。'}
+              </Text>
+            </View>
+            <ReminderSwitch
+              value={preferences.feedbackEnabled}
+              onValueChange={toggleReminder}
+              label="每日反馈提醒"
+              disabled={reminderBusy}
+            />
+          </View>
+
+          <View style={styles.timeField}>
+            <TextField
+              label="提醒时间"
+              value={reminderTime}
+              onChangeText={commitReminderTime}
+              placeholder="21:00"
+              testID="feedback-time"
+              background={colors.surfaceContainerLowest}
+            />
+          </View>
+
+          <Text style={[styles.helper, { color: colors.inkMuted }]}>{reminderHelper}</Text>
+
+          {reminderNotice ? (
+            <InlineNotice
+              tone={reminderNotice.tone}
+              message={reminderNotice.text}
+              onDismiss={() => setReminderNotice(null)}
+            />
+          ) : null}
         </View>
       </Surface>
 
@@ -221,6 +434,18 @@ const styles = StyleSheet.create({
     fontSize: Type.bodyMedium,
     lineHeight: Type.bodyMedium * Line.relaxed,
     maxWidth: 560,
+  },
+  reminderHead: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    justifyContent: 'space-between',
+    flexWrap: 'wrap',
+    gap: Space.md,
+  },
+  reminderCopy: {
+    flexGrow: 1,
+    flexBasis: 240,
+    gap: Space.xs,
   },
   times: {
     flexDirection: 'row',

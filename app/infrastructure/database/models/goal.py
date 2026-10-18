@@ -2,14 +2,14 @@
 
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import date, datetime
 from typing import TYPE_CHECKING, Any
 
-from sqlalchemy import JSON, DateTime, Enum, ForeignKey, Integer, String
+from sqlalchemy import JSON, Date, DateTime, Enum, ForeignKey, Integer, String
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.domain.models.base import utcnow
-from app.domain.models.enums import GoalStatus, GoalType, Priority
+from app.domain.models.enums import GoalStatus, GoalType, Priority, TaskKind
 from app.infrastructure.database.base import Base, enum_values
 
 if TYPE_CHECKING:
@@ -37,6 +37,15 @@ class Goal(Base):
         default=GoalStatus.ACTIVE,
     )
     estimated_minutes: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    start_date: Mapped[date | None] = mapped_column(Date, nullable=True)
+    task_kind: Mapped[TaskKind | None] = mapped_column(
+        Enum(TaskKind, values_callable=enum_values, native_enum=False, length=32),
+        nullable=True,
+    )
+    daily_target_minutes: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    recurrence_weekdays: Mapped[list[int] | None] = mapped_column(JSON, nullable=True)
+    target_amount: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    target_unit: Mapped[str | None] = mapped_column(String(64), nullable=True)
     options: Mapped[dict[str, Any]] = mapped_column(JSON, nullable=False, default=dict)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, default=utcnow

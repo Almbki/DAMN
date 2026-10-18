@@ -33,6 +33,7 @@ from app.schemas.plan import (
     ReplanResponse,
 )
 from app.schemas.profile import ProfileRead
+from app.schemas.schedule_event import ScheduleEventRead, ScheduleImportResult
 from app.schemas.task import (
     TaskRead,
     TaskStandardRead,
@@ -87,6 +88,8 @@ __all__ = [
     "ReplanEligibilityRead",
     "ReplanRequest",
     "ReplanResponse",
+    "ScheduleEventRead",
+    "ScheduleImportResult",
     "SchedulingPreferences",
     "SituationTrendPoint",
     "SituationTrendRead",

@@ -89,6 +89,12 @@ export const mockGoals: Goal[] = [
     estimatedMinutes: 900,
     priority: 2,
     createdAt: daysAgoISO(20),
+    taskKind: 'routine',
+    startDate: daysAgoISO(20),
+    dailyTargetMinutes: 30,
+    recurrenceWeekdays: [0, 2, 4],
+    targetAmount: 3,
+    targetUnit: '次/周',
   },
   {
     id: 2,
@@ -99,6 +105,12 @@ export const mockGoals: Goal[] = [
     estimatedMinutes: 120,
     priority: 3,
     createdAt: daysAgoISO(10),
+    taskKind: 'one_off',
+    startDate: null,
+    dailyTargetMinutes: null,
+    recurrenceWeekdays: null,
+    targetAmount: null,
+    targetUnit: null,
   },
   {
     id: 3,
@@ -109,6 +121,12 @@ export const mockGoals: Goal[] = [
     estimatedMinutes: 300,
     priority: 3,
     createdAt: daysAgoISO(30),
+    taskKind: 'routine',
+    startDate: daysAgoISO(30),
+    dailyTargetMinutes: 5,
+    recurrenceWeekdays: [0, 1, 2, 3, 4, 5, 6],
+    targetAmount: 7,
+    targetUnit: '次/周',
   },
   {
     id: 4,
@@ -119,12 +137,27 @@ export const mockGoals: Goal[] = [
     estimatedMinutes: 180,
     priority: 4,
     createdAt: daysAgoISO(5),
+    taskKind: 'one_off',
+    startDate: null,
+    dailyTargetMinutes: null,
+    recurrenceWeekdays: null,
+    targetAmount: null,
+    targetUnit: null,
   },
 ];
 
 const mockTaskSeeds: Omit<
   Task,
-  'standards' | 'completionProbability' | 'predictedDuration' | 'isFlexible'
+  | 'standards'
+  | 'completionProbability'
+  | 'predictedDuration'
+  | 'isFlexible'
+  | 'taskKind'
+  | 'seriesId'
+  | 'seriesIndex'
+  | 'occurrenceDate'
+  | 'targetAmount'
+  | 'targetUnit'
 >[] = [
   {
     id: 1,
@@ -304,13 +337,22 @@ const mockTaskSeeds: Omit<
   },
 ];
 
-export const mockTasks: Task[] = mockTaskSeeds.map((task) => ({
-  ...task,
-  standards: [],
-  completionProbability: null,
-  predictedDuration: null,
-  isFlexible: true,
-}));
+export const mockTasks: Task[] = mockTaskSeeds.map((task) => {
+  const repeating = task.repeat.freq !== 'none';
+  return {
+    ...task,
+    taskKind: repeating ? 'routine' : 'one_off',
+    seriesId: repeating ? `mock-series-${task.goalId ?? task.id}` : null,
+    seriesIndex: null,
+    occurrenceDate: repeating ? task.dueDate : null,
+    targetAmount: null,
+    targetUnit: null,
+    standards: [],
+    completionProbability: null,
+    predictedDuration: null,
+    isFlexible: true,
+  };
+});
 
 /** A few past days so streak / weekly report have something to show. */
 export const mockCompletions: Completion[] = [

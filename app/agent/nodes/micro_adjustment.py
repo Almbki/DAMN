@@ -37,6 +37,13 @@ def _drafts_from_plan(state: PlannerState) -> list[GeneratedTaskDraft]:
                 priority=task.priority if isinstance(task.priority, Priority) else Priority.MEDIUM,
                 subject=task.subject,
                 order_index=len(drafts),
+                is_flexible=task.is_flexible,
+                task_kind=task.task_kind,
+                series_id=task.series_id,
+                series_index=task.series_index,
+                occurrence_date=task.occurrence_date,
+                target_amount=task.target_amount,
+                target_unit=task.target_unit,
             )
         )
     return drafts

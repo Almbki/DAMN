@@ -17,6 +17,9 @@ from app.infrastructure.database.repositories.prediction_log_repository import (
     PredictionLogRepository,
 )
 from app.infrastructure.database.repositories.replan_event_repository import ReplanEventRepository
+from app.infrastructure.database.repositories.schedule_event_repository import (
+    ScheduleEventRepository,
+)
 from app.infrastructure.database.repositories.task_repository import TaskRepository
 from app.infrastructure.database.repositories.task_standard_repository import TaskStandardRepository
 from app.infrastructure.database.repositories.user_repository import UserRepository
@@ -31,6 +34,7 @@ __all__ = [
     "PredictionLogRepository",
     "ReplanEventRepository",
     "RepositoryBase",
+    "ScheduleEventRepository",
     "TaskExecutionRepository",
     "TaskRepository",
     "TaskStandardRepository",

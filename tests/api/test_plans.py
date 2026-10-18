@@ -139,6 +139,32 @@ def test_feedback_submission_and_history(client: TestClient, auth_headers: dict)
     assert len(history.json()) == 1
 
 
+def test_feedback_task_reasons_are_persisted(
+    client: TestClient, auth_headers: dict
+) -> None:
+    body = _generate(client, auth_headers)
+    plan_id = body["plan_id"]
+    task_id = body["plan"]["tasks"][0]["id"]
+    reasons = [
+        {"task_id": task_id, "reason": "too_hard", "note": "章节太难"},
+        {"task_id": task_id + 1, "reason": "no_time", "note": None},
+    ]
+    payload = {
+        "date": date.today().isoformat(),
+        "completion_rate": 0.5,
+        "task_reasons": reasons,
+    }
+    response = client.post(
+        f"/api/v1/plans/{plan_id}/feedback", json=payload, headers=auth_headers
+    )
+    assert response.status_code == 201, response.text
+    assert response.json()["feedback"]["task_reasons"] == reasons
+
+    history = client.get(f"/api/v1/plans/{plan_id}/feedback", headers=auth_headers)
+    assert history.status_code == 200
+    assert history.json()[0]["task_reasons"] == reasons
+
+
 def test_replan_eligibility_and_replan(client: TestClient, auth_headers: dict) -> None:
     body = _generate(client, auth_headers)
     plan_id = body["plan_id"]

@@ -74,6 +74,8 @@ def plan_generation_node(state: PlannerState, runtime: object) -> dict:
         goals=list(state.get("goals") or []),
         user_situation=state.get("user_situation"),
         theoretical=theoretical.model_dump(mode="json") if theoretical else {},
+        start_date=state["request"].start_date,
+        end_date=state["request"].end_date,
         preferences=PreferenceInput(
             available_minutes_per_day=preferences.available_minutes_per_day,
             daily_limit_minutes=preferences.daily_limit_minutes,

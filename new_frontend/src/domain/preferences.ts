@@ -12,6 +12,10 @@ export interface SchedulingPreferences {
   /** Local clock, `HH:MM`. */
   sleepStart: string;
   sleepEnd: string;
+  /** Local clock, `HH:MM`; `null` until the user picks a reminder time. */
+  feedbackTime: string | null;
+  /** Whether the daily feedback reminder is enabled. */
+  feedbackEnabled: boolean;
 }
 
 export const DEFAULT_PREFERENCES: SchedulingPreferences = {
@@ -21,6 +25,8 @@ export const DEFAULT_PREFERENCES: SchedulingPreferences = {
   highCognitiveMaxPerDay: 2,
   sleepStart: '23:30',
   sleepEnd: '07:30',
+  feedbackTime: null,
+  feedbackEnabled: false,
 };
 
 export const PREFERENCE_BOUNDS = {
@@ -33,4 +39,29 @@ export const PREFERENCE_BOUNDS = {
 export function clampPreference(key: keyof typeof PREFERENCE_BOUNDS, value: number): number {
   const { min, max } = PREFERENCE_BOUNDS[key];
   return Math.min(max, Math.max(min, Math.round(value)));
+}
+
+/**
+ * Normalise an `HH:MM` clock value. Returns `null` for empty or invalid input so
+ * the UI can distinguish "never set" from a real reminder time.
+ */
+export function normalizeClockTime(value: string | null | undefined): string | null {
+  if (!value) return null;
+  const match = /^(\d{1,2}):(\d{2})$/.exec(value.trim());
+  if (!match) return null;
+  const hour = Number(match[1]);
+  const minute = Number(match[2]);
+  if (hour < 0 || hour > 23 || minute < 0 || minute > 59) return null;
+  return `${String(hour).padStart(2, '0')}:${String(minute).padStart(2, '0')}`;
+}
+
+/** Coerce cached/server preferences into the domain shape (invalid reminder time → `null`). */
+export function normalizePreferences(
+  preferences: SchedulingPreferences,
+): SchedulingPreferences {
+  return {
+    ...preferences,
+    feedbackTime: normalizeClockTime(preferences.feedbackTime),
+    feedbackEnabled: Boolean(preferences.feedbackEnabled),
+  };
 }

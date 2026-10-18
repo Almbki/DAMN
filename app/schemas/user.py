@@ -62,8 +62,12 @@ class SchedulingPreferences(BaseModel):
     high_cognitive_max_per_day: int = Field(default=2, ge=1, le=10)
     sleep_start: str | None = Field(default=None, examples=["23:30"])
     sleep_end: str | None = Field(default=None, examples=["07:00"])
+    #: Daily feedback reminder ("HH:MM", 24h). ``None`` = no reminder time set.
+    feedback_time: str | None = Field(default=None, examples=["20:00"])
+    #: Whether the daily feedback reminder is enabled (default off).
+    feedback_enabled: bool = False
 
-    @field_validator("sleep_start", "sleep_end")
+    @field_validator("sleep_start", "sleep_end", "feedback_time")
     @classmethod
     def _validate_hhmm(cls, value: str | None) -> str | None:
         if value in (None, ""):

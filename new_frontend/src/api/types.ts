@@ -11,6 +11,12 @@ export type TaskStatus =
   | 'skipped'
   | 'failed';
 
+/** Backend `TaskKind`: how a goal/task repeats over time. */
+export type TaskKind = 'one_off' | 'long_term' | 'routine';
+
+/** Backend feedback policy route. */
+export type ReplanDecision = 'none' | 'micro_adjust' | 'full_replan';
+
 /** Backend `CognitiveLoad` also includes `restorative`. */
 export type CognitiveLoad = 'low' | 'medium' | 'high' | 'restorative';
 
@@ -42,6 +48,12 @@ export interface TaskRead {
   status: TaskStatus;
   completion_probability: number | null;
   is_flexible: boolean;
+  task_kind?: TaskKind | null;
+  series_id?: string | null;
+  series_index?: number | null;
+  occurrence_date?: string | null;
+  target_amount?: number | null;
+  target_unit?: string | null;
   order_index: number;
   standards: StandardRead[];
 }
@@ -55,6 +67,12 @@ export interface GoalRead {
   status: string;
   deadline: string | null;
   estimated_minutes: number | null;
+  start_date?: string | null;
+  task_kind?: TaskKind | null;
+  daily_target_minutes?: number | null;
+  recurrence_weekdays?: number[] | null;
+  target_amount?: number | null;
+  target_unit?: string | null;
 }
 
 export interface PlanRead {
@@ -257,6 +275,12 @@ export interface GoalCreate {
   estimated_minutes?: number | null;
   subject?: string | null;
   task_type?: string | null;
+  start_date?: string | null;
+  task_kind?: TaskKind | null;
+  daily_target_minutes?: number | null;
+  recurrence_weekdays?: number[] | null;
+  target_amount?: number | null;
+  target_unit?: string | null;
 }
 
 /** Body for `POST /goals` (backend `GoalCreate`). */
@@ -269,6 +293,12 @@ export interface GoalCreateRequest {
   estimated_minutes?: number | null;
   subject?: string | null;
   task_type?: string | null;
+  start_date?: string | null;
+  task_kind?: TaskKind | null;
+  daily_target_minutes?: number | null;
+  recurrence_weekdays?: number[] | null;
+  target_amount?: number | null;
+  target_unit?: string | null;
   /** `draft` creates a 待拆解 item; `active` a real goal. */
   status?: GoalStatus;
 }
@@ -283,6 +313,12 @@ export interface UpdateGoalRequest {
   estimated_minutes?: number | null;
   subject?: string | null;
   task_type?: string | null;
+  start_date?: string | null;
+  task_kind?: TaskKind | null;
+  daily_target_minutes?: number | null;
+  recurrence_weekdays?: number[] | null;
+  target_amount?: number | null;
+  target_unit?: string | null;
 }
 
 export interface PlanGenerateRequest {
@@ -298,6 +334,13 @@ export interface PlanGenerateRequest {
   execution_weight?: number | null;
 }
 
+/** Per-task reason attached to a daily feedback submission. */
+export interface TaskReason {
+  task_id: number;
+  reason: string;
+  note?: string | null;
+}
+
 export interface FeedbackCreate {
   date: string;
   completion_rate?: number;
@@ -307,6 +350,7 @@ export interface FeedbackCreate {
   free_text?: string | null;
   sleep_hours?: number | null;
   dominant_time_of_day?: string | null;
+  task_reasons?: TaskReason[];
 }
 
 export interface FeedbackRead extends FeedbackCreate {
@@ -314,6 +358,7 @@ export interface FeedbackRead extends FeedbackCreate {
   user_id: number;
   plan_id: number;
   completion_rate: number;
+  task_reasons: TaskReason[];
   created_at: string;
 }
 
@@ -343,6 +388,22 @@ export interface FeedbackSubmitResponse {
   replan_job_id: string | null;
   replan_eligibility: ReplanEligibilityRead | null;
   /** Agent decision from the feedback loop (route / severity / reasons). */
+  adjustment: FeedbackAdjustmentRead | null;
+  /** Policy route chosen for this submission. */
+  replan_decision: ReplanDecision;
+  /** Why the policy chose that route (or the graph's reason when it ran). */
+  replan_reason: string | null;
+}
+
+/**
+ * Result payload of a `kind="feedback_replan"` streaming job (the value in
+ * `JobStatus.result`). Mirrors the backend runner's dict.
+ */
+export interface FeedbackReplanJobResult {
+  replan_triggered: boolean;
+  replan_plan_id: number | null;
+  replan_decision: ReplanDecision;
+  replan_reason: string | null;
   adjustment: FeedbackAdjustmentRead | null;
 }
 
@@ -377,6 +438,12 @@ export interface GoalDetailRead {
   deadline: string | null;
   priority: number;
   estimated_minutes: number | null;
+  start_date?: string | null;
+  task_kind?: TaskKind | null;
+  daily_target_minutes?: number | null;
+  recurrence_weekdays?: number[] | null;
+  target_amount?: number | null;
+  target_unit?: string | null;
   created_at: string;
 }
 
@@ -422,6 +489,9 @@ export interface SchedulingPreferences {
   high_cognitive_max_per_day: number;
   sleep_start?: string | null;
   sleep_end?: string | null;
+  /** Local `HH:MM` at which the daily feedback reminder fires. */
+  feedback_time?: string | null;
+  feedback_enabled?: boolean;
 }
 
 /** `POST /plans/preview` — a not-yet-persisted plan the user can adjust. */
@@ -441,6 +511,12 @@ export interface PreviewTaskRead {
   scheduled_date: string | null;
   start_time: string | null;
   end_time: string | null;
+  task_kind?: TaskKind | null;
+  series_id?: string | null;
+  series_index?: number | null;
+  occurrence_date?: string | null;
+  target_amount?: number | null;
+  target_unit?: string | null;
 }
 
 export interface PreviewViolationRead {
@@ -509,3 +585,39 @@ export type JobStatus = {
   error: string | null;
   events: Record<string, unknown>[];
 };
+
+/**
+ * `GET /schedules` — a fixed course / busy block.
+ *
+ * `weekdays` is `0..6` with **0 = Monday**. `null`/empty means the event is a
+ * one-off on `start_date` (or on every day of `start_date..end_date`).
+ * `start_time`/`end_time` come back as `HH:MM:SS`.
+ */
+export interface ScheduleEventRead {
+  id: number;
+  user_id: number;
+  title: string;
+  /** Teacher / lecturer; `null` when the timetable row did not carry one. */
+  teacher: string | null;
+  event_kind: string;
+  start_date: string | null;
+  end_date: string | null;
+  start_time: string;
+  end_time: string;
+  weekdays: number[] | null;
+  source: string;
+  external_uid: string | null;
+  location: string | null;
+  notes: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+/** `POST /schedules/import` — per-row outcomes; conflicts never block. */
+export interface ScheduleImportResult {
+  imported: number;
+  updated: number;
+  skipped: number;
+  warnings: string[];
+  conflicts: string[];
+}

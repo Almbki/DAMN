@@ -7,6 +7,7 @@
 | 文档 | 内容 |
 | --- | --- |
 | ⭐ [`streaming-and-callchains.md`](streaming-and-callchains.md) | **流式手册**：真流式架构与契约、Prompt 全清单（精确行号）、全功能调用链、画像摘出清单、LangGraph 注册点/边/工具 |
+| ⭐ [`langgraph-state-machine.md`](langgraph-state-machine.md) | **LangGraph 权威文档**：两张图的节点/函数/文件行号、边与条件、Mermaid、状态键、工具、SSE 例外 |
 | ⭐ [`architecture-overview.md`](architecture-overview.md) | **架构总览**：分层、各层文件地图、数据模型、两条主链路、不变量、扩展接缝 |
 | ⭐ [`development-handbook.md`](development-handbook.md) | **开发手册**：核心 vs 旁路、清理记录、已知缺陷、架构 checklist、调试清单 |
 | ⭐ [`product-painpoints.md`](product-painpoints.md) | **痛点与需求建议**（信息不可信 / 拆解不可衡量 / backlog 等） |

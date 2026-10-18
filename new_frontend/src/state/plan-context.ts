@@ -9,7 +9,7 @@ import type { RulerSegmentState, SmartListKey } from '@/domain/selectors';
 import type { Situation } from '@/domain/situation';
 import type { Completion } from '@/domain/stats';
 import type { NewTaskInput, StoreState } from '@/domain/task-ops';
-import type { Task } from '@/domain/task';
+import type { Task, TaskKind } from '@/domain/task';
 
 export type { SmartListKey };
 
@@ -21,13 +21,29 @@ export type FeedbackInput = {
   completionRate: number;
   freeText?: string;
   delayReason?: string;
+  /** Per-task reasons (interrupted / not_enough_time / too_hard / ...). */
+  taskReasons?: { taskId: number; reason: string; note?: string | null }[];
 };
 
+/** Policy route returned by the feedback loop. */
+export type FeedbackRoute = 'none' | 'micro_adjust' | 'full_replan';
+
 export type FeedbackResult = {
+  /** True only when a new plan was generated and adopted. */
   replanTriggered: boolean;
   replanPlanId: number | null;
   /** Human-readable cooldown note when a replan was requested but not eligible. */
   cooldownMessage: string | null;
+  /** The feedback row was persisted, even if the replan failed afterwards. */
+  saved: boolean;
+  /** `replanned` only when a new plan version was actually adopted. */
+  mode: 'recorded' | 'replanned';
+  /** Policy route (`null` when the submission never reached the backend). */
+  route: FeedbackRoute | null;
+  /** Why the policy chose that route. */
+  reasons: string[];
+  /** Set when the feedback was saved but the replan graph/job failed. */
+  replanError: string | null;
 };
 
 export type PendingTaskInput = {
@@ -35,6 +51,13 @@ export type PendingTaskInput = {
   priority: number;
   dueDate: string | null;
   notes: string;
+  taskKind?: TaskKind;
+  startDate?: string | null;
+  dailyTargetMinutes?: number | null;
+  /** 0 = Monday … 6 = Sunday. */
+  recurrenceWeekdays?: number[] | null;
+  targetAmount?: number | null;
+  targetUnit?: string | null;
 };
 
 export type PlanContextValue = {

@@ -12,7 +12,13 @@ from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field
 
-from app.domain.models.enums import CognitiveLoad, LoadLevel, Priority, TimeOfDay
+from app.domain.models.enums import (
+    CognitiveLoad,
+    LoadLevel,
+    Priority,
+    TaskKind,
+    TimeOfDay,
+)
 from app.domain.rules.base import RuleViolation
 
 
@@ -121,6 +127,14 @@ class GeneratedTaskDraft(LLMOutput):
     standards: list[str] = Field(default_factory=list)
     deadline: datetime | None = None
     order_index: int = 0
+    # Repetition contract: defaulted so one-off drafts look exactly as before.
+    task_kind: TaskKind = TaskKind.ONE_OFF
+    series_id: str | None = None
+    series_index: int | None = None
+    occurrence_date: date | None = None
+    target_amount: int | None = None
+    target_unit: str | None = None
+    is_flexible: bool = True
 
 
 class PlanGenerationResult(LLMOutput):
@@ -191,6 +205,13 @@ class PreviewTask(BaseModel):
     scheduled_date: date | None = None
     start_time: time | None = None
     end_time: time | None = None
+    task_kind: TaskKind = TaskKind.ONE_OFF
+    series_id: str | None = None
+    series_index: int | None = None
+    occurrence_date: date | None = None
+    target_amount: int | None = None
+    target_unit: str | None = None
+    is_flexible: bool = True
 
 
 class PreviewPayload(BaseModel):

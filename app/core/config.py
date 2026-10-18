@@ -78,6 +78,12 @@ class Settings(BaseSettings):
     agent_graph_version: str = "planner-v1"
     agent_prompt_version: str = "v1"
     agent_trace_enabled: bool = True
+    # Feedback replan policy thresholds (see app.domain.feedback.policy).
+    agent_feedback_stress_high: float = Field(default=7.0, ge=0.0, le=10.0)
+    agent_feedback_energy_low: float = Field(default=4.0, ge=0.0, le=10.0)
+    agent_feedback_stress_severe: float = Field(default=8.0, ge=0.0, le=10.0)
+    agent_feedback_energy_critical: float = Field(default=3.0, ge=0.0, le=10.0)
+    agent_feedback_duration_bias_high: float = Field(default=0.50, ge=0.0, le=1.0)
 
     @field_validator("cors_origins")
     @classmethod

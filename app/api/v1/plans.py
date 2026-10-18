@@ -92,6 +92,12 @@ def _to_generation_request(user: User, payload: PlanGenerateRequest) -> Generati
                 estimated_minutes=goal.estimated_minutes,
                 subject=goal.subject,
                 task_type=goal.task_type,
+                start_date=goal.start_date,
+                task_kind=goal.task_kind,
+                daily_target_minutes=goal.daily_target_minutes,
+                recurrence_weekdays=goal.recurrence_weekdays,
+                target_amount=goal.target_amount,
+                target_unit=goal.target_unit,
             )
             for goal in payload.goals
         ],
@@ -126,6 +132,12 @@ def _decompose_request(user: User, payload: DecomposeRequest) -> GenerationReque
                     datetime.combine(goal.deadline, time.min) if goal.deadline else None
                 ),
                 priority=Priority(goal.priority),
+                start_date=goal.start_date,
+                task_kind=goal.task_kind,
+                daily_target_minutes=goal.daily_target_minutes,
+                recurrence_weekdays=goal.recurrence_weekdays,
+                target_amount=goal.target_amount,
+                target_unit=goal.target_unit,
             )
             for goal in payload.goals
         ],

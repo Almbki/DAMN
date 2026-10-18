@@ -17,6 +17,7 @@ from sqlalchemy.orm import Session
 
 from app.agent.context import ContextBuilderProtocol
 from app.agent.graph import PlannerGraph, RunEvents
+from app.agent.schemas import RequestIntent
 from app.agent.state import (
     AgentConfig,
     PlannerContext,
@@ -446,7 +447,12 @@ class PlanService:
     ) -> FeedbackCycleOutcome:
         """Run graph B and persist a new version when the route requires it."""
         self.get_plan(user_id, plan_id)  # permission check
-        request = self._planner_request_for_plan(user_id, plan_id, note=note)
+        request = self._planner_request_for_plan(
+            user_id,
+            plan_id,
+            note=note,
+            trigger_type=RequestIntent.FEEDBACK_DRIVEN,
+        )
         graph = self._graph()
         state, _events, run_id = self._run(
             user_id=user_id,
@@ -511,7 +517,12 @@ class PlanService:
     ) -> PlanDetail:
         """Explicit replan through graph B (cooldown is checked by the caller)."""
         self.get_plan(user_id, plan_id)  # permission check
-        request = self._planner_request_for_plan(user_id, plan_id, note=reason)
+        request = self._planner_request_for_plan(
+            user_id,
+            plan_id,
+            note=reason,
+            trigger_type=RequestIntent.REPLAN_REQUEST,
+        )
         graph = self._graph()
         state, _events, run_id = self._run(
             user_id=user_id,
@@ -618,6 +629,27 @@ class PlanService:
             raise NotFoundError("task not found in plan")
         return refreshed
 
+    def delete_task(
+        self,
+        user_id: int,
+        plan_id: int,
+        task_id: int,
+        reason: str | None = None,
+    ) -> None:
+        """Soft-delete a task, keeping its executions / standards intact.
+
+        Permission is checked through ``get_plan`` (same 404/403 semantics as the
+        other task endpoints). Idempotent: deleting an already-deleted task is a
+        no-op and still succeeds.
+        """
+        self.get_plan(user_id, plan_id)  # permission check
+        task = self._tasks.get_by_id(task_id, include_deleted=True)
+        if task is None or task.plan_id != plan_id:
+            raise NotFoundError("task not found in plan")
+        if not self._tasks.soft_delete(task_id, reason):
+            raise NotFoundError("task not found in plan")
+        self._session.commit()
+
     # ------------------------------------------------------------------
     # internals
     # ------------------------------------------------------------------
@@ -709,6 +741,12 @@ class PlanService:
                     deadline=goal_input.deadline,
                     priority=goal_input.priority,
                     estimated_minutes=goal_input.estimated_minutes,
+                    start_date=goal_input.start_date,
+                    task_kind=goal_input.task_kind,
+                    daily_target_minutes=goal_input.daily_target_minutes,
+                    recurrence_weekdays=goal_input.recurrence_weekdays,
+                    target_amount=goal_input.target_amount,
+                    target_unit=goal_input.target_unit,
                     options={"subject": goal_input.subject, "task_type": goal_input.task_type},
                 )
             )
@@ -716,7 +754,12 @@ class PlanService:
         return {index + 1: goal.id for index, goal in enumerate(created) if goal.id is not None}
 
     def _planner_request_for_plan(
-        self, user_id: int, plan_id: int, *, note: str | None
+        self,
+        user_id: int,
+        plan_id: int,
+        *,
+        note: str | None,
+        trigger_type: RequestIntent,
     ) -> PlannerRequest:
         detail = self.get_plan(user_id, plan_id)
         goals = _goal_inputs(detail)
@@ -724,6 +767,7 @@ class PlanService:
         return PlannerRequest(
             user_id=user_id,
             plan_id=plan_id,
+            trigger_type=trigger_type,
             user_note=note,
             plan_title=plan.title,
             start_date=plan.start_date,
@@ -774,7 +818,9 @@ class PlanService:
         tasks: list[Task] = []
         standards: list[TaskStandard] = []
         for order, draft in enumerate(final.tasks):
-            slot = placed.get(order + 1)  # PROVISIONAL TASK ID CONTRACT
+            # PROVISIONAL TASK ID CONTRACT: the scheduler keys placements by the
+            # draft's own order_index, which may have gaps after a repair drop.
+            slot = placed.get(draft.order_index + 1)
             tasks.append(
                 Task(
                     plan_id=plan.id,
@@ -790,6 +836,13 @@ class PlanService:
                     end_time=slot.end_time if slot else None,
                     status=TaskStatus.SCHEDULED,
                     completion_probability=draft.completion_probability,
+                    is_flexible=draft.is_flexible,
+                    task_kind=draft.task_kind,
+                    series_id=draft.series_id,
+                    series_index=draft.series_index,
+                    occurrence_date=draft.occurrence_date,
+                    target_amount=draft.target_amount,
+                    target_unit=draft.target_unit,
                     order_index=order,
                 )
             )
@@ -1030,6 +1083,12 @@ def _goal_inputs(detail: PlanDetail) -> list:
                 estimated_minutes=goal.estimated_minutes,
                 subject=options.get("subject"),
                 task_type=options.get("task_type"),
+                start_date=goal.start_date,
+                task_kind=goal.task_kind,
+                daily_target_minutes=goal.daily_target_minutes,
+                recurrence_weekdays=goal.recurrence_weekdays,
+                target_amount=goal.target_amount,
+                target_unit=goal.target_unit,
             )
         )
     return inputs

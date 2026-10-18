@@ -14,7 +14,8 @@ from typing import Protocol, runtime_checkable
 
 from pydantic import BaseModel, Field
 
-from app.domain.models.enums import CognitiveLoad, Priority, TaskStatus
+from app.domain.models.enums import CognitiveLoad, Priority, TaskKind, TaskStatus
+from app.domain.scheduling.schedule_result import FixedEvent
 from app.ml.base import FeedbackSignal, PlanProgress, UserFeatureSet
 
 
@@ -69,6 +70,13 @@ class CurrentTaskSnapshot(BaseModel):
     predicted_duration: int | None = None
     scheduled_date: date | None = None
     subject: str | None = None
+    is_flexible: bool = True
+    task_kind: TaskKind = TaskKind.ONE_OFF
+    series_id: str | None = None
+    series_index: int | None = None
+    occurrence_date: date | None = None
+    target_amount: int | None = None
+    target_unit: str | None = None
 
 
 class CurrentPlanSnapshot(BaseModel):
@@ -112,6 +120,8 @@ class PlanningContext(BaseModel):
     progress: PlanProgress | None = None
     current_plan: CurrentPlanSnapshot | None = None
     recent_feedback: list[FeedbackSignal] = Field(default_factory=list)
+    #: Imported immovable events expanded over a rolling window (today..+90d).
+    fixed_events: list[FixedEvent] = Field(default_factory=list)
 
     # Free-form note the user attached to this run (adjustment / feedback text).
     user_note: str | None = None

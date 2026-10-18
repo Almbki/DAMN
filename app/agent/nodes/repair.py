@@ -32,6 +32,7 @@ from app.agent.schemas import (
 from app.agent.state import PlannerState
 from app.agent.tools.rule_validator import RuleValidatorInput
 from app.agent.tools.schedule_generator import ScheduleGeneratorInput
+from app.domain.models.enums import TaskKind
 
 NODE = "plan_repair"
 
@@ -147,12 +148,19 @@ def plan_repair_node(state: PlannerState, runtime: object) -> dict:
 def _pick_drop(
     drafts: list[GeneratedTaskDraft], problem_ids: set[int]
 ) -> GeneratedTaskDraft | None:
-    """Least valuable draft: implicated first, then lowest priority, then latest."""
+    """Least valuable draft.
+
+    Preference order: one-off before series occurrences, flexible before fixed,
+    implicated before unrelated, then lowest priority, then latest.
+    Long-term/routine occurrences are only dropped when nothing else remains.
+    """
     if not drafts:
         return None
 
-    def key(draft: GeneratedTaskDraft) -> tuple[bool, int, int]:
+    def key(draft: GeneratedTaskDraft) -> tuple[bool, bool, bool, int, int]:
         return (
+            draft.task_kind is not TaskKind.ONE_OFF,
+            not draft.is_flexible,
             (draft.order_index + 1) not in problem_ids,
             int(draft.priority),
             -draft.order_index,

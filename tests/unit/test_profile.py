@@ -214,6 +214,23 @@ def test_healthy_plan_needs_no_action() -> None:
     assert replan_decision([], 0.0).decision == "none"
 
 
+def test_portrait_full_replan_is_gated_by_current_pressure() -> None:
+    """The portrait verdict is evidence; the feedback policy decides to act."""
+    from app.domain.feedback.policy import decide_feedback_replan
+
+    portrait = replan_decision([0.2, 0.3, 0.1, 0.35, 0.2], 0.0)
+    assert portrait.decision == "full_replan"
+
+    decision = decide_feedback_replan(
+        stress=None,
+        energy=None,
+        completion_rate=0.2,
+        duration_bias=0.0,
+        portrait_decision=portrait.decision,
+    )
+    assert decision.route == "none"
+
+
 def test_should_prompt_respects_budget_focus_and_fatigue() -> None:
     assert should_prompt(0, False, 0.2) == "send"
     assert should_prompt(3, False, 0.2) == "defer"

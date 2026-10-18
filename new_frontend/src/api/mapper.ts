@@ -1,6 +1,7 @@
 import { hhmm } from '@/api/format';
 import type {
   GoalDetailRead,
+  GoalRead,
   PlanChangeRead,
   PreviewTaskRead,
   SituationTrendRead,
@@ -9,6 +10,7 @@ import type {
 } from '@/api/types';
 import { todayISO } from '@/domain/date';
 import type { DraftTask, PendingTask } from '@/domain/decompose';
+import type { Goal, GoalStatus } from '@/domain/goal';
 import type { PlanChange } from '@/domain/plan-change';
 import type { Situation, SituationPoint } from '@/domain/situation';
 import {
@@ -57,6 +59,12 @@ export function taskFromApi(raw: TaskRead): Task {
     actualMinutes: null,
     cognitiveLoad: mapCognitiveLoad(raw.cognitive_load),
     repeat: NO_REPEAT,
+    taskKind: raw.task_kind ?? 'one_off',
+    seriesId: raw.series_id ?? null,
+    seriesIndex: raw.series_index ?? null,
+    occurrenceDate: raw.occurrence_date ? raw.occurrence_date.slice(0, 10) : null,
+    targetAmount: raw.target_amount ?? null,
+    targetUnit: raw.target_unit ?? null,
     tags: [],
     order: raw.order_index ?? 0,
     completedAt: null,
@@ -78,6 +86,12 @@ export function previewToDrafts(tasks: PreviewTaskRead[]): DraftTask[] {
     endTime: task.end_time ? hhmm(task.end_time) : '09:30',
     estimatedMinutes: task.estimated_duration,
     priority: Math.min(3, Math.max(1, task.priority || 2)),
+    taskKind: task.task_kind ?? 'one_off',
+    seriesId: task.series_id ?? null,
+    seriesIndex: task.series_index ?? null,
+    occurrenceDate: task.occurrence_date ? task.occurrence_date.slice(0, 10) : null,
+    targetAmount: task.target_amount ?? null,
+    targetUnit: task.target_unit ?? null,
   }));
 }
 
@@ -131,6 +145,39 @@ export function pendingTaskFromGoal(goal: GoalDetailRead): PendingTask {
     priority: Math.min(3, Math.max(1, goal.priority || 2)),
     dueDate: goal.deadline ? goal.deadline.slice(0, 10) : null,
     notes: goal.description ?? '',
+    taskKind: goal.task_kind ?? 'one_off',
+    startDate: goal.start_date ? goal.start_date.slice(0, 10) : null,
+    dailyTargetMinutes: goal.daily_target_minutes ?? null,
+    recurrenceWeekdays: goal.recurrence_weekdays ?? null,
+    targetAmount: goal.target_amount ?? null,
+    targetUnit: goal.target_unit ?? null,
+  };
+}
+
+function mapGoalStatus(status: string): GoalStatus {
+  if (status === 'completed' || status === 'archived' || status === 'cancelled' || status === 'draft') {
+    return status;
+  }
+  return 'active';
+}
+
+/** Backend `GoalRead` (plan payload) → the app's `Goal` group label. */
+export function goalFromApi(raw: GoalRead): Goal {
+  return {
+    id: raw.id,
+    title: raw.title,
+    description: raw.description ?? '',
+    status: mapGoalStatus(raw.status),
+    deadline: raw.deadline ? raw.deadline.slice(0, 10) : null,
+    estimatedMinutes: raw.estimated_minutes ?? null,
+    priority: Math.min(3, Math.max(1, raw.priority ?? 2)),
+    createdAt: '',
+    taskKind: raw.task_kind ?? 'one_off',
+    startDate: raw.start_date ? raw.start_date.slice(0, 10) : null,
+    dailyTargetMinutes: raw.daily_target_minutes ?? null,
+    recurrenceWeekdays: raw.recurrence_weekdays ?? null,
+    targetAmount: raw.target_amount ?? null,
+    targetUnit: raw.target_unit ?? null,
   };
 }
 

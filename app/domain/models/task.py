@@ -2,12 +2,12 @@
 
 from __future__ import annotations
 
-from datetime import date, time
+from datetime import date, datetime, time
 
 from pydantic import Field
 
 from app.domain.models.base import DomainModel
-from app.domain.models.enums import CognitiveLoad, Priority, TaskStatus
+from app.domain.models.enums import CognitiveLoad, Priority, TaskKind, TaskStatus
 
 
 class Task(DomainModel):
@@ -30,4 +30,15 @@ class Task(DomainModel):
     completion_probability: float | None = Field(default=None, ge=0.0, le=1.0)
     # Higher = safer to drop when the plan is overloaded (used by repair).
     is_flexible: bool = True
+    # Repetition contract: one-off tasks keep the historical single-row shape.
+    task_kind: TaskKind = TaskKind.ONE_OFF
+    # Stable id shared by every occurrence of one split goal.
+    series_id: str | None = None
+    series_index: int | None = None
+    occurrence_date: date | None = None
+    target_amount: int | None = None
+    target_unit: str | None = None
     order_index: int = 0
+    # Soft delete: rows stay so TaskExecution / TaskStandard (ML data) survive.
+    deleted_at: datetime | None = None
+    deleted_reason: str | None = None

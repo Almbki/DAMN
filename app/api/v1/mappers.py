@@ -109,6 +109,13 @@ def preview_read(payload) -> PreviewRead:
                 scheduled_date=task.scheduled_date,
                 start_time=task.start_time,
                 end_time=task.end_time,
+                task_kind=task.task_kind,
+                series_id=task.series_id,
+                series_index=task.series_index,
+                occurrence_date=task.occurrence_date,
+                target_amount=task.target_amount,
+                target_unit=task.target_unit,
+                is_flexible=task.is_flexible,
             )
             for task in payload.tasks
         ],

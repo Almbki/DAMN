@@ -1,9 +1,11 @@
 """Adjustment routing policy.
 
 Design rule: the ML prediction is the *primary* signal, but policy overrides win
-when the situation is unambiguous (explicit user request, no plan to adjust,
-persistently failing plan). All of it is pure functions over the state - nothing
-here reads the database or calls an LLM, so every branch is trivially testable.
+when the situation is unambiguous (explicit manual replan, no plan to adjust,
+too many micro adjustments). Completion history and free text are NOT overrides:
+the feedback service's policy gates whether this graph runs at all. All of it is
+pure functions over the state - nothing here reads the database or calls an LLM,
+so every branch is trivially testable.
 
 LangGraph conditional edges only call these helpers; they contain no logic of
 their own. Adding a route condition means adding it here (see docs/agent/state-machine.md).
@@ -108,27 +110,15 @@ class AdjustmentRouter:
         if state.get("current_plan") is None:
             return AdjustmentRoute.FULL_REPLAN, "no current plan version to adjust"
 
-        # 2. An explicit user requirement always wins.
-        if (state.get("user_adjustment") or "").strip():
-            return AdjustmentRoute.FULL_REPLAN, "user provided an explicit new requirement"
+        # 2. An explicit manual replan always wins. A feedback cycle's free text
+        #    is context only and must not be treated as an explicit requirement.
+        request = state.get("request")
+        if request is not None and request.trigger_type is RequestIntent.REPLAN_REQUEST:
+            return AdjustmentRoute.FULL_REPLAN, "explicit manual replan requested"
 
-        # 3. Persistently failing plan -> stop micro-adjusting.
-        #    Require actual elapsed days: a brand-new plan has completion 0.0 for
-        #    trivial reasons and must not be escalated on day one.
-        progress = state.get("progress")
-        if (
-            progress is not None
-            and progress.days_elapsed >= self.failure_min_days_elapsed
-            and progress.completion_rate < self.low_completion_threshold
-        ):
-            return (
-                AdjustmentRoute.FULL_REPLAN,
-                f"completion rate {progress.completion_rate:.2f} is below "
-                f"{self.low_completion_threshold:.2f} after "
-                f"{progress.days_elapsed} day(s)",
-            )
-
-        # 4. Too many consecutive micro adjustments -> escalate.
+        # 3. Too many consecutive micro adjustments -> escalate.
+        #    Completion rate alone is deliberately NOT an override: the feedback
+        #    service's pressure/portrait policy decides whether we get here.
         if int(state.get("adjustment_count") or 0) >= self.max_micro_adjustments:
             return (
                 AdjustmentRoute.FULL_REPLAN,

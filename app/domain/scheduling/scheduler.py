@@ -14,9 +14,10 @@ Algorithm (documented heuristic)
    * buffer ``>= context.buffer_minutes`` to both neighbouring tasks;
    * high-cognitive daily cap ``context.high_cognitive_max_per_day``;
    * conflicting-subject pairs (case-insensitive);
-   * the ``[day_start, day_end]`` window;
-   * the 30-minute non-consecutive HIGH spacing rule, so the candidate is more
-     likely to pass the rule engine unchanged.
+    * the ``[day_start, day_end]`` window;
+    * no overlap with any ``RuleContext.fixed_events`` (imported courses etc.);
+    * the 30-minute non-consecutive HIGH spacing rule, so the candidate is more
+      likely to pass the rule engine unchanged.
 5. Earliest slot wins; because HIGH tasks sort first and slots are scanned
    earliest-first, HIGH tasks are naturally biased toward the morning.
 6. ``duration_minutes = task.predicted_duration or task.estimated_duration``;
@@ -214,11 +215,24 @@ class Scheduler:
         task_subject = context.task_subjects.get(task.id)
         is_high = task.cognitive_load == CognitiveLoad.HIGH
 
-        span = (end_date - start_date).days
-        for offset in range(span + 1):
-            day = start_date + timedelta(days=offset)
+        # Series occurrences must never be pulled before their occurrence date.
+        earliest = (
+            context.task_earliest_dates.get(task.id, start_date)
+            if task.id is not None
+            else start_date
+        )
+        scan_start = max(start_date, earliest)
+        if scan_start > end_date:
+            return None, None
 
-            if day_minutes.get(day, 0) + duration > capacity:
+        span = (end_date - scan_start).days
+        for offset in range(span + 1):
+            day = scan_start + timedelta(days=offset)
+
+            # Fixed events consume usable capacity in addition to never being
+            # overlapped (the slot check below enforces the latter).
+            day_capacity = max(capacity - self._fixed_minutes_on(day, context), 0)
+            if day_minutes.get(day, 0) + duration > day_capacity:
                 continue
             if is_high and day_high_count.get(day, 0) >= high_cap:
                 continue
@@ -248,10 +262,27 @@ class Scheduler:
         k = 0
         while start_bound + k * step + duration <= end_bound:
             slot = start_bound + k * step
-            if self._slot_ok(slot, slot + duration, task, placed_on_day, context):
+            if self._slot_ok(slot, slot + duration, task, placed_on_day, context, day):
                 return _from_minutes(slot)
             k += 1
         return None
+
+    @staticmethod
+    def _fixed_minutes_on(day: date, context: RuleContext) -> int:
+        """Minutes covered by fixed events inside the usable daily window."""
+        if not context.fixed_events:
+            return 0
+        window_start = _to_minutes(context.day_start)
+        window_end = _to_minutes(context.day_end)
+        total = 0
+        for event in context.fixed_events:
+            if event.date != day:
+                continue
+            start = max(window_start, _to_minutes(event.start_time))
+            end = min(window_end, _to_minutes(event.end_time))
+            if end > start:
+                total += end - start
+        return total
 
     @staticmethod
     def _slot_ok(
@@ -260,7 +291,15 @@ class Scheduler:
         task: Task,
         placed_on_day: list[ScheduledTask],
         context: RuleContext,
+        day: date,
     ) -> bool:
+        # A fixed event is immovable: reject any overlapping slot outright.
+        for event in context.fixed_events:
+            if event.date != day:
+                continue
+            if slot < _to_minutes(event.end_time) and _to_minutes(event.start_time) < end:
+                return False
+
         ordered = sorted(placed_on_day, key=lambda t: t.start_time)
         prev_task: ScheduledTask | None = None
         nxt_task: ScheduledTask | None = None

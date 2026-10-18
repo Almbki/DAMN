@@ -5,6 +5,7 @@ import {
   confirmPreview as confirmPreviewApi,
   createGoal,
   deleteGoal,
+  deleteTask as deleteTaskApi,
   getInsights,
   getPlan,
   getPlanChanges,
@@ -24,6 +25,7 @@ import {
   updateMe,
 } from '@/api/endpoints';
 import {
+  goalFromApi,
   patchDone,
   patchSkipped,
   pendingTaskFromGoal,
@@ -36,6 +38,8 @@ import {
 import type {
   AdjustResponse,
   FeedbackRead,
+  FeedbackReplanJobResult,
+  FeedbackSubmitResponse,
   InsightRead,
   PlanGenerateRequest,
   PlanRead,
@@ -54,13 +58,19 @@ import type { SchedulingPreferences } from '@/domain/preferences';
 import { buildLists, buildRuler, countLists, pickCurrentTask } from '@/domain/selectors';
 import { buildSituation } from '@/domain/situation';
 import { completedToday } from '@/domain/stats';
-import { isClosed, type Task } from '@/domain/task';
+import {
+  goalTypeFromTaskKind,
+  isClosed,
+  taskKindFromGoalType,
+  type Task,
+} from '@/domain/task';
 import * as ops from '@/domain/task-ops';
 import {
   PlanContext,
   type Assessment,
   type FeedbackInput,
   type FeedbackResult,
+  type FeedbackRoute,
   type PendingTaskInput,
   type PlanContextValue,
 } from '@/state/plan-context';
@@ -126,6 +136,19 @@ function errorMessage(caught: unknown, fallback: string): string {
 function assessmentScore(value: number | null | undefined, fallback = 5): number {
   if (value == null || !Number.isFinite(value)) return fallback;
   return Math.min(10, Math.max(0, Math.round(value)));
+}
+
+function normalizeReplanRoute(value: string | null | undefined): FeedbackRoute | null {
+  if (value === 'none' || value === 'micro_adjust' || value === 'full_replan') return value;
+  return null;
+}
+
+function feedbackReasons(
+  reasons: string[] | null | undefined,
+  fallbackReason: string | null | undefined,
+): string[] {
+  if (reasons && reasons.length > 0) return reasons;
+  return fallbackReason ? [fallbackReason] : [];
 }
 
 function previewMetaFrom(
@@ -325,21 +348,20 @@ export function ApiPlanProvider({ children }: { children: React.ReactNode }) {
 
   const applyPlan = useCallback(
     (plan: PlanRead) => {
-      const mapped = plan.tasks.map(taskFromApi);
+      const goalById = new Map(plan.goals.map((goal) => [goal.id, goal]));
+      // Older tasks may omit `task_kind`; derive it from the owning goal.
+      const mapped = plan.tasks.map((raw) => {
+        const task = taskFromApi(raw);
+        if (raw.task_kind == null && raw.goal_id != null) {
+          const goal = goalById.get(raw.goal_id);
+          if (goal) task.taskKind = taskKindFromGoalType(goal.goal_type);
+        }
+        return task;
+      });
       // `PlanRead.goals` is built from this plan's tasks' `goal_id`, so mapping it
       // (instead of mock goals) is what makes goal progress line up with the real
       // tasks. Locally created drafts (negative ids) are kept across reloads.
-      const planGoals: Goal[] = plan.goals.map((goal) => ({
-        id: goal.id,
-        title: goal.title,
-        description: '',
-        status:
-          goal.status === 'completed' ? 'completed' : goal.status === 'draft' ? 'draft' : 'active',
-        deadline: null,
-        estimatedMinutes: null,
-        priority: goal.priority ?? 2,
-        createdAt: '',
-      }));
+      const planGoals: Goal[] = plan.goals.map(goalFromApi);
       setPlanId(plan.id);
       updateStore((prev) => ({ ...prev, tasks: mapped }));
       setGoals((prev) => [
@@ -486,6 +508,12 @@ export function ApiPlanProvider({ children }: { children: React.ReactNode }) {
           priority: input.priority,
           dueDate: input.dueDate,
           notes: input.notes,
+          taskKind: input.taskKind ?? 'one_off',
+          startDate: input.startDate ?? null,
+          dailyTargetMinutes: input.dailyTargetMinutes ?? null,
+          recurrenceWeekdays: input.recurrenceWeekdays ?? null,
+          targetAmount: input.targetAmount ?? null,
+          targetUnit: input.targetUnit ?? null,
         },
       ]);
       setActionError(null);
@@ -497,6 +525,13 @@ export function ApiPlanProvider({ children }: { children: React.ReactNode }) {
         status: 'draft',
         deadline: input.dueDate ? `${input.dueDate}T00:00:00` : null,
         priority: input.priority,
+        goal_type: goalTypeFromTaskKind(input.taskKind),
+        task_kind: input.taskKind,
+        start_date: input.startDate ?? null,
+        daily_target_minutes: input.dailyTargetMinutes ?? null,
+        recurrence_weekdays: input.recurrenceWeekdays ?? null,
+        target_amount: input.targetAmount ?? null,
+        target_unit: input.targetUnit ?? null,
       })
         .then((goal) => {
           if (!mountedRef.current) return;
@@ -524,6 +559,16 @@ export function ApiPlanProvider({ children }: { children: React.ReactNode }) {
     if (patch.dueDate !== undefined) {
       body.deadline = patch.dueDate ? `${patch.dueDate}T00:00:00` : null;
     }
+    if (patch.taskKind !== undefined) body.task_kind = patch.taskKind;
+    if (patch.startDate !== undefined) body.start_date = patch.startDate;
+    if (patch.dailyTargetMinutes !== undefined) {
+      body.daily_target_minutes = patch.dailyTargetMinutes;
+    }
+    if (patch.recurrenceWeekdays !== undefined) {
+      body.recurrence_weekdays = patch.recurrenceWeekdays;
+    }
+    if (patch.targetAmount !== undefined) body.target_amount = patch.targetAmount;
+    if (patch.targetUnit !== undefined) body.target_unit = patch.targetUnit;
     if (Object.keys(body).length === 0) return;
     void updateGoal(id, body).catch((caught) => {
       if (mountedRef.current) setActionError(errorMessage(caught, '保存目标失败'));
@@ -568,6 +613,13 @@ export function ApiPlanProvider({ children }: { children: React.ReactNode }) {
         description: item.notes || undefined,
         priority: item.priority,
         deadline: item.dueDate ? `${item.dueDate}T00:00:00` : null,
+        goal_type: goalTypeFromTaskKind(item.taskKind),
+        task_kind: item.taskKind,
+        start_date: item.startDate,
+        daily_target_minutes: item.dailyTargetMinutes,
+        recurrence_weekdays: item.recurrenceWeekdays,
+        target_amount: item.targetAmount,
+        target_unit: item.targetUnit,
       })),
       plan_title: pendingTasks[0]?.title ?? '新计划',
       available_minutes_per_day: preferences.availableMinutesPerDay,
@@ -877,6 +929,25 @@ export function ApiPlanProvider({ children }: { children: React.ReactNode }) {
     [updateStore],
   );
 
+  /** Soft-delete a task optimistically; a failure restores the whole store. */
+  const deleteTask = useCallback(
+    (id: number) => {
+      const snapshot = storeRef.current;
+      setActionError(null);
+      updateStore((prev) => ops.deleteTask(prev, id));
+      if (planId == null) return;
+      void deleteTaskApi(planId, id)
+        .then(async () => {
+          await Promise.all([refreshInsights(), refreshFeedbackHistory()]);
+        })
+        .catch((caught) => {
+          updateStore(() => snapshot);
+          if (mountedRef.current) setActionError(errorMessage(caught, '删除任务失败'));
+        });
+    },
+    [planId, refreshInsights, refreshFeedbackHistory, updateStore],
+  );
+
   const updateWeight = useCallback(
     async (weight: number) => {
       setActionError(null);
@@ -897,13 +968,20 @@ export function ApiPlanProvider({ children }: { children: React.ReactNode }) {
           replanTriggered: false,
           replanPlanId: null,
           cooldownMessage: '还没有计划，先生成一个。',
+          saved: false,
+          mode: 'recorded',
+          route: null,
+          reasons: [],
+          replanError: null,
         };
       }
       setActionError(null);
+
+      let response: FeedbackSubmitResponse;
       try {
         // `completionRate` is today's rate supplied by the UI (todayDone /
         // (todayDone + todayOpen)), not the lifetime insight rate.
-        const response = await submitFeedbackApi(
+        response = await submitFeedbackApi(
           planId,
           {
             date: todayISO(),
@@ -912,43 +990,86 @@ export function ApiPlanProvider({ children }: { children: React.ReactNode }) {
             energy_level: assessmentScore(assessment.energy),
             free_text: input.freeText ?? null,
             delay_reason: input.delayReason ?? null,
+            task_reasons: input.taskReasons?.map((reason) => ({
+              task_id: reason.taskId,
+              reason: reason.reason,
+              note: reason.note ?? null,
+            })),
           },
           { streamReplan: true },
         );
-
-        let replanPlanId = response.replan_plan_id;
-        let replanTriggered = response.replan_triggered;
-        // The replan graph now runs as a job; its completed result is the truth.
-        if (response.replan_job_id) {
-          const status = await runJob(jobHandleFromId(response.replan_job_id));
-          if (status.status === 'failed') throw new Error(status.error ?? '重排失败');
-          const jobResult = status.result as {
-            replan_triggered?: boolean;
-            replan_plan_id?: number | null;
-          } | null;
-          replanTriggered = Boolean(jobResult?.replan_triggered);
-          replanPlanId = jobResult?.replan_plan_id ?? null;
-        }
-
-        let cooldownMessage: string | null = null;
-        if (replanPlanId != null) {
-          await adoptPlan(replanPlanId);
-        } else {
-          await refreshFeedbackHistory();
-          const eligibility = response.replan_eligibility;
-          if (eligibility && !eligibility.eligible) {
-            cooldownMessage = eligibility.next_eligible_at
-              ? `重排冷却中，最早 ${eligibility.next_eligible_at.slice(0, 16).replace('T', ' ')} 可以再排。`
-              : '重排冷却中，暂时不能再排。';
-          }
-        }
-
-        return { replanTriggered, replanPlanId, cooldownMessage };
       } catch (caught) {
         const message = errorMessage(caught, '反馈提交失败');
         setActionError(message);
-        return { replanTriggered: false, replanPlanId: null, cooldownMessage: message };
+        return {
+          replanTriggered: false,
+          replanPlanId: null,
+          cooldownMessage: message,
+          saved: false,
+          mode: 'recorded',
+          route: null,
+          reasons: [],
+          replanError: message,
+        };
       }
+
+      // The feedback row is persisted from here on. A replan failure must NEVER
+      // be reported as a failed submission.
+      let route = normalizeReplanRoute(response.replan_decision);
+      let reasons = feedbackReasons(response.adjustment?.reasons, response.replan_reason);
+      let replanPlanId = response.replan_plan_id;
+      let replanError: string | null = null;
+
+      if (response.replan_job_id) {
+        try {
+          // The replan graph runs as a job; its completed result is the truth.
+          const status = await runJob(jobHandleFromId(response.replan_job_id));
+          if (status.status === 'failed') throw new Error(status.error ?? '重排失败');
+          const jobResult = status.result as FeedbackReplanJobResult | null;
+          replanPlanId = jobResult?.replan_triggered ? (jobResult.replan_plan_id ?? null) : null;
+          route = normalizeReplanRoute(jobResult?.replan_decision) ?? route;
+          const jobReasons = feedbackReasons(
+            jobResult?.adjustment?.reasons,
+            jobResult?.replan_reason,
+          );
+          if (jobReasons.length > 0) reasons = jobReasons;
+        } catch (caught) {
+          replanPlanId = null;
+          replanError = errorMessage(caught, '重排失败');
+        }
+      }
+
+      let replanned = false;
+      if (replanPlanId != null) {
+        try {
+          await adoptPlan(replanPlanId);
+          replanned = true;
+        } catch (caught) {
+          replanError = errorMessage(caught, '加载新计划失败');
+        }
+      }
+
+      let cooldownMessage: string | null = null;
+      if (!replanned) {
+        await refreshFeedbackHistory();
+        const eligibility = response.replan_eligibility;
+        if (eligibility && !eligibility.eligible) {
+          cooldownMessage = eligibility.next_eligible_at
+            ? `重排冷却中，最早 ${eligibility.next_eligible_at.slice(0, 16).replace('T', ' ')} 可以再排。`
+            : '重排冷却中，暂时不能再排。';
+        }
+      }
+
+      return {
+        replanTriggered: replanned,
+        replanPlanId: replanned ? replanPlanId : null,
+        cooldownMessage,
+        saved: true,
+        mode: replanned ? 'replanned' : 'recorded',
+        route,
+        reasons,
+        replanError,
+      };
     },
     [planId, assessment, adoptPlan, refreshFeedbackHistory],
   );
@@ -1003,7 +1124,7 @@ export function ApiPlanProvider({ children }: { children: React.ReactNode }) {
       createTask: unsupported,
       updateTask,
       updateStandard,
-      deleteTask: unsupported,
+      deleteTask,
       setDone,
       toggleDone,
       setSkipped,
@@ -1056,6 +1177,7 @@ export function ApiPlanProvider({ children }: { children: React.ReactNode }) {
     updateWeight,
     updateTask,
     updateStandard,
+    deleteTask,
     setDone,
     toggleDone,
     setSkipped,

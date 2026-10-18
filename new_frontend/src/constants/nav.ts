@@ -1,11 +1,9 @@
 import type { IconName } from '@/components/ui/icon';
 
-/**
- * The four destinations. Daily feedback now lives at the bottom of 待办, so it
- * is no longer its own tab.
- */
+/** The five destinations. Daily feedback sits next to 待办. */
 export const NAV = [
   { href: '/', label: '待办', title: '待办', icon: 'list' as IconName },
+  { href: '/feedback', label: '反馈', title: '反馈', icon: 'flag' as IconName },
   { href: '/profile', label: '画像', title: '画像', icon: 'chart' as IconName },
   { href: '/goal', label: '目标', title: '目标', icon: 'target' as IconName },
   { href: '/settings', label: '设置', title: '设置', icon: 'sliders' as IconName },
@@ -25,11 +23,12 @@ export type RouteMeta = {
 };
 
 /**
- * Explicit route metadata. Without this, any route outside the four tabs
+ * Explicit route metadata. Without this, any route outside the tabs
  * (e.g. /profile-details) falls back to the first nav item and reads as 待办.
  */
 export const ROUTES: Record<string, RouteMeta> = {
   '/': { title: '待办', navHref: '/' },
+  '/feedback': { title: '反馈', navHref: '/feedback', selfScroll: true },
   '/profile': { title: '画像', navHref: '/profile' },
   '/goal': { title: '目标', navHref: '/goal', selfScroll: true },
   '/settings': { title: '设置', navHref: '/settings' },

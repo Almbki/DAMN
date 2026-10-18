@@ -21,6 +21,20 @@ _AUTH = {401: {"model": ErrorResponse, "description": "Not authenticated"}}
 _NOT_FOUND = {404: {"model": ErrorResponse, "description": "Plan not found"}}
 
 
+def _adjustment_payload(outcome) -> dict | None:
+    """JSON-able agent adjustment (route/severity/reasons/source/plan)."""
+    if outcome is None:
+        return None
+    return FeedbackAdjustmentRead(
+        route=outcome.route.value,
+        severity=outcome.severity.value,
+        reasons=outcome.reasons,
+        source=outcome.source,
+        new_plan_id=outcome.new_plan_id,
+        degraded=outcome.degraded,
+    ).model_dump(mode="json")
+
+
 @router.post(
     "/{plan_id}/feedback",
     response_model=FeedbackSubmitResponse,
@@ -28,8 +42,11 @@ _NOT_FOUND = {404: {"model": ErrorResponse, "description": "Plan not found"}}
     summary="Submit daily feedback for a plan",
     description=(
         "Stores the daily check-in (completion rate, stress, energy, reasons). "
-        "If the completion rate is below the auto-replan threshold and the plan "
-        "is eligible, a replan is triggered and reported in the response."
+        "The check-in is always persisted. A feedback policy based on current "
+        "stress/energy plus the portrait (duration bias / recent completion) "
+        "decides whether the plan is adjusted; completion rate or free text "
+        "alone never triggers a replan. The response reports the policy route "
+        "(`replan_decision`) and why (`replan_reason`)."
     ),
     responses={**_AUTH, **_NOT_FOUND, 403: {"model": ErrorResponse}},
 )
@@ -50,6 +67,7 @@ def submit_feedback(
         stress_level=payload.stress_level,
         energy_level=payload.energy_level,
         delay_reason=payload.delay_reason,
+        task_reasons=[item.model_dump() for item in payload.task_reasons],
         free_text=payload.free_text,
         sleep_hours=payload.sleep_hours,
         dominant_time_of_day=payload.dominant_time_of_day,
@@ -63,12 +81,26 @@ def submit_feedback(
         note = payload.free_text
 
         def runner(plan_service: PlanService, emit) -> dict:
+            # The service policy already decided whether the cycle should run.
+            if result.replan_decision == "none":
+                return {
+                    "replan_triggered": False,
+                    "replan_plan_id": None,
+                    "replan_decision": "none",
+                    "replan_reason": result.replan_reason,
+                    "adjustment": None,
+                }
             outcome = plan_service.process_feedback_cycle(
                 user_id, plan_id, note=note, emit=emit
             )
+            if not outcome.reasons:
+                outcome.reasons = [result.replan_reason or "feedback cycle"]
             return {
                 "replan_triggered": outcome.new_plan_id is not None,
                 "replan_plan_id": outcome.new_plan_id,
+                "replan_decision": result.replan_decision,
+                "replan_reason": outcome.reasons[0] if outcome.reasons else None,
+                "adjustment": _adjustment_payload(outcome),
             }
 
         job = generation_service.submit(
@@ -76,16 +108,6 @@ def submit_feedback(
         )
         replan_job_id = job.job_id
 
-    adjustment = None
-    if result.adjustment is not None:
-        adjustment = FeedbackAdjustmentRead(
-            route=result.adjustment.route.value,
-            severity=result.adjustment.severity.value,
-            reasons=result.adjustment.reasons,
-            source=result.adjustment.source,
-            new_plan_id=result.adjustment.new_plan_id,
-            degraded=result.adjustment.degraded,
-        )
     return FeedbackSubmitResponse(
         feedback=FeedbackRead.model_validate(result.feedback),
         replan_triggered=result.replan_triggered,
@@ -96,7 +118,9 @@ def submit_feedback(
             if result.replan_eligibility
             else None
         ),
-        adjustment=adjustment,
+        adjustment=_adjustment_payload(result.adjustment),
+        replan_decision=result.replan_decision,
+        replan_reason=result.replan_reason,
     )
 
 

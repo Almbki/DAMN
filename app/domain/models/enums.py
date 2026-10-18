@@ -13,6 +13,18 @@ class GoalType(StrEnum):
     OTHER = "other"
 
 
+class TaskKind(StrEnum):
+    """How a goal/task repeats over time.
+
+    ``ONE_OFF`` is the existing default (one task per goal); ``LONG_TERM`` and
+    ``ROUTINE`` split a goal into daily occurrences.
+    """
+
+    ONE_OFF = "one_off"
+    LONG_TERM = "long_term"
+    ROUTINE = "routine"
+
+
 class GoalStatus(StrEnum):
     #: Waiting to be decomposed (frontend "待拆解清单"). Added for the
     #: frontend contract; stored as a string so no data migration is needed.
