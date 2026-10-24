@@ -52,13 +52,25 @@ class ProfileRead(BaseModel):
     stress_response: float
     state_energy: float
     state_fatigue: float
+    #: Level 2 stress projection (0..1). Null-safe legacy field.
+    state_stress: float = 0.5
     self_efficacy: float
     update_count: int = 0
     #: True while ``update_count < 3`` - predictions are cold-start priors.
     degraded: bool = True
+    # --- real three-layer model snapshots (additive, authoritative) --------
+    #: Level 1 TraitSnapshotV1 JSON (N/E/O/A/C theta + SE + metadata).
+    trait: dict | None = None
+    #: Level 2 DynamicStateSnapshot JSON (pre-task state + metadata).
+    state: dict | None = None
+    #: Artifact/version metadata for Level 1/2/3.
+    model_metadata: list[dict] = Field(default_factory=list)
 
     @classmethod
-    def from_parts(cls, profile, state) -> ProfileRead:
+    def from_parts(
+        cls, profile, state, *, trait: dict | None = None, level2: dict | None = None,
+        model_metadata: list[dict] | None = None,
+    ) -> ProfileRead:
         return cls(
             mbti_type=profile.mbti_type,
             mbti_dims=dict(profile.mbti_dims) if profile.mbti_dims else None,
@@ -73,15 +85,30 @@ class ProfileRead(BaseModel):
             stress_response=state.stress_response,
             state_energy=state.state_energy,
             state_fatigue=state.state_fatigue,
+            state_stress=state.state_stress,
             self_efficacy=state.self_efficacy,
             update_count=state.update_count,
             degraded=state.is_degraded(),
+            trait=trait,
+            state=level2,
+            model_metadata=list(model_metadata or []),
         )
 
 
 __all__ = [
     "MBTI_DIMENSION_KEYS",
+    "ModelRuntimeRead",
     "ProfileRead",
     "normalise_mbti_type",
     "validate_mbti_dims",
 ]
+
+
+class ModelRuntimeRead(BaseModel):
+    """``GET /users/me/model-runtime`` - versions, modes and shadow summary."""
+
+    requested_mode: str
+    effective_mode: str
+    mode_reason: str | None = None
+    layers: list[dict] = Field(default_factory=list)
+    shadow_summary: dict = Field(default_factory=dict)

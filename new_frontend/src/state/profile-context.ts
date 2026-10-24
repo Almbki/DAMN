@@ -1,11 +1,25 @@
 import { createContext, useContext } from 'react';
 
-import type { ProfileUpdateRequest, UserProfileRead, UserStateRead } from '@/api/types';
+import type {
+  DynamicStateSnapshot,
+  ModelMetadata,
+  ProfileUpdateRequest,
+  TraitSnapshot,
+  UserProfileRead,
+  UserStateRead,
+} from '@/api/types';
+
+/** Authoritative three-layer model snapshots; presentation-only consumers. */
+export type ProfileModelSnapshot = {
+  trait: TraitSnapshot | null;
+  state: DynamicStateSnapshot | null;
+  metadata: ModelMetadata[];
+};
 
 /**
- * 基础画像 + adaptive user state. Separate from the plan provider because the
- * profile is a small, independent slice; it still follows the same mock|api
- * switch (`EXPO_PUBLIC_DATA_SOURCE`).
+ * 基础画像 + compatibility state + the real Level 1/2 snapshots. Separate from
+ * the plan provider because the profile is a small, independent slice; it still
+ * follows the same mock|api switch (`EXPO_PUBLIC_DATA_SOURCE`).
  */
 export type ProfileContextValue = {
   /** First load (or a manual refresh) is in flight. */
@@ -15,8 +29,10 @@ export type ProfileContextValue = {
   error: string | null;
   /** `null` = 尚未设置画像 (the backend returned 404). */
   profile: UserProfileRead | null;
-  /** `null` while there is no profile yet. */
+  /** Compatibility projections only; do not use as the product state. */
   state: UserStateRead | null;
+  /** Real Level 1 trait + Level 2 state snapshots. */
+  model: ProfileModelSnapshot | null;
   refresh: () => void;
   /** Resolves to `true` on success; the caller shows the "已保存" note. */
   save: (patch: ProfileUpdateRequest) => Promise<boolean>;

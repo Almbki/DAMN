@@ -28,6 +28,16 @@ _FIELDS: tuple[str, ...] = (
     "state_fatigue",
     "self_efficacy",
     "update_count",
+    "state_stress",
+    "state_fatigue_uncertainty",
+    "state_stress_uncertainty",
+    "self_efficacy_uncertainty",
+    "level2_profile",
+    "level2_profile_date",
+    "level2_model_version",
+    "level2_config_version",
+    "level2_artifact_hash",
+    "level2_updated_at",
 )
 
 
@@ -80,6 +90,16 @@ class UserStateRepository(RepositoryBase):
             state_fatigue=orm.state_fatigue,
             self_efficacy=orm.self_efficacy,
             update_count=orm.update_count,
+            state_stress=orm.state_stress,
+            state_fatigue_uncertainty=orm.state_fatigue_uncertainty,
+            state_stress_uncertainty=orm.state_stress_uncertainty,
+            self_efficacy_uncertainty=orm.self_efficacy_uncertainty,
+            level2_profile=dict(orm.level2_profile) if orm.level2_profile else None,
+            level2_profile_date=orm.level2_profile_date,
+            level2_model_version=orm.level2_model_version,
+            level2_config_version=orm.level2_config_version,
+            level2_artifact_hash=orm.level2_artifact_hash,
+            level2_updated_at=orm.level2_updated_at,
         )
 
 

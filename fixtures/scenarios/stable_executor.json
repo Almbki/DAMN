@@ -1,0 +1,221 @@
+{
+  "scenario_version": "1.0",
+  "name": "stable_executor",
+  "description": "稳定执行：完成率高、用时接近预估、反馈平稳。",
+  "level1": {
+    "trait_profile": {
+      "schema_version": "1.0",
+      "model": "trait_v1",
+      "instrument": "IPIP-NEO-120",
+      "method": "bayesian_cat",
+      "calibration": {
+        "model": "samejima_grm",
+        "version": "grm_v1",
+        "reference_population": "Johnson_IPIP_NEO_120"
+      },
+      "domains": {
+        "N": {
+          "theta": 0.2,
+          "se": 0.3,
+          "ci95": [
+            -0.39999999999999997,
+            0.8
+          ],
+          "items_answered": 8
+        },
+        "E": {
+          "theta": 0.2,
+          "se": 0.3,
+          "ci95": [
+            -0.39999999999999997,
+            0.8
+          ],
+          "items_answered": 8
+        },
+        "O": {
+          "theta": 0.2,
+          "se": 0.3,
+          "ci95": [
+            -0.39999999999999997,
+            0.8
+          ],
+          "items_answered": 8
+        },
+        "A": {
+          "theta": 0.2,
+          "se": 0.3,
+          "ci95": [
+            -0.39999999999999997,
+            0.8
+          ],
+          "items_answered": 8
+        },
+        "C": {
+          "theta": 0.4,
+          "se": 0.3,
+          "ci95": [
+            -0.39999999999999997,
+            0.8
+          ],
+          "items_answered": 8
+        }
+      },
+      "assessment": {
+        "total_items_answered": 40,
+        "completed": true
+      }
+    }
+  },
+  "days": [
+    {
+      "date": "2026-09-01",
+      "tasks": [
+        {
+          "title": "数学练习",
+          "estimated_duration_minutes": 45,
+          "actual_duration_minutes": 48,
+          "completion_rate": 1.0,
+          "completed": true,
+          "interruption_count": null,
+          "difficulty": 1
+        },
+        {
+          "title": "英语阅读",
+          "estimated_duration_minutes": 30,
+          "actual_duration_minutes": 32,
+          "completion_rate": 1.0,
+          "completed": true,
+          "interruption_count": 0,
+          "difficulty": 2
+        }
+      ],
+      "feedback": {
+        "completion_rate": 0.95,
+        "stress_level": 3,
+        "energy_level": 7,
+        "free_text": "今天按照计划完成，状态平稳。",
+        "sleep_hours": 7.0
+      }
+    },
+    {
+      "date": "2026-09-02",
+      "tasks": [
+        {
+          "title": "数学练习",
+          "estimated_duration_minutes": 45,
+          "actual_duration_minutes": 48,
+          "completion_rate": 1.0,
+          "completed": true,
+          "interruption_count": null,
+          "difficulty": 1
+        },
+        {
+          "title": "英语阅读",
+          "estimated_duration_minutes": 30,
+          "actual_duration_minutes": 32,
+          "completion_rate": 1.0,
+          "completed": true,
+          "interruption_count": 0,
+          "difficulty": 2
+        }
+      ],
+      "feedback": {
+        "completion_rate": 0.95,
+        "stress_level": 3,
+        "energy_level": 7,
+        "free_text": "今天按照计划完成，状态平稳。",
+        "sleep_hours": 7.0
+      }
+    },
+    {
+      "date": "2026-09-03",
+      "tasks": [
+        {
+          "title": "数学练习",
+          "estimated_duration_minutes": 45,
+          "actual_duration_minutes": 48,
+          "completion_rate": 1.0,
+          "completed": true,
+          "interruption_count": null,
+          "difficulty": 1
+        },
+        {
+          "title": "英语阅读",
+          "estimated_duration_minutes": 30,
+          "actual_duration_minutes": 32,
+          "completion_rate": 1.0,
+          "completed": true,
+          "interruption_count": 0,
+          "difficulty": 2
+        }
+      ],
+      "feedback": {
+        "completion_rate": 0.95,
+        "stress_level": 3,
+        "energy_level": 7,
+        "free_text": "今天按照计划完成，状态平稳。",
+        "sleep_hours": 7.0
+      }
+    },
+    {
+      "date": "2026-09-04",
+      "tasks": [
+        {
+          "title": "数学练习",
+          "estimated_duration_minutes": 45,
+          "actual_duration_minutes": 48,
+          "completion_rate": 1.0,
+          "completed": true,
+          "interruption_count": null,
+          "difficulty": 1
+        },
+        {
+          "title": "英语阅读",
+          "estimated_duration_minutes": 30,
+          "actual_duration_minutes": 32,
+          "completion_rate": 1.0,
+          "completed": true,
+          "interruption_count": 0,
+          "difficulty": 2
+        }
+      ],
+      "feedback": {
+        "completion_rate": 0.95,
+        "stress_level": 3,
+        "energy_level": 7,
+        "free_text": "今天按照计划完成，状态平稳。",
+        "sleep_hours": 7.0
+      }
+    },
+    {
+      "date": "2026-09-05",
+      "tasks": [
+        {
+          "title": "数学练习",
+          "estimated_duration_minutes": 45,
+          "actual_duration_minutes": 48,
+          "completion_rate": 1.0,
+          "completed": true,
+          "interruption_count": null,
+          "difficulty": 1
+        },
+        {
+          "title": "英语阅读",
+          "estimated_duration_minutes": 30,
+          "actual_duration_minutes": 32,
+          "completion_rate": 1.0,
+          "completed": true,
+          "interruption_count": 0,
+          "difficulty": 2
+        }
+      ],
+      "feedback": {
+        "completion_rate": 0.95,
+        "stress_level": 3,
+        "energy_level": 7,
+        "free_text": "今天按照计划完成，状态平稳。",
+        "sleep_hours": 7.0
+      }
+    }
+  ]
+}

@@ -21,6 +21,8 @@ from app.application.services import (
     ReplanService,
     ScheduleEventService,
     SituationService,
+    SyntheticScenarioService,
+    TraitAssessmentService,
 )
 from app.core.security import InvalidTokenError, decode_access_token
 from app.domain.models import User
@@ -107,6 +109,18 @@ def get_goal_service(db: Session = Depends(get_db)) -> GoalService:
 
 def get_situation_service(db: Session = Depends(get_db)) -> SituationService:
     return SituationService(db)
+
+
+def get_trait_assessment_service(
+    db: Session = Depends(get_db),
+) -> TraitAssessmentService:
+    return TraitAssessmentService(db)
+
+
+def get_synthetic_scenario_service(
+    db: Session = Depends(get_db),
+) -> SyntheticScenarioService:
+    return SyntheticScenarioService(db)
 
 
 def get_generation_service() -> GenerationService:

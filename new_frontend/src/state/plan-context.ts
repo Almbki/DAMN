@@ -168,6 +168,17 @@ export type PlanContextValue = {
   updateStandard: (taskId: number, standardId: number, completed: boolean) => Promise<void>;
   deleteTask: (id: number) => void;
   setDone: (id: number, done: boolean) => void;
+  /** Record the real start of a task (`started_at` on the backend). */
+  startTask: (id: number) => void;
+  /** Complete with an optional actual duration (minutes). */
+  completeTask: (id: number, actualMinutes?: number | null, interruptionCount?: number | null) => void;
+  /** Save a partial completion (0..1) and optional actual duration. */
+  partialCompleteTask: (
+    id: number,
+    completionRate: number,
+    actualMinutes?: number | null,
+    interruptionCount?: number | null,
+  ) => void;
   toggleDone: (id: number) => void;
   setSkipped: (id: number, skipped: boolean) => void;
   reorder: (draggedId: number, targetId: number) => void;

@@ -30,6 +30,7 @@ import type { Task } from '@/domain/task';
 import { useReducedMotion } from '@/hooks/use-reduced-motion';
 import { usePlan } from '@/state/plan';
 import type { FeedbackResult } from '@/state/plan-context';
+import { useProfile } from '@/state/profile';
 import { useTheme } from '@/state/theme';
 
 const WEEKDAY = ['周日', '周一', '周二', '周三', '周四', '周五', '周六'];
@@ -51,6 +52,7 @@ function taskMeta(task: Task): string {
 export default function FeedbackScreen() {
   const { colors } = useTheme();
   const router = useRouter();
+  const profile = useProfile();
   const {
     tasks,
     stats,
@@ -59,6 +61,7 @@ export default function FeedbackScreen() {
     submitFeedback,
     feedbackHistory,
     refreshFeedbackHistory,
+    refresh,
     actionError,
     clearActionError,
   } = usePlan();
@@ -145,6 +148,10 @@ export default function FeedbackScreen() {
       if (feedbackSaved(response)) {
         markFeedbackSubmitted(today);
         setJustSaved(true);
+        // The backend updates Level 2 during the feedback request. Refresh the
+        // profile + plan so the state cards and trend reflect the new observation.
+        profile.refresh();
+        refresh();
       }
     } catch {
       setSubmitError('反馈提交失败，请稍后再试。');

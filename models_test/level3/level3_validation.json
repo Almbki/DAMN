@@ -1,0 +1,59 @@
+{
+  "model": "Level3-Predictor-V1",
+  "model_version": "level3_v1",
+  "generated_at_utc": "2026-10-24T03:11:01.368289+00:00",
+  "read_only_contract": {
+    "level1_modified": false,
+    "level2_modified": false,
+    "level1_level2_hashes": {
+      "level1\\cat.py": "62bb5fcda605dc98ee92d0ccaa435c03953c98484f6eaffe986f6cec02d4cc95",
+      "level1\\artifacts\\grm_parameters.json": "93d0fbb0aae7539c73e2846a94ee67bf616ad7e8862358a520fc545c73da7afb",
+      "level1\\artifacts\\cat_config.json": "6263ac91ec48d117bf43b2650a76baa477785dbe8ad88ff46a08a9d6ad581163",
+      "level2\\ddsr\\schemas.py": "76080297f0e76fe50e662c306aab923b9edd556ed3e6c81125f405aafed7aa19",
+      "level2\\ddsr\\engine.py": "2ba8aedf67cc70abfde5e4972916267ce3fd6745244a2e0e6e46d46e45c639e8",
+      "level2\\ddsr\\config.json": "d859e8ae6fa8dd09239a9ceb3d706c01341ebfdf76891c5202987734eee5f566"
+    }
+  },
+  "test_results": {
+    "command": "pytest level3/tests -v",
+    "returncode": 0,
+    "passed": 0,
+    "failed": 0,
+    "all_passed": true,
+    "tail": [
+      "============================= test session starts =============================",
+      "platform win32 -- Python 3.14.7, pytest-9.1.1, pluggy-1.6.0",
+      "rootdir: C:\\Users\\ROG\\Documents\\Projects\\DAMN",
+      "configfile: pyproject.toml",
+      "plugins: anyio-4.12.1",
+      "collected 11 items",
+      "",
+      "level3\\tests\\test_level3.py ...........                                  [100%]",
+      "",
+      "============================== warnings summary ===============================",
+      "..\\..\\..\\..\\..\\Miniconda3\\Lib\\site-packages\\_pytest\\config\\__init__.py:1464",
+      "  C:\\Users\\ROG\\Miniconda3\\Lib\\site-packages\\_pytest\\config\\__init__.py:1464: PytestConfigWarning: Unknown config option: asyncio_mode",
+      "  ",
+      "    self._warn_or_fail_if_strict(f\"Unknown config option: {key}\\n\")",
+      "",
+      "-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html",
+      "======================== 11 passed, 1 warning in 0.06s ========================"
+    ]
+  },
+  "prediction_modes": [
+    "cold_start",
+    "history_baseline",
+    "learned_model"
+  ],
+  "anti_leakage": {
+    "uses_only_pre_task_state": true,
+    "snapshot_frozen_before_outcome": true,
+    "no_post_task_backfill": true
+  },
+  "implementation_validated": true,
+  "predictive_validity_validated": false,
+  "notes": [
+    "No real longitudinal outcome dataset available; synthetic tests only for implementation validation.",
+    "Learned model coefficients not fitted (NOT FITTED) until real data passes eligibility gate."
+  ]
+}

@@ -14,13 +14,13 @@ from statistics import mean
 
 from sqlalchemy.orm import Session
 
+from app.application.dto.situation import SituationTrendData, SituationTrendPointData
 from app.domain.models.enums import TimeOfDay
 from app.infrastructure.database.repositories import (
     FeedbackRepository,
     TaskExecutionRepository,
     UserRepository,
 )
-from app.schemas.user import SituationTrendPoint, SituationTrendRead
 
 #: Days of history needed before the trend is considered trustworthy.
 MIN_SAMPLES = 7
@@ -39,7 +39,7 @@ class SituationService:
         self._feedback = FeedbackRepository(session)
         self._executions = TaskExecutionRepository(session)
 
-    def get_trends(self, user_id: int, *, days: int = 14) -> SituationTrendRead:
+    def get_trends(self, user_id: int, *, days: int = 14) -> SituationTrendData:
         days = max(MIN_DAYS, min(MAX_DAYS, int(days)))
         end = date.today()
         start = end - timedelta(days=days - 1)
@@ -62,14 +62,14 @@ class SituationService:
             EXECUTION_WEIGHT * execution_weight + COMPLETION_WEIGHT * recent_completion, 4
         )
 
-        points: list[SituationTrendPoint] = []
+        points: list[SituationTrendPointData] = []
         for offset in range(days):
             day = start + timedelta(days=offset)
             entries = by_day.get(day, [])
             energy = [e.energy_level for e in entries if e.energy_level is not None]
             stress = [e.stress_level for e in entries if e.stress_level is not None]
             points.append(
-                SituationTrendPoint(
+                SituationTrendPointData(
                     date=day,
                     energy=round(mean(energy), 2) if energy else None,
                     stress=round(mean(stress), 2) if stress else None,
@@ -79,7 +79,7 @@ class SituationService:
 
         samples = len(feedbacks)
         sufficient = samples >= MIN_SAMPLES
-        return SituationTrendRead(
+        return SituationTrendData(
             points=points,
             samples=samples,
             min_samples=MIN_SAMPLES,

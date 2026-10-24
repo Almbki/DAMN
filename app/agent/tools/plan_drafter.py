@@ -16,6 +16,7 @@ from enum import StrEnum
 
 from pydantic import BaseModel, Field
 
+from app.agent.features import PlanProgress
 from app.agent.llm import StructuredLLM
 from app.agent.schemas import (
     GeneratedTaskDraft,
@@ -25,8 +26,8 @@ from app.agent.schemas import (
 )
 from app.agent.state import GoalInput, PreferenceInput
 from app.agent.tools.base import BaseTool
+from app.domain.feedback.models import AdjustmentDecision
 from app.domain.models.enums import GoalType, Priority, TaskKind, TimeOfDay
-from app.ml.base import AdjustmentPrediction, PlanProgress
 
 #: Deterministic adjustment keywords -> duration scale.
 _SCALE_DOWN_RE = re.compile(r"太多|减少|少一点|少排|轻松|too much|less|reduce|overload", re.I)
@@ -99,15 +100,14 @@ class PlanDrafterInput(BaseModel):
 
     # replan mode
     planning_context: str = ""
-    ml_prediction: AdjustmentPrediction | None = None
+    adjustment: AdjustmentDecision | None = None
     progress: PlanProgress | None = None
     replan_reason: str | None = None
     completed_task_titles: list[str] = Field(default_factory=list)
-    #: Truthful origin of the per-task predictions (carried onto every draft).
+    #: Truthful origin of the per-task production estimates.
     prediction_source: str | None = None
-    #: Cold-start portrait block (MBTI priors + EWMA state). Rendered into the
-    #: prompt so the LLM can bias the mix; it is a prior, never a constraint.
-    profile_context: str = ""
+    #: Typed user-model snapshot rendered into the prompt (Level 1 + Level 2).
+    user_model_context: str = ""
 
 
 class PlanDrafterTool(BaseTool[PlanDrafterInput, PlanGenerationResult]):
@@ -180,15 +180,15 @@ class PlanDrafterTool(BaseTool[PlanDrafterInput, PlanGenerationResult]):
             "user_adjustment": payload.user_adjustment or "",
             "adjustment_count": payload.adjustment_count,
             "planning_context": payload.planning_context,
-            "ml_prediction": (
-                payload.ml_prediction.model_dump(mode="json") if payload.ml_prediction else {}
+            "adjustment_decision": (
+                payload.adjustment.model_dump(mode="json") if payload.adjustment else {}
             ),
             "current_plan": (
                 payload.preview.model_dump(mode="json") if payload.preview else {}
             ),
             "progress": payload.progress.model_dump(mode="json") if payload.progress else {},
             "replan_reason": payload.replan_reason or "",
-            "profile": payload.profile_context or "(no portrait available)",
+            "user_model": payload.user_model_context or "(no user model available)",
         }
 
     # -- deterministic fallback -------------------------------------------
@@ -246,8 +246,7 @@ class PlanDrafterTool(BaseTool[PlanDrafterInput, PlanGenerationResult]):
                 stress = situation.stress_state
                 slot = situation.recommended_time_slot
             if predicted is None:
-                factor = situation.duration_factor if situation else 1.0
-                predicted = max(1, round(total * factor))
+                predicted = max(1, total)
 
             occurrences = (
                 _occurrence_days(goal, payload)

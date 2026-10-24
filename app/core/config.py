@@ -85,6 +85,25 @@ class Settings(BaseSettings):
     agent_feedback_energy_critical: float = Field(default=3.0, ge=0.0, le=10.0)
     agent_feedback_duration_bias_high: float = Field(default=0.50, ge=0.0, le=1.0)
 
+    # --- Three-layer user model -------------------------------------------
+    #: off = do not run Level 3; shadow = run + log but never control the plan;
+    #: active = reserved (v1 downgrades it to shadow, see user_models.runtime).
+    level3_mode: str = "shadow"
+    #: Minimum days between completed Level 1 reassessments. 0 disables it.
+    trait_reassessment_cooldown_days: int = Field(default=30, ge=0)
+
+    # --- Developer/demo tools ---------------------------------------------
+    #: Synthetic scenario import is a demo/test tool; disabled by default.
+    enable_synthetic_import: bool = False
+
+    @field_validator("level3_mode")
+    @classmethod
+    def _valid_level3_mode(cls, value: str) -> str:
+        normalized = value.strip().lower()
+        if normalized not in {"off", "shadow", "active"}:
+            raise ValueError("level3_mode must be 'off', 'shadow' or 'active'")
+        return normalized
+
     @field_validator("cors_origins")
     @classmethod
     def _strip_origins(cls, value: str) -> str:

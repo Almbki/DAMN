@@ -14,9 +14,10 @@ from typing import Protocol, runtime_checkable
 
 from pydantic import BaseModel, Field
 
+from app.agent.features import FeedbackSignal, PlanProgress, UserFeatureSet
 from app.domain.models.enums import CognitiveLoad, Priority, TaskKind, TaskStatus
 from app.domain.scheduling.schedule_result import FixedEvent
-from app.ml.base import FeedbackSignal, PlanProgress, UserFeatureSet
+from app.user_models.contracts import UserModelContext
 
 
 class MemoryKind(StrEnum):
@@ -123,15 +124,14 @@ class PlanningContext(BaseModel):
     #: Imported immovable events expanded over a rolling window (today..+90d).
     fixed_events: list[FixedEvent] = Field(default_factory=list)
 
+    #: Typed Level 1/2/3 snapshot built by the application layer. This is the
+    #: only user-model shape the agent consumes; it is never re-derived in a
+    #: node and never includes raw SQLAlchemy rows.
+    user_model: UserModelContext | None = None
+    #: Soft self-report MBTI (cold-start hint only, never a model input).
+    mbti: str | None = None
     # Free-form note the user attached to this run (adjustment / feedback text).
     user_note: str | None = None
-    #: Cold-start portrait from the profile engine (`ProfileService.snapshot`).
-    #: MBTI-derived priors - NOT a diagnosis, decays as feedback accumulates.
-    profile_prompt: dict = Field(default_factory=dict)
-    #: Portrait-driven replan verdict: "full_replan" | "local_repair" | "none".
-    #: Computed by the application layer so the router stays pure.
-    profile_replan: str | None = None
-    profile_replan_reason: str | None = None
     assembled_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
 
     def all_memory(self) -> list[MemoryItem]:

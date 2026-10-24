@@ -25,6 +25,7 @@ from app.domain.models.replan_event import ReplanEvent
 from app.domain.models.schedule_event import ScheduleEvent
 from app.domain.models.task import Task
 from app.domain.models.task_standard import TaskStandard
+from app.domain.models.trait_assessment import TraitAssessment
 from app.domain.models.user import User
 
 __all__ = [
@@ -50,6 +51,7 @@ __all__ = [
     "TaskStandard",
     "TaskStatus",
     "TimeOfDay",
+    "TraitAssessment",
     "User",
     "ViolationSeverity",
     "utcnow",

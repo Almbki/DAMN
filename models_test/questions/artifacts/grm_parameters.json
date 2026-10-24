@@ -1,0 +1,1620 @@
+{
+  "model": "GRM",
+  "version": "grm_v1",
+  "scale": {
+    "response_min": 1,
+    "response_max": 5
+  },
+  "calibration": {
+    "dataset": "dataset/IPIP120.dat",
+    "respondents": 619150,
+    "items": 120,
+    "missing_code": 0,
+    "missing_handling": "treated as missing (girth INVALID_RESPONSE); no imputation",
+    "reverse_scoring_applied": false,
+    "latent_distribution": "standard normal",
+    "quadrature": {
+      "bounds": [
+        -4.5,
+        4.5
+      ],
+      "n": 41
+    },
+    "software": "girth 0.8.0 grm_mml",
+    "max_iteration": 25,
+    "convergence_check": "25 vs 26 iteration refit; max |delta a| = 0, max |delta b| = 0"
+  },
+  "domains": {
+    "N": {
+      "domain_name": "Neuroticism",
+      "n_items": 24,
+      "items": {
+        "IPIP_001": {
+          "domain": "N",
+          "a": 1.399684,
+          "thresholds": [
+            -2.845059,
+            -1.4348,
+            -0.751632,
+            1.179899
+          ],
+          "facet": "Anxiety",
+          "facet_code": "N1",
+          "text_en": "Worry about things."
+        },
+        "IPIP_006": {
+          "domain": "N",
+          "a": 1.132839,
+          "thresholds": [
+            -1.848024,
+            -0.333068,
+            0.656894,
+            2.330548
+          ],
+          "facet": "Anger",
+          "facet_code": "N2",
+          "text_en": "Get angry easily."
+        },
+        "IPIP_011": {
+          "domain": "N",
+          "a": 1.737929,
+          "thresholds": [
+            -1.354849,
+            -0.186363,
+            0.658963,
+            1.951135
+          ],
+          "facet": "Depression",
+          "facet_code": "N3",
+          "text_en": "Often feel blue."
+        },
+        "IPIP_016": {
+          "domain": "N",
+          "a": 0.899413,
+          "thresholds": [
+            -2.033997,
+            -0.253765,
+            0.772656,
+            2.909787
+          ],
+          "facet": "Self-Consciousness",
+          "facet_code": "N4",
+          "text_en": "Find it difficult to approach others."
+        },
+        "IPIP_021": {
+          "domain": "N",
+          "a": 0.573702,
+          "thresholds": [
+            -2.221915,
+            -0.542217,
+            1.3982,
+            4.089589
+          ],
+          "facet": "Immoderation",
+          "facet_code": "N5",
+          "text_en": "Go on binges."
+        },
+        "IPIP_026": {
+          "domain": "N",
+          "a": 1.906502,
+          "thresholds": [
+            -1.037393,
+            0.050935,
+            0.732312,
+            1.89211
+          ],
+          "facet": "Vulnerability",
+          "facet_code": "N6",
+          "text_en": "Panic easily."
+        },
+        "IPIP_031": {
+          "domain": "N",
+          "a": 1.616746,
+          "thresholds": [
+            -1.627241,
+            -0.413088,
+            0.303149,
+            1.650203
+          ],
+          "facet": "Anxiety",
+          "facet_code": "N1",
+          "text_en": "Fear for the worst."
+        },
+        "IPIP_036": {
+          "domain": "N",
+          "a": 1.388262,
+          "thresholds": [
+            -2.182483,
+            -0.751937,
+            0.061861,
+            1.672973
+          ],
+          "facet": "Anger",
+          "facet_code": "N2",
+          "text_en": "Get irritated easily."
+        },
+        "IPIP_041": {
+          "domain": "N",
+          "a": 1.602009,
+          "thresholds": [
+            -0.486568,
+            0.497063,
+            1.333986,
+            2.513589
+          ],
+          "facet": "Depression",
+          "facet_code": "N3",
+          "text_en": "Dislike myself."
+        },
+        "IPIP_046": {
+          "domain": "N",
+          "a": 0.739962,
+          "thresholds": [
+            -2.648105,
+            -0.474965,
+            0.964536,
+            3.3441
+          ],
+          "facet": "Self-Consciousness",
+          "facet_code": "N4",
+          "text_en": "Am afraid to draw attention to myself."
+        },
+        "IPIP_051": {
+          "domain": "N",
+          "a": 0.464223,
+          "thresholds": [
+            -5.878919,
+            -1.959279,
+            1.068449,
+            5.291776
+          ],
+          "facet": "Immoderation",
+          "facet_code": "N5",
+          "text_en": "Rarely overindulge."
+        },
+        "IPIP_056": {
+          "domain": "N",
+          "a": 1.446221,
+          "thresholds": [
+            -1.940854,
+            -0.440717,
+            0.4977,
+            2.153677
+          ],
+          "facet": "Vulnerability",
+          "facet_code": "N6",
+          "text_en": "Become overwhelmed by events."
+        },
+        "IPIP_061": {
+          "domain": "N",
+          "a": 1.62904,
+          "thresholds": [
+            -1.010127,
+            0.394709,
+            1.105746,
+            2.471169
+          ],
+          "facet": "Anxiety",
+          "facet_code": "N1",
+          "text_en": "Am afraid of many things."
+        },
+        "IPIP_066": {
+          "domain": "N",
+          "a": 1.148574,
+          "thresholds": [
+            -1.247069,
+            0.176702,
+            0.964566,
+            2.575917
+          ],
+          "facet": "Anger",
+          "facet_code": "N2",
+          "text_en": "Lose my temper."
+        },
+        "IPIP_071": {
+          "domain": "N",
+          "a": 1.88678,
+          "thresholds": [
+            -0.744321,
+            0.300787,
+            1.05273,
+            2.149321
+          ],
+          "facet": "Depression",
+          "facet_code": "N3",
+          "text_en": "Am often down in the dumps."
+        },
+        "IPIP_076": {
+          "domain": "N",
+          "a": 0.78646,
+          "thresholds": [
+            -2.906973,
+            -0.43676,
+            0.550265,
+            2.788054
+          ],
+          "facet": "Self-Consciousness",
+          "facet_code": "N4",
+          "text_en": "Only feel comfortable with friends."
+        },
+        "IPIP_081": {
+          "domain": "N",
+          "a": 0.50351,
+          "thresholds": [
+            -5.316999,
+            -1.521618,
+            0.38589,
+            4.323445
+          ],
+          "facet": "Immoderation",
+          "facet_code": "N5",
+          "text_en": "Easily resist temptations."
+        },
+        "IPIP_086": {
+          "domain": "N",
+          "a": 1.768268,
+          "thresholds": [
+            -0.80491,
+            0.444855,
+            1.111993,
+            2.390116
+          ],
+          "facet": "Vulnerability",
+          "facet_code": "N6",
+          "text_en": "Feel that I'm unable to deal with things."
+        },
+        "IPIP_091": {
+          "domain": "N",
+          "a": 2.2738,
+          "thresholds": [
+            -1.385968,
+            -0.371297,
+            0.116136,
+            1.238456
+          ],
+          "facet": "Anxiety",
+          "facet_code": "N1",
+          "text_en": "Get stressed out easily."
+        },
+        "IPIP_096": {
+          "domain": "N",
+          "a": 1.055036,
+          "thresholds": [
+            -2.356464,
+            -0.445257,
+            0.373854,
+            2.324043
+          ],
+          "facet": "Anger",
+          "facet_code": "N2",
+          "text_en": "Am not easily annoyed."
+        },
+        "IPIP_101": {
+          "domain": "N",
+          "a": 1.371111,
+          "thresholds": [
+            -0.91366,
+            0.97155,
+            1.703964,
+            2.947071
+          ],
+          "facet": "Depression",
+          "facet_code": "N3",
+          "text_en": "Feel comfortable with myself."
+        },
+        "IPIP_106": {
+          "domain": "N",
+          "a": 0.73515,
+          "thresholds": [
+            -3.186549,
+            -0.662079,
+            0.398661,
+            2.724945
+          ],
+          "facet": "Self-Consciousness",
+          "facet_code": "N4",
+          "text_en": "Am not bothered by difficult social situations."
+        },
+        "IPIP_111": {
+          "domain": "N",
+          "a": 0.699314,
+          "thresholds": [
+            -3.640537,
+            -0.399923,
+            0.863388,
+            3.637888
+          ],
+          "facet": "Immoderation",
+          "facet_code": "N5",
+          "text_en": "Am able to control my cravings."
+        },
+        "IPIP_116": {
+          "domain": "N",
+          "a": 1.358364,
+          "thresholds": [
+            -1.339163,
+            0.561383,
+            1.321494,
+            2.759881
+          ],
+          "facet": "Vulnerability",
+          "facet_code": "N6",
+          "text_en": "Remain calm under pressure."
+        }
+      }
+    },
+    "E": {
+      "domain_name": "Extraversion",
+      "n_items": 24,
+      "items": {
+        "IPIP_002": {
+          "domain": "E",
+          "a": 1.984315,
+          "thresholds": [
+            -2.394213,
+            -1.278814,
+            -0.661491,
+            0.782001
+          ],
+          "facet": "Friendliness",
+          "facet_code": "E1",
+          "text_en": "Make friends easily."
+        },
+        "IPIP_007": {
+          "domain": "E",
+          "a": 1.458622,
+          "thresholds": [
+            -1.532436,
+            -0.48497,
+            0.297986,
+            1.383416
+          ],
+          "facet": "Gregariousness",
+          "facet_code": "E2",
+          "text_en": "Love large parties."
+        },
+        "IPIP_012": {
+          "domain": "E",
+          "a": 0.998043,
+          "thresholds": [
+            -3.919204,
+            -2.107262,
+            -0.742325,
+            1.599024
+          ],
+          "facet": "Assertiveness",
+          "facet_code": "E3",
+          "text_en": "Take charge."
+        },
+        "IPIP_017": {
+          "domain": "E",
+          "a": 0.60362,
+          "thresholds": [
+            -5.711329,
+            -2.382506,
+            -0.359794,
+            2.373032
+          ],
+          "facet": "Activity Level",
+          "facet_code": "E4",
+          "text_en": "Am always busy."
+        },
+        "IPIP_022": {
+          "domain": "E",
+          "a": 1.162145,
+          "thresholds": [
+            -4.621783,
+            -2.88351,
+            -1.573782,
+            0.425907
+          ],
+          "facet": "Excitement-Seeking",
+          "facet_code": "E5",
+          "text_en": "Love excitement."
+        },
+        "IPIP_027": {
+          "domain": "E",
+          "a": 1.341743,
+          "thresholds": [
+            -2.760255,
+            -1.405167,
+            -0.018954,
+            1.775291
+          ],
+          "facet": "Cheerfulness",
+          "facet_code": "E6",
+          "text_en": "Radiate joy."
+        },
+        "IPIP_032": {
+          "domain": "E",
+          "a": 2.282717,
+          "thresholds": [
+            -2.34672,
+            -1.235946,
+            -0.533378,
+            0.928862
+          ],
+          "facet": "Friendliness",
+          "facet_code": "E1",
+          "text_en": "Feel comfortable around people."
+        },
+        "IPIP_037": {
+          "domain": "E",
+          "a": 1.998665,
+          "thresholds": [
+            -1.471652,
+            -0.484385,
+            0.111239,
+            1.208116
+          ],
+          "facet": "Gregariousness",
+          "facet_code": "E2",
+          "text_en": "Talk to a lot of different people at parties."
+        },
+        "IPIP_042": {
+          "domain": "E",
+          "a": 0.931271,
+          "thresholds": [
+            -3.385193,
+            -1.767034,
+            -0.401088,
+            2.044233
+          ],
+          "facet": "Assertiveness",
+          "facet_code": "E3",
+          "text_en": "Try to lead others."
+        },
+        "IPIP_047": {
+          "domain": "E",
+          "a": 0.963132,
+          "thresholds": [
+            -4.015219,
+            -1.837599,
+            -0.315957,
+            1.666927
+          ],
+          "facet": "Activity Level",
+          "facet_code": "E4",
+          "text_en": "Am always on the go."
+        },
+        "IPIP_052": {
+          "domain": "E",
+          "a": 1.016426,
+          "thresholds": [
+            -3.817435,
+            -2.024563,
+            -0.714529,
+            1.436091
+          ],
+          "facet": "Excitement-Seeking",
+          "facet_code": "E5",
+          "text_en": "Seek adventure."
+        },
+        "IPIP_057": {
+          "domain": "E",
+          "a": 1.840114,
+          "thresholds": [
+            -3.001419,
+            -1.859809,
+            -0.948826,
+            0.51954
+          ],
+          "facet": "Cheerfulness",
+          "facet_code": "E6",
+          "text_en": "Have a lot of fun."
+        },
+        "IPIP_062": {
+          "domain": "E",
+          "a": 1.998786,
+          "thresholds": [
+            -2.605182,
+            -1.300958,
+            -0.630323,
+            0.607987
+          ],
+          "facet": "Friendliness",
+          "facet_code": "E1",
+          "text_en": "Avoid contacts with others."
+        },
+        "IPIP_067": {
+          "domain": "E",
+          "a": 1.313257,
+          "thresholds": [
+            -2.258181,
+            -0.700903,
+            0.453163,
+            1.719528
+          ],
+          "facet": "Gregariousness",
+          "facet_code": "E2",
+          "text_en": "Prefer to be alone."
+        },
+        "IPIP_072": {
+          "domain": "E",
+          "a": 0.943868,
+          "thresholds": [
+            -4.326392,
+            -2.305769,
+            -0.827153,
+            1.91188
+          ],
+          "facet": "Assertiveness",
+          "facet_code": "E3",
+          "text_en": "Take control of things."
+        },
+        "IPIP_077": {
+          "domain": "E",
+          "a": 0.849136,
+          "thresholds": [
+            -3.697461,
+            -1.34908,
+            -0.148921,
+            2.020949
+          ],
+          "facet": "Activity Level",
+          "facet_code": "E4",
+          "text_en": "Do a lot in my spare time."
+        },
+        "IPIP_082": {
+          "domain": "E",
+          "a": 0.47403,
+          "thresholds": [
+            -2.00933,
+            0.433562,
+            2.318682,
+            5.952575
+          ],
+          "facet": "Excitement-Seeking",
+          "facet_code": "E5",
+          "text_en": "Enjoy being reckless."
+        },
+        "IPIP_087": {
+          "domain": "E",
+          "a": 1.291847,
+          "thresholds": [
+            -3.337937,
+            -2.305512,
+            -1.29946,
+            0.201831
+          ],
+          "facet": "Cheerfulness",
+          "facet_code": "E6",
+          "text_en": "Love life."
+        },
+        "IPIP_092": {
+          "domain": "E",
+          "a": 1.456982,
+          "thresholds": [
+            -2.264521,
+            -0.633786,
+            0.105168,
+            1.544786
+          ],
+          "facet": "Friendliness",
+          "facet_code": "E1",
+          "text_en": "Keep others at a distance."
+        },
+        "IPIP_097": {
+          "domain": "E",
+          "a": 1.757482,
+          "thresholds": [
+            -1.846269,
+            -0.587397,
+            0.070118,
+            1.300319
+          ],
+          "facet": "Gregariousness",
+          "facet_code": "E2",
+          "text_en": "Avoid crowds."
+        },
+        "IPIP_102": {
+          "domain": "E",
+          "a": 0.950418,
+          "thresholds": [
+            -3.849938,
+            -1.48676,
+            -0.178906,
+            1.849511
+          ],
+          "facet": "Assertiveness",
+          "facet_code": "E3",
+          "text_en": "Wait for others to lead the way."
+        },
+        "IPIP_107": {
+          "domain": "E",
+          "a": 0.631125,
+          "thresholds": [
+            -1.804589,
+            1.609171,
+            3.305192,
+            5.927227
+          ],
+          "facet": "Activity Level",
+          "facet_code": "E4",
+          "text_en": "Like to take it easy."
+        },
+        "IPIP_112": {
+          "domain": "E",
+          "a": 0.743837,
+          "thresholds": [
+            -1.667259,
+            -0.05334,
+            1.220004,
+            3.427652
+          ],
+          "facet": "Excitement-Seeking",
+          "facet_code": "E5",
+          "text_en": "Act wild and crazy."
+        },
+        "IPIP_117": {
+          "domain": "E",
+          "a": 1.214695,
+          "thresholds": [
+            -3.193271,
+            -1.839486,
+            -0.896276,
+            0.922124
+          ],
+          "facet": "Cheerfulness",
+          "facet_code": "E6",
+          "text_en": "Look at the bright side of life."
+        }
+      }
+    },
+    "O": {
+      "domain_name": "Openness",
+      "n_items": 24,
+      "items": {
+        "IPIP_003": {
+          "domain": "O",
+          "a": 1.080141,
+          "thresholds": [
+            -4.251805,
+            -2.549319,
+            -1.28242,
+            0.603892
+          ],
+          "facet": "Imagination",
+          "facet_code": "O1",
+          "text_en": "Have a vivid imagination."
+        },
+        "IPIP_008": {
+          "domain": "O",
+          "a": 1.719031,
+          "thresholds": [
+            -2.215876,
+            -1.274386,
+            -0.374466,
+            0.727804
+          ],
+          "facet": "Artistic Interests",
+          "facet_code": "O2",
+          "text_en": "Believe in the importance of art."
+        },
+        "IPIP_013": {
+          "domain": "O",
+          "a": 0.593001,
+          "thresholds": [
+            -5.497896,
+            -2.684312,
+            -0.75281,
+            1.951507
+          ],
+          "facet": "Emotionality",
+          "facet_code": "O3",
+          "text_en": "Experience my emotions intensely."
+        },
+        "IPIP_018": {
+          "domain": "O",
+          "a": 0.578107,
+          "thresholds": [
+            -5.520827,
+            -2.452879,
+            -0.488187,
+            2.306394
+          ],
+          "facet": "Adventurousness",
+          "facet_code": "O4",
+          "text_en": "Prefer variety to routine."
+        },
+        "IPIP_023": {
+          "domain": "O",
+          "a": 1.124036,
+          "thresholds": [
+            -2.269396,
+            -1.057672,
+            -0.064057,
+            1.473332
+          ],
+          "facet": "Intellect",
+          "facet_code": "O5",
+          "text_en": "Love to read challenging material."
+        },
+        "IPIP_028": {
+          "domain": "O",
+          "a": 0.667086,
+          "thresholds": [
+            -2.273301,
+            -1.335127,
+            1.120579,
+            2.810273
+          ],
+          "facet": "Liberalism",
+          "facet_code": "O6",
+          "text_en": "Tend to vote for liberal political candidates."
+        },
+        "IPIP_033": {
+          "domain": "O",
+          "a": 0.799877,
+          "thresholds": [
+            -3.375033,
+            -1.719966,
+            -0.231333,
+            1.687554
+          ],
+          "facet": "Imagination",
+          "facet_code": "O1",
+          "text_en": "Enjoy wild flights of fantasy."
+        },
+        "IPIP_038": {
+          "domain": "O",
+          "a": 1.264942,
+          "thresholds": [
+            -3.845345,
+            -2.313864,
+            -1.054587,
+            0.862178
+          ],
+          "facet": "Artistic Interests",
+          "facet_code": "O2",
+          "text_en": "See beauty in things that others might not notice."
+        },
+        "IPIP_043": {
+          "domain": "O",
+          "a": 0.680248,
+          "thresholds": [
+            -5.936492,
+            -3.608247,
+            -1.881552,
+            1.572353
+          ],
+          "facet": "Emotionality",
+          "facet_code": "O3",
+          "text_en": "Feel others' emotions."
+        },
+        "IPIP_048": {
+          "domain": "O",
+          "a": 0.73167,
+          "thresholds": [
+            -2.755235,
+            0.179125,
+            1.690859,
+            4.568937
+          ],
+          "facet": "Adventurousness",
+          "facet_code": "O4",
+          "text_en": "Prefer to stick with things that I know."
+        },
+        "IPIP_053": {
+          "domain": "O",
+          "a": 1.319616,
+          "thresholds": [
+            -2.641646,
+            -1.463532,
+            -0.478493,
+            0.815132
+          ],
+          "facet": "Intellect",
+          "facet_code": "O5",
+          "text_en": "Avoid philosophical discussions."
+        },
+        "IPIP_058": {
+          "domain": "O",
+          "a": 0.391541,
+          "thresholds": [
+            -4.239934,
+            -1.619999,
+            0.412055,
+            3.928618
+          ],
+          "facet": "Liberalism",
+          "facet_code": "O6",
+          "text_en": "Believe that there is no absolute right or wrong."
+        },
+        "IPIP_063": {
+          "domain": "O",
+          "a": 0.692322,
+          "thresholds": [
+            -4.8246,
+            -2.658089,
+            -1.198472,
+            1.267662
+          ],
+          "facet": "Imagination",
+          "facet_code": "O1",
+          "text_en": "Love to daydream."
+        },
+        "IPIP_068": {
+          "domain": "O",
+          "a": 1.259623,
+          "thresholds": [
+            -2.017749,
+            -0.952663,
+            -0.116525,
+            1.08968
+          ],
+          "facet": "Artistic Interests",
+          "facet_code": "O2",
+          "text_en": "Do not like poetry."
+        },
+        "IPIP_073": {
+          "domain": "O",
+          "a": 0.591881,
+          "thresholds": [
+            -5.841484,
+            -2.75414,
+            -1.130446,
+            1.784577
+          ],
+          "facet": "Emotionality",
+          "facet_code": "O3",
+          "text_en": "Rarely notice my emotional reactions."
+        },
+        "IPIP_078": {
+          "domain": "O",
+          "a": 0.594654,
+          "thresholds": [
+            -4.36857,
+            -1.350875,
+            0.413031,
+            3.459493
+          ],
+          "facet": "Adventurousness",
+          "facet_code": "O4",
+          "text_en": "Dislike changes."
+        },
+        "IPIP_083": {
+          "domain": "O",
+          "a": 1.288129,
+          "thresholds": [
+            -3.303076,
+            -1.728396,
+            -0.674628,
+            0.85916
+          ],
+          "facet": "Intellect",
+          "facet_code": "O5",
+          "text_en": "Have difficulty understanding abstract ideas."
+        },
+        "IPIP_088": {
+          "domain": "O",
+          "a": 0.564503,
+          "thresholds": [
+            -3.883823,
+            -2.281793,
+            0.689616,
+            1.863522
+          ],
+          "facet": "Liberalism",
+          "facet_code": "O6",
+          "text_en": "Tend to vote for conservative political candidates."
+        },
+        "IPIP_093": {
+          "domain": "O",
+          "a": 0.876727,
+          "thresholds": [
+            -3.742516,
+            -1.91985,
+            -0.736648,
+            1.374373
+          ],
+          "facet": "Imagination",
+          "facet_code": "O1",
+          "text_en": "Like to get lost in thought."
+        },
+        "IPIP_098": {
+          "domain": "O",
+          "a": 1.408046,
+          "thresholds": [
+            -1.918275,
+            -1.004336,
+            -0.280087,
+            0.852547
+          ],
+          "facet": "Artistic Interests",
+          "facet_code": "O2",
+          "text_en": "Do not enjoy going to art museums."
+        },
+        "IPIP_103": {
+          "domain": "O",
+          "a": 0.591868,
+          "thresholds": [
+            -5.90663,
+            -3.00906,
+            -1.62438,
+            1.167644
+          ],
+          "facet": "Emotionality",
+          "facet_code": "O3",
+          "text_en": "Don't understand people who get emotional."
+        },
+        "IPIP_108": {
+          "domain": "O",
+          "a": 0.764259,
+          "thresholds": [
+            -4.328777,
+            -1.328394,
+            0.859364,
+            2.999597
+          ],
+          "facet": "Adventurousness",
+          "facet_code": "O4",
+          "text_en": "Am attached to conventional ways."
+        },
+        "IPIP_113": {
+          "domain": "O",
+          "a": 1.392835,
+          "thresholds": [
+            -2.517005,
+            -1.437537,
+            -0.524513,
+            0.789338
+          ],
+          "facet": "Intellect",
+          "facet_code": "O5",
+          "text_en": "Am not interested in theoretical discussions."
+        },
+        "IPIP_118": {
+          "domain": "O",
+          "a": 0.670432,
+          "thresholds": [
+            -1.193841,
+            1.553854,
+            3.774826,
+            5.980651
+          ],
+          "facet": "Liberalism",
+          "facet_code": "O6",
+          "text_en": "Believe that we should be tough on crime."
+        }
+      }
+    },
+    "A": {
+      "domain_name": "Agreeableness",
+      "n_items": 24,
+      "items": {
+        "IPIP_004": {
+          "domain": "A",
+          "a": 0.782868,
+          "thresholds": [
+            -3.968349,
+            -1.575777,
+            -0.259398,
+            2.870603
+          ],
+          "facet": "Trust",
+          "facet_code": "A1",
+          "text_en": "Trust others."
+        },
+        "IPIP_009": {
+          "domain": "A",
+          "a": 1.137057,
+          "thresholds": [
+            -3.8184,
+            -1.804139,
+            -0.386749,
+            0.94727
+          ],
+          "facet": "Morality",
+          "facet_code": "A2",
+          "text_en": "Use others for my own ends."
+        },
+        "IPIP_014": {
+          "domain": "A",
+          "a": 1.364249,
+          "thresholds": [
+            -4.081598,
+            -2.663507,
+            -1.39475,
+            0.500185
+          ],
+          "facet": "Altruism",
+          "facet_code": "A3",
+          "text_en": "Love to help others."
+        },
+        "IPIP_019": {
+          "domain": "A",
+          "a": 0.730933,
+          "thresholds": [
+            -3.118081,
+            -1.227437,
+            -0.088726,
+            1.29356
+          ],
+          "facet": "Cooperation",
+          "facet_code": "A4",
+          "text_en": "Love a good fight."
+        },
+        "IPIP_024": {
+          "domain": "A",
+          "a": 0.879724,
+          "thresholds": [
+            -3.328975,
+            -1.019863,
+            0.262781,
+            1.580077
+          ],
+          "facet": "Modesty",
+          "facet_code": "A5",
+          "text_en": "Believe that I am better than others."
+        },
+        "IPIP_029": {
+          "domain": "A",
+          "a": 0.925989,
+          "thresholds": [
+            -3.307074,
+            -1.628157,
+            -0.310099,
+            1.841541
+          ],
+          "facet": "Sympathy",
+          "facet_code": "A6",
+          "text_en": "Sympathize with the homeless."
+        },
+        "IPIP_034": {
+          "domain": "A",
+          "a": 0.987133,
+          "thresholds": [
+            -3.952557,
+            -1.923908,
+            -0.494309,
+            2.378387
+          ],
+          "facet": "Trust",
+          "facet_code": "A1",
+          "text_en": "Believe that others have good intentions."
+        },
+        "IPIP_039": {
+          "domain": "A",
+          "a": 1.141878,
+          "thresholds": [
+            -3.992282,
+            -2.28547,
+            -1.242844,
+            -0.023586
+          ],
+          "facet": "Morality",
+          "facet_code": "A2",
+          "text_en": "Cheat to get ahead."
+        },
+        "IPIP_044": {
+          "domain": "A",
+          "a": 1.607316,
+          "thresholds": [
+            -3.666161,
+            -2.543258,
+            -1.619737,
+            0.482763
+          ],
+          "facet": "Altruism",
+          "facet_code": "A3",
+          "text_en": "Am concerned about others."
+        },
+        "IPIP_049": {
+          "domain": "A",
+          "a": 0.826219,
+          "thresholds": [
+            -4.023503,
+            -1.96881,
+            -0.767385,
+            0.810965
+          ],
+          "facet": "Cooperation",
+          "facet_code": "A4",
+          "text_en": "Yell at people."
+        },
+        "IPIP_054": {
+          "domain": "A",
+          "a": 0.44457,
+          "thresholds": [
+            -4.143576,
+            0.175813,
+            2.886072,
+            5.942643
+          ],
+          "facet": "Modesty",
+          "facet_code": "A5",
+          "text_en": "Think highly of myself."
+        },
+        "IPIP_059": {
+          "domain": "A",
+          "a": 1.193485,
+          "thresholds": [
+            -3.606548,
+            -2.220799,
+            -1.250016,
+            0.843534
+          ],
+          "facet": "Sympathy",
+          "facet_code": "A6",
+          "text_en": "Feel sympathy for those who are worse off than myself."
+        },
+        "IPIP_064": {
+          "domain": "A",
+          "a": 0.799349,
+          "thresholds": [
+            -3.844012,
+            -1.485438,
+            -0.056947,
+            3.415798
+          ],
+          "facet": "Trust",
+          "facet_code": "A1",
+          "text_en": "Trust what people say."
+        },
+        "IPIP_069": {
+          "domain": "A",
+          "a": 1.679452,
+          "thresholds": [
+            -3.380539,
+            -1.947216,
+            -1.109083,
+            0.062889
+          ],
+          "facet": "Morality",
+          "facet_code": "A2",
+          "text_en": "Take advantage of others."
+        },
+        "IPIP_074": {
+          "domain": "A",
+          "a": 1.432617,
+          "thresholds": [
+            -3.540042,
+            -2.160304,
+            -0.982,
+            0.452887
+          ],
+          "facet": "Altruism",
+          "facet_code": "A3",
+          "text_en": "Am indifferent to the feelings of others."
+        },
+        "IPIP_079": {
+          "domain": "A",
+          "a": 1.380418,
+          "thresholds": [
+            -3.05076,
+            -1.610633,
+            -0.82402,
+            0.290792
+          ],
+          "facet": "Cooperation",
+          "facet_code": "A4",
+          "text_en": "Insult people."
+        },
+        "IPIP_084": {
+          "domain": "A",
+          "a": 0.38566,
+          "thresholds": [
+            -4.788052,
+            0.023037,
+            2.66702,
+            5.926682
+          ],
+          "facet": "Modesty",
+          "facet_code": "A5",
+          "text_en": "Have a high opinion of myself."
+        },
+        "IPIP_089": {
+          "domain": "A",
+          "a": 1.347204,
+          "thresholds": [
+            -3.282494,
+            -1.871064,
+            -1.088426,
+            0.726663
+          ],
+          "facet": "Sympathy",
+          "facet_code": "A6",
+          "text_en": "Am not interested in other people's problems."
+        },
+        "IPIP_094": {
+          "domain": "A",
+          "a": 0.94215,
+          "thresholds": [
+            -3.384467,
+            -1.269228,
+            -0.090489,
+            2.219371
+          ],
+          "facet": "Trust",
+          "facet_code": "A1",
+          "text_en": "Distrust people."
+        },
+        "IPIP_099": {
+          "domain": "A",
+          "a": 1.170771,
+          "thresholds": [
+            -4.896551,
+            -3.223863,
+            -1.433413,
+            0.189073
+          ],
+          "facet": "Morality",
+          "facet_code": "A2",
+          "text_en": "Obstruct others' plans."
+        },
+        "IPIP_104": {
+          "domain": "A",
+          "a": 1.391082,
+          "thresholds": [
+            -3.841871,
+            -2.466407,
+            -1.564684,
+            0.326691
+          ],
+          "facet": "Altruism",
+          "facet_code": "A3",
+          "text_en": "Take no time for others."
+        },
+        "IPIP_109": {
+          "domain": "A",
+          "a": 1.224186,
+          "thresholds": [
+            -2.720839,
+            -1.101783,
+            -0.27377,
+            1.065832
+          ],
+          "facet": "Cooperation",
+          "facet_code": "A4",
+          "text_en": "Get back at others."
+        },
+        "IPIP_114": {
+          "domain": "A",
+          "a": 0.724134,
+          "thresholds": [
+            -5.624498,
+            -2.816982,
+            -0.894192,
+            1.124314
+          ],
+          "facet": "Modesty",
+          "facet_code": "A5",
+          "text_en": "Boast about my virtues."
+        },
+        "IPIP_119": {
+          "domain": "A",
+          "a": 1.105363,
+          "thresholds": [
+            -3.669618,
+            -1.838011,
+            -0.501001,
+            1.369306
+          ],
+          "facet": "Sympathy",
+          "facet_code": "A6",
+          "text_en": "Try not to think about the needy."
+        }
+      }
+    },
+    "C": {
+      "domain_name": "Conscientiousness",
+      "n_items": 24,
+      "items": {
+        "IPIP_005": {
+          "domain": "C",
+          "a": 1.895391,
+          "thresholds": [
+            -3.356,
+            -2.104763,
+            -1.218426,
+            0.604628
+          ],
+          "facet": "Self-Efficacy",
+          "facet_code": "C1",
+          "text_en": "Complete tasks successfully."
+        },
+        "IPIP_010": {
+          "domain": "C",
+          "a": 0.950101,
+          "thresholds": [
+            -2.950823,
+            -1.379416,
+            -0.287723,
+            1.682501
+          ],
+          "facet": "Orderliness",
+          "facet_code": "C2",
+          "text_en": "Like to tidy up."
+        },
+        "IPIP_015": {
+          "domain": "C",
+          "a": 1.154776,
+          "thresholds": [
+            -5.244858,
+            -3.367985,
+            -2.031197,
+            0.396576
+          ],
+          "facet": "Dutifulness",
+          "facet_code": "C3",
+          "text_en": "Keep my promises."
+        },
+        "IPIP_020": {
+          "domain": "C",
+          "a": 1.807309,
+          "thresholds": [
+            -3.271773,
+            -2.134641,
+            -1.24379,
+            0.334975
+          ],
+          "facet": "Achievement-Striving",
+          "facet_code": "C4",
+          "text_en": "Work hard."
+        },
+        "IPIP_025": {
+          "domain": "C",
+          "a": 1.499194,
+          "thresholds": [
+            -2.897617,
+            -1.187251,
+            -0.052506,
+            1.933026
+          ],
+          "facet": "Self-Discipline",
+          "facet_code": "C5",
+          "text_en": "Am always prepared."
+        },
+        "IPIP_030": {
+          "domain": "C",
+          "a": 1.071936,
+          "thresholds": [
+            -2.591662,
+            -0.715276,
+            0.219367,
+            1.891037
+          ],
+          "facet": "Cautiousness",
+          "facet_code": "C6",
+          "text_en": "Jump into things without thinking."
+        },
+        "IPIP_035": {
+          "domain": "C",
+          "a": 1.276511,
+          "thresholds": [
+            -4.497565,
+            -2.988431,
+            -1.435093,
+            0.858344
+          ],
+          "facet": "Self-Efficacy",
+          "facet_code": "C1",
+          "text_en": "Excel in what I do."
+        },
+        "IPIP_040": {
+          "domain": "C",
+          "a": 1.072882,
+          "thresholds": [
+            -2.191515,
+            -0.532795,
+            0.235974,
+            1.663604
+          ],
+          "facet": "Orderliness",
+          "facet_code": "C2",
+          "text_en": "Often forget to put things back in their proper place."
+        },
+        "IPIP_045": {
+          "domain": "C",
+          "a": 1.025348,
+          "thresholds": [
+            -5.248257,
+            -3.338188,
+            -1.862212,
+            0.860236
+          ],
+          "facet": "Dutifulness",
+          "facet_code": "C3",
+          "text_en": "Tell the truth."
+        },
+        "IPIP_050": {
+          "domain": "C",
+          "a": 1.463334,
+          "thresholds": [
+            -3.340372,
+            -1.823681,
+            -0.494028,
+            1.340969
+          ],
+          "facet": "Achievement-Striving",
+          "facet_code": "C4",
+          "text_en": "Do more than what's expected of me."
+        },
+        "IPIP_055": {
+          "domain": "C",
+          "a": 1.603586,
+          "thresholds": [
+            -3.515728,
+            -1.990026,
+            -0.948028,
+            1.294374
+          ],
+          "facet": "Self-Discipline",
+          "facet_code": "C5",
+          "text_en": "Carry out my plans."
+        },
+        "IPIP_060": {
+          "domain": "C",
+          "a": 1.042525,
+          "thresholds": [
+            -2.982156,
+            -1.095956,
+            0.197724,
+            1.808601
+          ],
+          "facet": "Cautiousness",
+          "facet_code": "C6",
+          "text_en": "Make rash decisions."
+        },
+        "IPIP_065": {
+          "domain": "C",
+          "a": 1.497718,
+          "thresholds": [
+            -3.958918,
+            -2.232112,
+            -0.90844,
+            1.637017
+          ],
+          "facet": "Self-Efficacy",
+          "facet_code": "C1",
+          "text_en": "Handle tasks smoothly."
+        },
+        "IPIP_070": {
+          "domain": "C",
+          "a": 1.099409,
+          "thresholds": [
+            -1.534642,
+            -0.121269,
+            0.501332,
+            1.644277
+          ],
+          "facet": "Orderliness",
+          "facet_code": "C2",
+          "text_en": "Leave a mess in my room."
+        },
+        "IPIP_075": {
+          "domain": "C",
+          "a": 0.857585,
+          "thresholds": [
+            -3.596284,
+            -1.158185,
+            -0.0475,
+            1.7575
+          ],
+          "facet": "Dutifulness",
+          "facet_code": "C3",
+          "text_en": "Break rules."
+        },
+        "IPIP_080": {
+          "domain": "C",
+          "a": 1.689541,
+          "thresholds": [
+            -2.279153,
+            -1.035026,
+            -0.389618,
+            0.768263
+          ],
+          "facet": "Achievement-Striving",
+          "facet_code": "C4",
+          "text_en": "Do just enough work to get by."
+        },
+        "IPIP_085": {
+          "domain": "C",
+          "a": 1.609064,
+          "thresholds": [
+            -2.177222,
+            -0.69935,
+            0.060969,
+            1.284613
+          ],
+          "facet": "Self-Discipline",
+          "facet_code": "C5",
+          "text_en": "Waste my time."
+        },
+        "IPIP_090": {
+          "domain": "C",
+          "a": 1.115123,
+          "thresholds": [
+            -2.828116,
+            -0.764653,
+            0.094557,
+            1.805932
+          ],
+          "facet": "Cautiousness",
+          "facet_code": "C6",
+          "text_en": "Rush into things."
+        },
+        "IPIP_095": {
+          "domain": "C",
+          "a": 1.488292,
+          "thresholds": [
+            -4.032283,
+            -2.567451,
+            -1.444493,
+            0.870082
+          ],
+          "facet": "Self-Efficacy",
+          "facet_code": "C1",
+          "text_en": "Know how to get things done."
+        },
+        "IPIP_100": {
+          "domain": "C",
+          "a": 1.082867,
+          "thresholds": [
+            -2.381142,
+            -0.514454,
+            0.150067,
+            1.497195
+          ],
+          "facet": "Orderliness",
+          "facet_code": "C2",
+          "text_en": "Leave my belongings around."
+        },
+        "IPIP_105": {
+          "domain": "C",
+          "a": 1.195803,
+          "thresholds": [
+            -4.769276,
+            -2.853166,
+            -1.786477,
+            0.071148
+          ],
+          "facet": "Dutifulness",
+          "facet_code": "C3",
+          "text_en": "Break my promises."
+        },
+        "IPIP_110": {
+          "domain": "C",
+          "a": 1.58108,
+          "thresholds": [
+            -2.829934,
+            -1.666244,
+            -1.079176,
+            0.279762
+          ],
+          "facet": "Achievement-Striving",
+          "facet_code": "C4",
+          "text_en": "Put little time and effort into my work."
+        },
+        "IPIP_115": {
+          "domain": "C",
+          "a": 1.268714,
+          "thresholds": [
+            -2.40429,
+            -0.620382,
+            0.083016,
+            1.637935
+          ],
+          "facet": "Self-Discipline",
+          "facet_code": "C5",
+          "text_en": "Have difficulty starting tasks."
+        },
+        "IPIP_120": {
+          "domain": "C",
+          "a": 1.291648,
+          "thresholds": [
+            -2.578479,
+            -1.060886,
+            -0.286026,
+            1.090508
+          ],
+          "facet": "Cautiousness",
+          "facet_code": "C6",
+          "text_en": "Act without thinking."
+        }
+      }
+    }
+  },
+  "parameter_count": 600
+}

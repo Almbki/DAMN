@@ -22,6 +22,10 @@ class UserRepository(RepositoryBase):
             mbti_type=user.mbti_type,
             mbti_dims=user.mbti_dims,
             identity=user.identity,
+            trait_profile=user.trait_profile,
+            trait_model_version=user.trait_model_version,
+            trait_artifact_hash=user.trait_artifact_hash,
+            trait_feature_version=user.trait_feature_version,
             created_at=user.created_at,
         )
         self._session.add(orm)

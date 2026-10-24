@@ -1,35 +1,32 @@
 """``user_situation_analysis`` node.
 
-The numbers come from the ML predictors (authoritative). The optional LLM step
-only contributes the narrative and may not change a single number.
+Numbers come from observed aggregates + the real Level 2 state. No production
+model emits a completion probability here: Level 3 is shadow-only in v1, and a
+missing model degrades to an explicit estimate, never a fabricated number.
 """
 
 from __future__ import annotations
 
+from app.agent.features import TaskFeatureSet
 from app.agent.nodes._shared import get_context
 from app.agent.schemas import AgentError, UserSituationNarrative, UserSituationResult
 from app.agent.state import PlannerState, ToolCallRecord
 from app.agent.tools.memory_retriever import MemoryQuery, MemoryRetrieverInput
-from app.agent.tools.task_duration_predictor import (
-    TaskDurationPredictorInput,
-    TaskDurationPredictorTool,
-)
-from app.domain.models.enums import LoadLevel, Priority, TimeOfDay
-from app.ml.base import TaskFeatureSet
+from app.agent.tools.task_estimator import TaskEstimatorInput, TaskEstimatorTool
+from app.domain.models.enums import LoadLevel, Priority
 
 NODE = "user_situation_analysis"
-TOOL = "task_duration_predictor"
+TOOL = "task_estimator"
 PROMPT = "user_situation"
+PRODUCTION_SOURCE = "deterministic:workload_estimate"
 
 
 def _task_features(state: PlannerState) -> list[TaskFeatureSet]:
-    """One feature set per theoretical item, keyed by the provisional id."""
     theoretical = state.get("theoretical_analysis")
     goals = list(state.get("goals") or [])
     features: list[TaskFeatureSet] = []
     if theoretical is None:
         return features
-
     for idx, item in enumerate(theoretical.items):
         goal = goals[idx] if idx < len(goals) else None
         features.append(
@@ -49,13 +46,14 @@ def _task_features(state: PlannerState) -> list[TaskFeatureSet]:
 
 
 def user_situation_analysis_node(state: PlannerState, runtime: object) -> dict:
-    """Predict the user's execution profile for the current workload."""
     ctx = get_context(runtime)
     ctx.publish("node.started", {"node": NODE})
 
     user_context = state.get("user_context")
-    if user_context is None or user_context.user_features is None:
-        # Degraded path: no history -> neutral defaults, clearly flagged.
+    model = user_context.user_model if user_context is not None else None
+    features = _task_features(state)
+
+    if user_context is None or user_context.user_features is None or not features:
         return {
             "user_situation": UserSituationResult(
                 confidence=0.2,
@@ -73,76 +71,104 @@ def user_situation_analysis_node(state: PlannerState, runtime: object) -> dict:
             "notes": ["user_situation_analysis: no user features (degraded)"],
         }
 
-    features = _task_features(state)
-    payload = TaskDurationPredictorInput(
+    payload = TaskEstimatorInput(
         task_features=features,
         user=user_context.user_features,
         available_minutes=user_context.preferences.available_minutes_per_day,
     )
     outcome = ctx.tool(TOOL).invoke(payload)
     ctx.publish("tool.completed", {"tool": TOOL, "ok": outcome.ok})
-    predictions = outcome.value or TaskDurationPredictorTool(ctx.predictors).run(payload)
+    estimates = outcome.value or TaskEstimatorTool().run(payload)
 
-    factors = [
-        predictions.duration[feature.task_id] / max(feature.estimated_duration_minutes, 1)
-        for feature in features
-        if feature.task_id in predictions.duration
-    ]
+    state_snapshot = model.state if model is not None else None
+    stress = (
+        round(state_snapshot.stress.value * 10.0, 2)
+        if state_snapshot is not None
+        else user_context.user_features.avg_stress
+    )
+    completion_ability = user_context.user_features.completion_rate_7d
     result = UserSituationResult(
-        duration_factor=round(sum(factors) / len(factors), 4) if factors else 1.0,
+        duration_factor=1.0,
         completion_ability=(
-            round(sum(predictions.completion.values()) / len(predictions.completion), 4)
-            if predictions.completion
-            else user_context.user_features.completion_rate_7d
+            round(completion_ability, 4) if completion_ability is not None else 0.5
         ),
-        stress_state=predictions.overall_stress,
-        fatigue_state=_fatigue_from_stress(predictions.overall_stress),
-        recommended_time_slot=(
-            next(iter(predictions.time_slot.values()))
-            if predictions.time_slot
-            else TimeOfDay.MORNING
+        stress_state=stress if stress is not None else 5.0,
+        fatigue_state=_fatigue_level(
+            state_snapshot.fatigue.value if state_snapshot else None
         ),
-        predicted_duration=dict(predictions.duration),
-        predicted_completion_probability=dict(predictions.completion),
-        should_reduce_load=predictions.should_reduce_load,
-        confidence=predictions.confidence,
+        recommended_time_slot=next(iter(estimates.time_slot.values()), None),
+        predicted_duration=dict(estimates.duration),
+        # No production model emits this; Level 3 is shadow-only.
+        predicted_completion_probability={},
+        should_reduce_load=estimates.should_reduce_load,
+        confidence=0.5 if state_snapshot is not None else 0.2,
     )
 
-    # Optional narrative from the LLM; numbers above are never overwritten.
     narrative, llm_error = _narrative(state, ctx, result)
     if narrative:
         result = result.model_copy(update={"narrative": narrative})
 
+    errors: list[AgentError] = []
+    if state_snapshot is None and model is not None and model.trait is not None:
+        errors.append(
+            AgentError(
+                node=NODE,
+                kind="level2_unavailable",
+                message="no Level 2 dynamic state; using observed aggregates only",
+                recovered=True,
+            )
+        )
+    if model is not None and model.degraded:
+        actionable = [
+            reason
+            for reason in model.degraded_reasons
+            if reason not in {"level1:no_trait_profile", "level2:no_state_profile"}
+        ]
+        if actionable:
+            errors.append(
+                AgentError(
+                    node=NODE,
+                    kind="user_model_degraded",
+                    message="; ".join(actionable),
+                    recovered=True,
+                )
+            )
+    if llm_error is not None:
+        errors.append(llm_error)
+
     updates: dict = {
         "user_situation": result,
-        "prediction_source": predictions.source,
+        "prediction_source": PRODUCTION_SOURCE,
         "tool_results": [
             ToolCallRecord(
                 tool=TOOL,
                 ok=outcome.ok,
                 duration_ms=outcome.duration_ms,
-                summary=f"source={predictions.source}",
+                summary=f"source={estimates.source}",
                 error=outcome.error,
             )
         ],
         "notes": [
-            f"user_situation_analysis: factor={result.duration_factor}, "
-            f"completion={result.completion_ability}, stress={result.stress_state}, "
-            f"reduce_load={result.should_reduce_load}"
+            f"user_situation_analysis: completion_data={completion_ability is not None}, "
+            f"stress={result.stress_state}, level2={state_snapshot is not None}, "
+            f"level3_mode={model.level3_mode.value if model else 'unavailable'}"
         ],
     }
-    if llm_error is not None:
-        updates["errors"] = [llm_error]
+    if errors:
+        updates["errors"] = errors
     ctx.publish("node.completed", {"node": NODE, "summary": updates["notes"][0]})
     return updates
 
 
-def _fatigue_from_stress(stress: float) -> LoadLevel:
-    if stress < 3:
-        return LoadLevel.LOW
-    if stress < 6:
+def _fatigue_level(fatigue: float | None) -> LoadLevel:
+    """Display bucket for the Level 2 fatigue value (not a model formula)."""
+    if fatigue is None:
         return LoadLevel.MODERATE
-    if stress < 8:
+    if fatigue < 0.35:
+        return LoadLevel.LOW
+    if fatigue < 0.65:
+        return LoadLevel.MODERATE
+    if fatigue < 0.85:
         return LoadLevel.HIGH
     return LoadLevel.OVERLOADED
 
@@ -150,22 +176,24 @@ def _fatigue_from_stress(stress: float) -> LoadLevel:
 def _narrative(
     state: PlannerState, ctx, result: UserSituationResult
 ) -> tuple[str, AgentError | None]:
-    """Optional LLM narrative. Never allowed to alter the numbers."""
     if ctx.llm is None or not getattr(ctx.llm, "enabled", False):
         return "", None
-
     user_context = state.get("user_context")
     digest = ctx.tool("memory_retriever").run(
         MemoryRetrieverInput(context=user_context, query=MemoryQuery(limit=10))
     )
+    model = user_context.user_model if user_context is not None else None
     outcome = ctx.llm.complete_model(
         prompt_name=PROMPT,
         schema=UserSituationNarrative,
         variables={
             "user_context": digest.as_prompt_block(),
-            "ml_prediction": result.model_dump(mode="json"),
+            "user_model": model.model_dump(mode="json") if model else {},
+            "situation_estimate": result.model_dump(mode="json"),
             "progress": (
-                state.get("progress").model_dump(mode="json") if state.get("progress") else {}
+                state.get("progress").model_dump(mode="json")
+                if state.get("progress")
+                else {}
             ),
         },
         fallback=UserSituationNarrative(narrative=result.narrative),
@@ -180,4 +208,4 @@ def _narrative(
     return outcome.value.narrative or result.narrative, None
 
 
-__all__ = ["NODE", "PROMPT", "TOOL", "user_situation_analysis_node"]
+__all__ = ["NODE", "PRODUCTION_SOURCE", "PROMPT", "TOOL", "user_situation_analysis_node"]

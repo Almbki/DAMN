@@ -43,7 +43,9 @@ from app.application.exceptions import (
     NotFoundError,
     PermissionDeniedError,
 )
+from app.application.services.user_model_service import UserModelService
 from app.core.config import get_settings
+from app.domain.feedback.models import AdjustmentRoute, AdjustmentSeverity
 from app.domain.models import (
     AgentRun,
     Goal,
@@ -62,6 +64,7 @@ from app.domain.models.enums import (
     TaskStatus,
 )
 from app.domain.rules.base import RuleEngine
+from app.domain.scheduling.constants import DEFAULT_HORIZON_DAYS
 from app.domain.scheduling.scheduler import Scheduler
 from app.infrastructure.database.repositories import (
     AgentRunRepository,
@@ -74,9 +77,6 @@ from app.infrastructure.database.repositories import (
     TaskStandardRepository,
     UserRepository,
 )
-from app.ml.predictors import PredictorSet
-
-DEFAULT_HORIZON_DAYS = 13
 
 logger = logging.getLogger(__name__)
 
@@ -89,6 +89,17 @@ _PREDICTION_SOURCE_MAX_LEN = 64
 _TITLE_MAX_LEN = 255
 _DESCRIPTION_MAX_LEN = 1000
 _STANDARD_MAX_LEN = 500
+#: Task PATCH fields that belong to ``task_executions``, not ``tasks``.
+_EXECUTION_FIELDS: tuple[str, ...] = (
+    "actual_duration",
+    "difficulty_feedback",
+    "stress_before",
+    "stress_after",
+    "failure_reason",
+    "interruption_count",
+    "started_at",
+    "finished_at",
+)
 
 
 class PlanService:
@@ -96,13 +107,13 @@ class PlanService:
         self,
         session: Session,
         *,
-        predictors: PredictorSet | None = None,
         scheduler: Scheduler | None = None,
         rule_engine: RuleEngine | None = None,
         llm: Any | None = None,
         context_builder: ContextBuilderProtocol | None = None,
         checkpointer: Any | None = None,
         config: AgentConfig | None = None,
+        user_model_service: UserModelService | None = None,
     ) -> None:
         self._session = session
         self._plans = PlanRepository(session)
@@ -114,8 +125,8 @@ class PlanService:
         self._replan_events = ReplanEventRepository(session)
         self._agent_runs = AgentRunRepository(session)
         self._predictions = PredictionLogRepository(session)
+        self._user_models = user_model_service or UserModelService(session)
 
-        self.predictors = predictors or PredictorSet.default()
         self.scheduler = scheduler or Scheduler()
         self.rule_engine = rule_engine or RuleEngine()
         self.llm = llm
@@ -141,7 +152,6 @@ class PlanService:
         return PlannerContext(
             scheduler=self.scheduler,
             rule_engine=self.rule_engine,
-            predictors=self.predictors,
             config=self.config,
             llm=self.llm,
             context_builder=self._context_builder,
@@ -330,7 +340,7 @@ class PlanService:
         warnings = _warnings_from_state(state)
         if preview is not None:  # pragma: no cover - confirm always finalises
             return ConfirmResult(
-                detail=self.get_plan(user_id, 0),
+                detail=None,
                 pending_preview=preview,
                 degraded=bool(warnings),
                 warnings=warnings,
@@ -443,15 +453,22 @@ class PlanService:
     # Feedback cycle
     # ------------------------------------------------------------------
     def process_feedback_cycle(
-        self, user_id: int, plan_id: int, *, note: str | None = None, emit=None
+        self,
+        user_id: int,
+        plan_id: int,
+        *,
+        note: str | None = None,
+        route: str | None = None,
+        emit=None,
     ) -> FeedbackCycleOutcome:
-        """Run graph B and persist a new version when the route requires it."""
+        """Run the replan workflow and persist a new version when required."""
         self.get_plan(user_id, plan_id)  # permission check
         request = self._planner_request_for_plan(
             user_id,
             plan_id,
             note=note,
             trigger_type=RequestIntent.FEEDBACK_DRIVEN,
+            feedback_route=route,
         )
         graph = self._graph()
         state, _events, run_id = self._run(
@@ -462,7 +479,7 @@ class PlanService:
             summary={"stage": "feedback", "plan_id": plan_id},
         )
 
-        prediction = state.get("ml_prediction")
+        prediction = state.get("adjustment")
         warnings = _warnings_from_state(state)
         outcome = FeedbackCycleOutcome(
             route=state.get("route") or _no_change(),
@@ -566,6 +583,20 @@ class PlanService:
         if plan.user_id != user_id:
             raise PermissionDeniedError("plan belongs to another user")
         tasks = self._tasks.list_by_plan(plan_id)
+        # Read-model only: expose the active execution start so a refresh can
+        # still show "in progress" without leaking execution entities.
+        active_starts: dict[int, datetime] = {}
+        for execution in self._executions.list_by_user(user_id, limit=2000):
+            if (
+                execution.started_at is not None
+                and not execution.completed
+                and execution.finished_at is None
+            ):
+                active_starts.setdefault(execution.task_id, execution.started_at)
+        for task in tasks:
+            if task.status in {TaskStatus.COMPLETED, TaskStatus.SKIPPED}:
+                continue
+            task.started_at = active_starts.get(task.id or 0)
         standards = self._standards.list_by_plan(plan_id)
         standards_by_task: dict[int, list[TaskStandard]] = {}
         for standard in standards:
@@ -596,6 +627,15 @@ class PlanService:
             raise NotFoundError("task not found in plan")
 
         completed = changes.pop("completed", None)
+        # Execution-only fields are not Task columns. They used to be silently
+        # dropped when `completed` was not True; now every provided execution
+        # field produces a TaskExecution row (partial completion included).
+        execution_payload = {
+            field: changes.pop(field)
+            for field in _EXECUTION_FIELDS
+            if field in changes
+        }
+        completion_rate = changes.pop("completion_rate", None)
         if completed is True:
             changes.setdefault("status", TaskStatus.COMPLETED)
         if "status" in changes and isinstance(changes["status"], str):
@@ -617,13 +657,24 @@ class PlanService:
                 continue
             self._standards.update_fields(standard_id, completed=bool(update.get("completed")))
 
-        if completed is True:
-            self._record_execution(user_id, task, changes)
+        if completed is True or execution_payload or completion_rate is not None:
+            rate = (
+                1.0
+                if completed is True
+                else float(completion_rate if completion_rate is not None else 0.0)
+            )
+            self._record_execution(
+                user_id,
+                task,
+                execution_payload,
+                completed=bool(completed),
+                completion_rate=rate,
+            )
         self._session.commit()
-        if completed is True:
-            # After the task commit, so a portrait failure can never roll back
-            # the user's own execution record.
-            self._update_profile_from_execution(user_id, task, changes)
+        if completed is True or execution_payload or completion_rate is not None:
+            # After the task commit, so a model failure can never roll back the
+            # user's own execution record.
+            self._refresh_user_model(user_id)
         refreshed = self._tasks.get_by_id(task_id)
         if refreshed is None:  # pragma: no cover - defensive
             raise NotFoundError("task not found in plan")
@@ -653,6 +704,11 @@ class PlanService:
     # ------------------------------------------------------------------
     # internals
     # ------------------------------------------------------------------
+    def latest_changed_task_ids(self, plan_id: int) -> list[int]:
+        """Changed task ids recorded by the newest ReplanEvent for this plan."""
+        event = self._replan_events.get_latest_for_plan(plan_id)
+        return list(event.changed_tasks) if event is not None else []
+
     def _require_user(self, user_id: int) -> None:
         if self._users.get_by_id(user_id) is None:
             raise NotFoundError("user not found")
@@ -760,6 +816,7 @@ class PlanService:
         *,
         note: str | None,
         trigger_type: RequestIntent,
+        feedback_route: str | None = None,
     ) -> PlannerRequest:
         detail = self.get_plan(user_id, plan_id)
         goals = _goal_inputs(detail)
@@ -769,6 +826,7 @@ class PlanService:
             plan_id=plan_id,
             trigger_type=trigger_type,
             user_note=note,
+            feedback_route=feedback_route,
             plan_title=plan.title,
             start_date=plan.start_date,
             end_date=plan.end_date,
@@ -792,9 +850,20 @@ class PlanService:
         placed = {item.task_id: item for item in (schedule.tasks if schedule else [])}
 
         previous = self._plans.get_latest_by_user(user_id)
+        old_tasks = (
+            self._tasks.list_by_plan(previous.id)
+            if previous is not None and previous.id is not None
+            else []
+        )
         if previous is not None and previous.id is not None:
             self._plans.update_status(previous.id, PlanStatus.SUPERSEDED)
 
+        parent = (
+            self._plans.get_by_id(parent_plan_id)
+            if parent_plan_id is not None
+            else None
+        )
+        data_origin = parent.data_origin if parent is not None else "real"
         plan = Plan(
             user_id=user_id,
             version=self._plans.next_version(user_id),
@@ -812,6 +881,7 @@ class PlanService:
             ),
             parent_plan_id=parent_plan_id or (previous.id if previous else None),
             confidence=final.confidence,
+            data_origin=data_origin,
         )
         plan = self._plans.create(plan)
 
@@ -836,6 +906,9 @@ class PlanService:
                     end_time=slot.end_time if slot else None,
                     status=TaskStatus.SCHEDULED,
                     completion_probability=draft.completion_probability,
+                    prediction_source=draft.prediction_source or "deterministic:workload_estimate",
+                    prediction_mode="production",
+                    data_origin=plan.data_origin,
                     is_flexible=draft.is_flexible,
                     task_kind=draft.task_kind,
                     series_id=draft.series_id,
@@ -847,8 +920,16 @@ class PlanService:
                 )
             )
         created_tasks = self._tasks.create_many(tasks)
+        prediction_origin = (
+            "synthetic"
+            if self._user_models.has_synthetic_observations(user_id)
+            else plan.data_origin
+        )
         self._log_predictions(
-            user_id, plan.id or 0, list(zip(created_tasks, final.tasks, strict=False))
+            user_id,
+            plan.id or 0,
+            list(zip(created_tasks, final.tasks, strict=False)),
+            data_origin=prediction_origin,
         )
 
         for task, draft in zip(created_tasks, final.tasks, strict=False):
@@ -865,22 +946,62 @@ class PlanService:
         if standards:
             self._standards.create_many(standards)
 
-        if final.trigger_source in {"replan", "micro_adjust"}:
+        if final.trigger_source in {
+            "manual_replan",
+            "feedback_full_replan",
+            "micro_adjust",
+        }:
+            changed_ids = self._changed_task_ids(old_tasks, created_tasks)
             self._replan_events.create(
                 ReplanEvent(
                     plan_id=plan.id or 0,
-                    trigger_type=ReplanTriggerType.FEEDBACK_TRIGGERED
-                    if final.trigger_source == "micro_adjust"
-                    else ReplanTriggerType.MANUAL,
+                    trigger_type=(
+                        ReplanTriggerType.MANUAL
+                        if final.trigger_source == "manual_replan"
+                        else ReplanTriggerType.FEEDBACK_TRIGGERED
+                    ),
                     reason=replan_reason or final.trigger_source,
                     old_version=plan.version - 1,
                     new_version=plan.version,
-                    changed_tasks=[task.id or 0 for task in created_tasks],
+                    changed_tasks=changed_ids,
                 )
             )
 
         self._session.commit()
-        return self.get_plan(user_id, plan.id or 0)
+        detail = self.get_plan(user_id, plan.id or 0)
+        # Level 3 shadow runs only AFTER the production plan is persisted. It
+        # cannot mutate the plan, scheduler or rule engine, and any failure is
+        # contained to the audit table.
+        self._run_level3_shadow(user_id, detail, state)
+        return detail
+
+    @staticmethod
+    def _changed_task_ids(old_tasks: list[Task], new_tasks: list[Task]) -> list[int]:
+        """New/changed task ids by matching stable identity, not row ids.
+
+        Plan versions are immutable and re-created, so a row id always changes.
+        A task is "changed" only when its identity (title, goal, schedule,
+        duration) did not exist in the previous version.
+        """
+        def identity(task: Task) -> tuple:
+            return (
+                task.title,
+                task.goal_id,
+                task.scheduled_date,
+                task.start_time,
+                task.end_time,
+                task.estimated_duration,
+                task.task_kind,
+                task.series_id,
+                task.series_index,
+            )
+
+        old_identities = {identity(task) for task in old_tasks}
+        return [
+            task.id or 0
+            for task in new_tasks
+            if identity(task) not in old_identities
+        ]
 
     @staticmethod
     def _feature_hash(user_id: int, draft, prediction_type: str) -> str:
@@ -943,7 +1064,14 @@ class PlanService:
         )
         return text[:limit]
 
-    def _log_predictions(self, user_id: int, plan_id: int, pairs: list[tuple[Task, Any]]) -> int:
+    def _log_predictions(
+        self,
+        user_id: int,
+        plan_id: int,
+        pairs: list[tuple[Task, Any]],
+        *,
+        data_origin: str = "real",
+    ) -> int:
         """Record every per-task prediction so it can be scored later.
 
         This is the missing half of the ML feedback loop: without the predicted
@@ -962,6 +1090,7 @@ class PlanService:
                 "model_name": source,
                 "model_version": "",
                 "source": source,
+                "data_origin": data_origin,
             }
             if draft.predicted_duration is not None:
                 entries.append(
@@ -1008,35 +1137,69 @@ class PlanService:
         return len(entries)
 
     def _update_profile_from_execution(self, user_id: int, task: Task, changes: dict) -> None:
-        """Feed one completed task into the portrait EWMA (best-effort)."""
-        from app.application.services.profile_service import ProfileService
+        """Deprecated name kept for callers; refreshes Level 2 instead of EWMA."""
+        self._refresh_user_model(user_id)
 
+    def _refresh_user_model(self, user_id: int) -> None:
+        """Recompute the real Level 2 state after new observations (best effort)."""
         try:
-            ProfileService(self._session).update_from_feedback(
-                user_id,
-                completed=True,
-                actual_min=changes.get("actual_duration"),
-                theoretical_min=task.predicted_duration or task.estimated_duration,
-                stress_after=changes.get("stress_after"),
-            )
-        except Exception:  # noqa: BLE001 - the TaskExecution row is the record
+            self._user_models.refresh_dynamic_state(user_id)
+        except Exception:  # noqa: BLE001 - the execution row is the record
+            logger.warning("level2 refresh failed for user=%s", user_id, exc_info=True)
             self._session.rollback()
 
-    def _record_execution(self, user_id: int, task: Task, changes: dict) -> None:
-        """Persist real execution data (ML data asset)."""
+    def _run_level3_shadow(self, user_id: int, detail: PlanDetail, state: PlannerState) -> None:
+        """Run Level 3 sidecar inference; never affects the persisted plan."""
+        context = state.get("user_context")
+        user_model = context.user_model if context is not None else None
+        try:
+            written = self._user_models.run_shadow_for_plan(
+                user_id=user_id,
+                plan_id=detail.plan.id,
+                tasks=[item.task for item in detail.tasks],
+                context=user_model,
+                data_origin=(
+                    "synthetic"
+                    if self._user_models.has_synthetic_observations(user_id)
+                    else detail.plan.data_origin
+                ),
+            )
+            if written:
+                self._session.commit()
+        except Exception:  # noqa: BLE001 - shadow must never break production
+            logger.warning(
+                "level3 shadow run failed for user=%s plan=%s",
+                user_id,
+                detail.plan.id,
+                exc_info=True,
+            )
+            self._session.rollback()
+
+    def _record_execution(
+        self,
+        user_id: int,
+        task: Task,
+        changes: dict,
+        *,
+        completed: bool = True,
+        completion_rate: float = 1.0,
+    ) -> None:
+        """Persist real execution data (the Level 2/3 data asset)."""
         execution = TaskExecution(
             task_id=task.id,
             user_id=user_id,
             planned_duration=task.predicted_duration or task.estimated_duration,
             actual_duration=changes.get("actual_duration"),
-            completion_rate=1.0,
+            completion_rate=max(0.0, min(1.0, float(completion_rate))),
             started_at=changes.get("started_at"),
             finished_at=changes.get("finished_at"),
             difficulty_feedback=changes.get("difficulty_feedback"),
             stress_before=changes.get("stress_before"),
             stress_after=changes.get("stress_after"),
             failure_reason=changes.get("failure_reason"),
-            completed=True,
+            interruption_count=changes.get("interruption_count"),
+            completed=completed,
+            data_origin=task.data_origin or "real",
         )
         self._executions.create(execution)
 
@@ -1055,14 +1218,10 @@ def _agent_config_from_settings() -> AgentConfig:
 
 
 def _no_change():
-    from app.ml.base import AdjustmentRoute
-
     return AdjustmentRoute.NO_CHANGE
 
 
 def _no_severity():
-    from app.ml.base import AdjustmentSeverity
-
     return AdjustmentSeverity.NONE
 
 

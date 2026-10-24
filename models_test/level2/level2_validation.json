@@ -1,0 +1,1048 @@
+{
+  "model": "DDSR-V1",
+  "model_version": "ddsr_v1",
+  "schema_version": "1.0",
+  "config_version": "ddsr_v1_config_1",
+  "generated_at_utc": "2026-10-22T04:10:37.627393+00:00",
+  "source_trait_model": {
+    "model": "trait_v1",
+    "schema_version": "1.0",
+    "calibration_model": "samejima_grm",
+    "calibration_version": "grm_v1",
+    "reference_population": "Johnson_IPIP_NEO_120",
+    "domains_used": [
+      "N",
+      "E",
+      "O",
+      "A",
+      "C"
+    ]
+  },
+  "test_summary": {
+    "command": "python -m pytest tests -rA",
+    "returncode": 0,
+    "passed": 54,
+    "failed": 0,
+    "total": 54,
+    "output_tail": [
+      "PASSED tests\\test_trait_and_tasks.py::test_trait_theta_does_not_change_daily_states",
+      "PASSED tests\\test_trait_and_tasks.py::test_task_metrics_start_delay_ratio_and_attainment",
+      "PASSED tests\\test_trait_and_tasks.py::test_missing_execution_is_unavailable_not_zero",
+      "PASSED tests\\test_trait_and_tasks.py::test_completed_true_defaults_completion_to_one",
+      "PASSED tests\\test_trait_and_tasks.py::test_duplicate_task_ids_rejected",
+      "PASSED tests\\test_trait_and_tasks.py::test_execution_for_unknown_task_rejected",
+      "PASSED tests\\test_trait_and_tasks.py::test_late_start_is_only_a_candidate",
+      "54 passed in 0.14s"
+    ]
+  },
+  "checks": {
+    "all_states_bounded_0_1": true,
+    "all_uncertainties_bounded": true,
+    "prediction_error_saved_and_arithmetic": true,
+    "next_day_prior_saved_and_consistent": true,
+    "multi_day_no_explosion_or_lock": true,
+    "procrastination_false_positive_guard": true,
+    "missing_task_log_is_not_failure": true,
+    "no_evidence_keeps_prior_and_uncertainty": true,
+    "level1_read_only_contract": true,
+    "deterministic_replay": true,
+    "passive_context_ignored": true,
+    "llm_only_extracts_validated_evidence": true,
+    "parameter_provenance_complete": true
+  },
+  "scenarios": [
+    {
+      "name": "high_completion_low_fatigue",
+      "days": 1,
+      "profiles": [
+        {
+          "date": "2026-10-20",
+          "cold_start": true,
+          "gap_days": 0,
+          "states": {
+            "fatigue": {
+              "prior": 0.5,
+              "value": 0.437082,
+              "uncertainty": 0.218131,
+              "evidence_availability": "reflection_only",
+              "evidence_count": 1,
+              "conflict": false
+            },
+            "stress": {
+              "prior": 0.5,
+              "value": 0.437082,
+              "uncertainty": 0.218131,
+              "evidence_availability": "reflection_only",
+              "evidence_count": 1,
+              "conflict": false
+            },
+            "self_efficacy": {
+              "prior": 0.5,
+              "value": 0.591087,
+              "uncertainty": 0.215044,
+              "evidence_availability": "reflection_and_task_log",
+              "evidence_count": 1,
+              "conflict": false
+            }
+          },
+          "goal_attainment": 1.0,
+          "initiation_start_rate": 1.0,
+          "persistence_continuation_rate": 1.0,
+          "procrastination_confirmed": 0,
+          "procrastination_candidates": [],
+          "prediction_error": {
+            "fatigue": -0.062918,
+            "stress": -0.062918,
+            "self_efficacy": 0.091087
+          },
+          "next_day_prior": {
+            "fatigue": 0.462249,
+            "stress": 0.462249,
+            "self_efficacy": 0.554652
+          },
+          "extraction_status": "ok",
+          "evidence_types": [
+            "fatigue",
+            "stress",
+            "self_efficacy"
+          ]
+        }
+      ]
+    },
+    {
+      "name": "external_interruption_high_delay_not_procrastination",
+      "days": 1,
+      "profiles": [
+        {
+          "date": "2026-10-20",
+          "cold_start": true,
+          "gap_days": 0,
+          "states": {
+            "fatigue": {
+              "prior": 0.5,
+              "value": 0.5,
+              "uncertainty": 0.220934,
+              "evidence_availability": "none",
+              "evidence_count": 0,
+              "conflict": false
+            },
+            "stress": {
+              "prior": 0.5,
+              "value": 0.5,
+              "uncertainty": 0.220934,
+              "evidence_availability": "none",
+              "evidence_count": 0,
+              "conflict": false
+            },
+            "self_efficacy": {
+              "prior": 0.5,
+              "value": 0.5,
+              "uncertainty": 0.220934,
+              "evidence_availability": "task_log_only",
+              "evidence_count": 0,
+              "conflict": false
+            }
+          },
+          "goal_attainment": 0.5,
+          "initiation_start_rate": 1.0,
+          "persistence_continuation_rate": 0.5,
+          "procrastination_confirmed": 0,
+          "procrastination_candidates": [
+            "t1"
+          ],
+          "prediction_error": {
+            "fatigue": 0.0,
+            "stress": 0.0,
+            "self_efficacy": 0.0
+          },
+          "next_day_prior": {
+            "fatigue": 0.5,
+            "stress": 0.5,
+            "self_efficacy": 0.5
+          },
+          "extraction_status": "ok",
+          "evidence_types": [
+            "interruption"
+          ]
+        }
+      ]
+    },
+    {
+      "name": "explicit_avoidance_high_delay_procrastination",
+      "days": 1,
+      "profiles": [
+        {
+          "date": "2026-10-20",
+          "cold_start": true,
+          "gap_days": 0,
+          "states": {
+            "fatigue": {
+              "prior": 0.5,
+              "value": 0.5,
+              "uncertainty": 0.220934,
+              "evidence_availability": "none",
+              "evidence_count": 0,
+              "conflict": false
+            },
+            "stress": {
+              "prior": 0.5,
+              "value": 0.5,
+              "uncertainty": 0.220934,
+              "evidence_availability": "none",
+              "evidence_count": 0,
+              "conflict": false
+            },
+            "self_efficacy": {
+              "prior": 0.5,
+              "value": 0.482439,
+              "uncertainty": 0.220716,
+              "evidence_availability": "task_log_only",
+              "evidence_count": 0,
+              "conflict": false
+            }
+          },
+          "goal_attainment": 0.2,
+          "initiation_start_rate": 1.0,
+          "persistence_continuation_rate": 0.5,
+          "procrastination_confirmed": 1,
+          "procrastination_candidates": [
+            "t1"
+          ],
+          "prediction_error": {
+            "fatigue": 0.0,
+            "stress": 0.0,
+            "self_efficacy": -0.017561
+          },
+          "next_day_prior": {
+            "fatigue": 0.5,
+            "stress": 0.5,
+            "self_efficacy": 0.489464
+          },
+          "extraction_status": "ok",
+          "evidence_types": [
+            "procrastination"
+          ]
+        }
+      ]
+    },
+    {
+      "name": "high_fatigue_low_completion",
+      "days": 1,
+      "profiles": [
+        {
+          "date": "2026-10-20",
+          "cold_start": true,
+          "gap_days": 0,
+          "states": {
+            "fatigue": {
+              "prior": 0.5,
+              "value": 0.595698,
+              "uncertainty": 0.214429,
+              "evidence_availability": "reflection_only",
+              "evidence_count": 1,
+              "conflict": false
+            },
+            "stress": {
+              "prior": 0.5,
+              "value": 0.595698,
+              "uncertainty": 0.214429,
+              "evidence_availability": "reflection_only",
+              "evidence_count": 1,
+              "conflict": false
+            },
+            "self_efficacy": {
+              "prior": 0.5,
+              "value": 0.482439,
+              "uncertainty": 0.220716,
+              "evidence_availability": "task_log_only",
+              "evidence_count": 0,
+              "conflict": false
+            }
+          },
+          "goal_attainment": 0.2,
+          "initiation_start_rate": 1.0,
+          "persistence_continuation_rate": 0.333333,
+          "procrastination_confirmed": 0,
+          "procrastination_candidates": [],
+          "prediction_error": {
+            "fatigue": 0.095698,
+            "stress": 0.095698,
+            "self_efficacy": -0.017561
+          },
+          "next_day_prior": {
+            "fatigue": 0.557419,
+            "stress": 0.557419,
+            "self_efficacy": 0.489464
+          },
+          "extraction_status": "ok",
+          "evidence_types": [
+            "fatigue",
+            "stress"
+          ]
+        }
+      ]
+    },
+    {
+      "name": "failure_today_high_tomorrow_self_efficacy",
+      "days": 1,
+      "profiles": [
+        {
+          "date": "2026-10-20",
+          "cold_start": true,
+          "gap_days": 0,
+          "states": {
+            "fatigue": {
+              "prior": 0.5,
+              "value": 0.534084,
+              "uncertainty": 0.220113,
+              "evidence_availability": "reflection_only",
+              "evidence_count": 1,
+              "conflict": false
+            },
+            "stress": {
+              "prior": 0.5,
+              "value": 0.5,
+              "uncertainty": 0.220934,
+              "evidence_availability": "none",
+              "evidence_count": 0,
+              "conflict": false
+            },
+            "self_efficacy": {
+              "prior": 0.5,
+              "value": 0.53989,
+              "uncertainty": 0.219809,
+              "evidence_availability": "reflection_and_task_log",
+              "evidence_count": 1,
+              "conflict": false
+            }
+          },
+          "goal_attainment": 0.1,
+          "initiation_start_rate": 1.0,
+          "persistence_continuation_rate": 0.166667,
+          "procrastination_confirmed": 0,
+          "procrastination_candidates": [],
+          "prediction_error": {
+            "fatigue": 0.034084,
+            "stress": 0.0,
+            "self_efficacy": 0.03989
+          },
+          "next_day_prior": {
+            "fatigue": 0.52045,
+            "stress": 0.5,
+            "self_efficacy": 0.523934
+          },
+          "extraction_status": "ok",
+          "evidence_types": [
+            "fatigue",
+            "self_efficacy"
+          ]
+        }
+      ]
+    },
+    {
+      "name": "no_reflection_only_task_log",
+      "days": 1,
+      "profiles": [
+        {
+          "date": "2026-10-20",
+          "cold_start": true,
+          "gap_days": 0,
+          "states": {
+            "fatigue": {
+              "prior": 0.5,
+              "value": 0.5,
+              "uncertainty": 0.220934,
+              "evidence_availability": "none",
+              "evidence_count": 0,
+              "conflict": false
+            },
+            "stress": {
+              "prior": 0.5,
+              "value": 0.5,
+              "uncertainty": 0.220934,
+              "evidence_availability": "none",
+              "evidence_count": 0,
+              "conflict": false
+            },
+            "self_efficacy": {
+              "prior": 0.5,
+              "value": 0.529234,
+              "uncertainty": 0.22033,
+              "evidence_availability": "task_log_only",
+              "evidence_count": 0,
+              "conflict": false
+            }
+          },
+          "goal_attainment": 1.0,
+          "initiation_start_rate": 1.0,
+          "persistence_continuation_rate": 1.0,
+          "procrastination_confirmed": 0,
+          "procrastination_candidates": [],
+          "prediction_error": {
+            "fatigue": 0.0,
+            "stress": 0.0,
+            "self_efficacy": 0.029234
+          },
+          "next_day_prior": {
+            "fatigue": 0.5,
+            "stress": 0.5,
+            "self_efficacy": 0.51754
+          },
+          "extraction_status": "no_reflection",
+          "evidence_types": []
+        }
+      ]
+    },
+    {
+      "name": "multi_day_replay_10_days",
+      "days": 10,
+      "profiles": [
+        {
+          "date": "2026-10-20",
+          "cold_start": true,
+          "gap_days": 0,
+          "states": {
+            "fatigue": {
+              "prior": 0.5,
+              "value": 0.562918,
+              "uncertainty": 0.218131,
+              "evidence_availability": "reflection_only",
+              "evidence_count": 1,
+              "conflict": false
+            },
+            "stress": {
+              "prior": 0.5,
+              "value": 0.562918,
+              "uncertainty": 0.218131,
+              "evidence_availability": "reflection_only",
+              "evidence_count": 1,
+              "conflict": false
+            },
+            "self_efficacy": {
+              "prior": 0.5,
+              "value": 0.488289,
+              "uncertainty": 0.220837,
+              "evidence_availability": "task_log_only",
+              "evidence_count": 0,
+              "conflict": false
+            }
+          },
+          "goal_attainment": 0.3,
+          "initiation_start_rate": 1.0,
+          "persistence_continuation_rate": 1.0,
+          "procrastination_confirmed": 0,
+          "procrastination_candidates": [],
+          "prediction_error": {
+            "fatigue": 0.062918,
+            "stress": 0.062918,
+            "self_efficacy": -0.011711
+          },
+          "next_day_prior": {
+            "fatigue": 0.537751,
+            "stress": 0.537751,
+            "self_efficacy": 0.492973
+          },
+          "extraction_status": "ok",
+          "evidence_types": [
+            "fatigue",
+            "stress"
+          ]
+        },
+        {
+          "date": "2026-10-21",
+          "cold_start": false,
+          "gap_days": 1,
+          "states": {
+            "fatigue": {
+              "prior": 0.537751,
+              "value": 0.496892,
+              "uncertainty": 0.173982,
+              "evidence_availability": "reflection_only",
+              "evidence_count": 1,
+              "conflict": false
+            },
+            "stress": {
+              "prior": 0.537751,
+              "value": 0.496892,
+              "uncertainty": 0.173982,
+              "evidence_availability": "reflection_only",
+              "evidence_count": 1,
+              "conflict": false
+            },
+            "self_efficacy": {
+              "prior": 0.492973,
+              "value": 0.507964,
+              "uncertainty": 0.174962,
+              "evidence_availability": "task_log_only",
+              "evidence_count": 0,
+              "conflict": false
+            }
+          },
+          "goal_attainment": 0.9,
+          "initiation_start_rate": 1.0,
+          "persistence_continuation_rate": 1.0,
+          "procrastination_confirmed": 0,
+          "procrastination_candidates": [],
+          "prediction_error": {
+            "fatigue": -0.040859,
+            "stress": -0.040859,
+            "self_efficacy": 0.014991
+          },
+          "next_day_prior": {
+            "fatigue": 0.498135,
+            "stress": 0.498135,
+            "self_efficacy": 0.504778
+          },
+          "extraction_status": "ok",
+          "evidence_types": [
+            "fatigue",
+            "stress"
+          ]
+        },
+        {
+          "date": "2026-10-22",
+          "cold_start": false,
+          "gap_days": 1,
+          "states": {
+            "fatigue": {
+              "prior": 0.498135,
+              "value": 0.53049,
+              "uncertainty": 0.157561,
+              "evidence_availability": "reflection_only",
+              "evidence_count": 1,
+              "conflict": false
+            },
+            "stress": {
+              "prior": 0.498135,
+              "value": 0.53049,
+              "uncertainty": 0.157561,
+              "evidence_availability": "reflection_only",
+              "evidence_count": 1,
+              "conflict": false
+            },
+            "self_efficacy": {
+              "prior": 0.504778,
+              "value": 0.4987,
+              "uncertainty": 0.158095,
+              "evidence_availability": "task_log_only",
+              "evidence_count": 0,
+              "conflict": false
+            }
+          },
+          "goal_attainment": 0.3,
+          "initiation_start_rate": 1.0,
+          "persistence_continuation_rate": 1.0,
+          "procrastination_confirmed": 0,
+          "procrastination_candidates": [],
+          "prediction_error": {
+            "fatigue": 0.032354,
+            "stress": 0.032354,
+            "self_efficacy": -0.006079
+          },
+          "next_day_prior": {
+            "fatigue": 0.518294,
+            "stress": 0.518294,
+            "self_efficacy": 0.49922
+          },
+          "extraction_status": "ok",
+          "evidence_types": [
+            "fatigue",
+            "stress"
+          ]
+        },
+        {
+          "date": "2026-10-23",
+          "cold_start": false,
+          "gap_days": 1,
+          "states": {
+            "fatigue": {
+              "prior": 0.518294,
+              "value": 0.488091,
+              "uncertainty": 0.151888,
+              "evidence_availability": "reflection_only",
+              "evidence_count": 1,
+              "conflict": false
+            },
+            "stress": {
+              "prior": 0.518294,
+              "value": 0.488091,
+              "uncertainty": 0.151888,
+              "evidence_availability": "reflection_only",
+              "evidence_count": 1,
+              "conflict": false
+            },
+            "self_efficacy": {
+              "prior": 0.49922,
+              "value": 0.510332,
+              "uncertainty": 0.15208,
+              "evidence_availability": "task_log_only",
+              "evidence_count": 0,
+              "conflict": false
+            }
+          },
+          "goal_attainment": 0.9,
+          "initiation_start_rate": 1.0,
+          "persistence_continuation_rate": 1.0,
+          "procrastination_confirmed": 0,
+          "procrastination_candidates": [],
+          "prediction_error": {
+            "fatigue": -0.030203,
+            "stress": -0.030203,
+            "self_efficacy": 0.011112
+          },
+          "next_day_prior": {
+            "fatigue": 0.492855,
+            "stress": 0.492855,
+            "self_efficacy": 0.506199
+          },
+          "extraction_status": "ok",
+          "evidence_types": [
+            "fatigue",
+            "stress"
+          ]
+        },
+        {
+          "date": "2026-10-24",
+          "cold_start": false,
+          "gap_days": 1,
+          "states": {
+            "fatigue": {
+              "prior": 0.492855,
+              "value": 0.522147,
+              "uncertainty": 0.149881,
+              "evidence_availability": "reflection_only",
+              "evidence_count": 1,
+              "conflict": false
+            },
+            "stress": {
+              "prior": 0.492855,
+              "value": 0.522147,
+              "uncertainty": 0.149881,
+              "evidence_availability": "reflection_only",
+              "evidence_count": 1,
+              "conflict": false
+            },
+            "self_efficacy": {
+              "prior": 0.506199,
+              "value": 0.500738,
+              "uncertainty": 0.150014,
+              "evidence_availability": "task_log_only",
+              "evidence_count": 0,
+              "conflict": false
+            }
+          },
+          "goal_attainment": 0.3,
+          "initiation_start_rate": 1.0,
+          "persistence_continuation_rate": 1.0,
+          "procrastination_confirmed": 0,
+          "procrastination_candidates": [],
+          "prediction_error": {
+            "fatigue": 0.029293,
+            "stress": 0.029293,
+            "self_efficacy": -0.005462
+          },
+          "next_day_prior": {
+            "fatigue": 0.513288,
+            "stress": 0.513288,
+            "self_efficacy": 0.500443
+          },
+          "extraction_status": "ok",
+          "evidence_types": [
+            "fatigue",
+            "stress"
+          ]
+        },
+        {
+          "date": "2026-10-25",
+          "cold_start": false,
+          "gap_days": 1,
+          "states": {
+            "fatigue": {
+              "prior": 0.513288,
+              "value": 0.484205,
+              "uncertainty": 0.149229,
+              "evidence_availability": "reflection_only",
+              "evidence_count": 1,
+              "conflict": false
+            },
+            "stress": {
+              "prior": 0.513288,
+              "value": 0.484205,
+              "uncertainty": 0.149229,
+              "evidence_availability": "reflection_only",
+              "evidence_count": 1,
+              "conflict": false
+            },
+            "self_efficacy": {
+              "prior": 0.500443,
+              "value": 0.511138,
+              "uncertainty": 0.149291,
+              "evidence_availability": "task_log_only",
+              "evidence_count": 0,
+              "conflict": false
+            }
+          },
+          "goal_attainment": 0.9,
+          "initiation_start_rate": 1.0,
+          "persistence_continuation_rate": 1.0,
+          "procrastination_confirmed": 0,
+          "procrastination_candidates": [],
+          "prediction_error": {
+            "fatigue": -0.029083,
+            "stress": -0.029083,
+            "self_efficacy": 0.010696
+          },
+          "next_day_prior": {
+            "fatigue": 0.490523,
+            "stress": 0.490523,
+            "self_efficacy": 0.506683
+          },
+          "extraction_status": "ok",
+          "evidence_types": [
+            "fatigue",
+            "stress"
+          ]
+        },
+        {
+          "date": "2026-10-26",
+          "cold_start": false,
+          "gap_days": 1,
+          "states": {
+            "fatigue": {
+              "prior": 0.490523,
+              "value": 0.519482,
+              "uncertainty": 0.14899,
+              "evidence_availability": "reflection_only",
+              "evidence_count": 1,
+              "conflict": false
+            },
+            "stress": {
+              "prior": 0.490523,
+              "value": 0.519482,
+              "uncertainty": 0.14899,
+              "evidence_availability": "reflection_only",
+              "evidence_count": 1,
+              "conflict": false
+            },
+            "self_efficacy": {
+              "prior": 0.506683,
+              "value": 0.501289,
+              "uncertainty": 0.149061,
+              "evidence_availability": "task_log_only",
+              "evidence_count": 0,
+              "conflict": false
+            }
+          },
+          "goal_attainment": 0.3,
+          "initiation_start_rate": 1.0,
+          "persistence_continuation_rate": 1.0,
+          "procrastination_confirmed": 0,
+          "procrastination_candidates": [],
+          "prediction_error": {
+            "fatigue": 0.028959,
+            "stress": 0.028959,
+            "self_efficacy": -0.005394
+          },
+          "next_day_prior": {
+            "fatigue": 0.511689,
+            "stress": 0.511689,
+            "self_efficacy": 0.500774
+          },
+          "extraction_status": "ok",
+          "evidence_types": [
+            "fatigue",
+            "stress"
+          ]
+        },
+        {
+          "date": "2026-10-27",
+          "cold_start": false,
+          "gap_days": 1,
+          "states": {
+            "fatigue": {
+              "prior": 0.511689,
+              "value": 0.482741,
+              "uncertainty": 0.148919,
+              "evidence_availability": "reflection_only",
+              "evidence_count": 1,
+              "conflict": false
+            },
+            "stress": {
+              "prior": 0.511689,
+              "value": 0.482741,
+              "uncertainty": 0.148919,
+              "evidence_availability": "reflection_only",
+              "evidence_count": 1,
+              "conflict": false
+            },
+            "self_efficacy": {
+              "prior": 0.500774,
+              "value": 0.51142,
+              "uncertainty": 0.148965,
+              "evidence_availability": "task_log_only",
+              "evidence_count": 0,
+              "conflict": false
+            }
+          },
+          "goal_attainment": 0.9,
+          "initiation_start_rate": 1.0,
+          "persistence_continuation_rate": 1.0,
+          "procrastination_confirmed": 0,
+          "procrastination_candidates": [],
+          "prediction_error": {
+            "fatigue": -0.028948,
+            "stress": -0.028948,
+            "self_efficacy": 0.010646
+          },
+          "next_day_prior": {
+            "fatigue": 0.489645,
+            "stress": 0.489645,
+            "self_efficacy": 0.506852
+          },
+          "extraction_status": "ok",
+          "evidence_types": [
+            "fatigue",
+            "stress"
+          ]
+        },
+        {
+          "date": "2026-10-28",
+          "cold_start": false,
+          "gap_days": 1,
+          "states": {
+            "fatigue": {
+              "prior": 0.489645,
+              "value": 0.51857,
+              "uncertainty": 0.148889,
+              "evidence_availability": "reflection_only",
+              "evidence_count": 1,
+              "conflict": false
+            },
+            "stress": {
+              "prior": 0.489645,
+              "value": 0.51857,
+              "uncertainty": 0.148889,
+              "evidence_availability": "reflection_only",
+              "evidence_count": 1,
+              "conflict": false
+            },
+            "self_efficacy": {
+              "prior": 0.506852,
+              "value": 0.501465,
+              "uncertainty": 0.14895,
+              "evidence_availability": "task_log_only",
+              "evidence_count": 0,
+              "conflict": false
+            }
+          },
+          "goal_attainment": 0.3,
+          "initiation_start_rate": 1.0,
+          "persistence_continuation_rate": 1.0,
+          "procrastination_confirmed": 0,
+          "procrastination_candidates": [],
+          "prediction_error": {
+            "fatigue": 0.028926,
+            "stress": 0.028926,
+            "self_efficacy": -0.005387
+          },
+          "next_day_prior": {
+            "fatigue": 0.511142,
+            "stress": 0.511142,
+            "self_efficacy": 0.500879
+          },
+          "extraction_status": "ok",
+          "evidence_types": [
+            "fatigue",
+            "stress"
+          ]
+        },
+        {
+          "date": "2026-10-29",
+          "cold_start": false,
+          "gap_days": 1,
+          "states": {
+            "fatigue": {
+              "prior": 0.511142,
+              "value": 0.482213,
+              "uncertainty": 0.148883,
+              "evidence_availability": "reflection_only",
+              "evidence_count": 1,
+              "conflict": false
+            },
+            "stress": {
+              "prior": 0.511142,
+              "value": 0.482213,
+              "uncertainty": 0.148883,
+              "evidence_availability": "reflection_only",
+              "evidence_count": 1,
+              "conflict": false
+            },
+            "self_efficacy": {
+              "prior": 0.500879,
+              "value": 0.511519,
+              "uncertainty": 0.148928,
+              "evidence_availability": "task_log_only",
+              "evidence_count": 0,
+              "conflict": false
+            }
+          },
+          "goal_attainment": 0.9,
+          "initiation_start_rate": 1.0,
+          "persistence_continuation_rate": 1.0,
+          "procrastination_confirmed": 0,
+          "procrastination_candidates": [],
+          "prediction_error": {
+            "fatigue": -0.028929,
+            "stress": -0.028929,
+            "self_efficacy": 0.01064
+          },
+          "next_day_prior": {
+            "fatigue": 0.489328,
+            "stress": 0.489328,
+            "self_efficacy": 0.506911
+          },
+          "extraction_status": "ok",
+          "evidence_types": [
+            "fatigue",
+            "stress"
+          ]
+        }
+      ]
+    }
+  ],
+  "parameter_sources": {
+    "state_scale": {
+      "category": "engineering_initialization",
+      "note": "All three states are mapped to 0-1 for a common grid. The papers use different published scales (1-5, 1-9, 1-6); those scales are not copied or treated as interchangeable."
+    },
+    "state_set": {
+      "category": "literature_supported_design_choice",
+      "note": "Fatigue and stress as daily states follow Åkerstedt et al. (2014); daily self-efficacy follows Bellhäuser et al. (2023) and the self-efficacy/goal-attainment loop in Wäschle et al. (2014)."
+    },
+    "nightly_reflection": {
+      "category": "literature_supported_design_choice",
+      "note": "A single evening reconstruction is supported by Kahneman et al. (2004, DRM) and by the evening diary in Bellhäuser et al. (2023)."
+    },
+    "behavior_state_separation": {
+      "category": "literature_supported_design_choice",
+      "note": "Behavioral indicators are kept separate from states. Loeffler et al. (2019) show that behavioural delay alone cannot identify procrastination and that reasons must be assessed."
+    },
+    "self_efficacy_goal_attainment_direction": {
+      "category": "literature_supported_design_choice",
+      "note": "Wäschle et al. (2014) report reciprocal positive relations between self-efficacy and perceived goal achievement. Only the direction is inherited; no coefficient is transferred."
+    },
+    "fatigue_stress_daily_states": {
+      "category": "literature_supported_design_choice",
+      "note": "Åkerstedt et al. (2014) measured fatigue daily and stress several times per day across 42 days and found day-level associations. No daily transition coefficient is taken from that paper."
+    },
+    "procrastination_definition": {
+      "category": "literature_supported_design_choice",
+      "note": "Procrastination requires voluntary delay/avoidance. External interruption, illness, task difficulty, and plan change are excluded by schema validation."
+    },
+    "persistence_autoregression": {
+      "category": "literature_supported_design_choice",
+      "note": "Day-to-day persistence is consistent with the autoregressive / lagged designs in Bellhäuser et al. (2023), Wäschle et al. (2014), and Åkerstedt et al. (2014). The numeric rho is not from them."
+    },
+    "grid_min": {
+      "category": "engineering_initialization",
+      "note": "Numerical grid lower bound for the 0-1 state scale."
+    },
+    "grid_max": {
+      "category": "engineering_initialization",
+      "note": "Numerical grid upper bound for the 0-1 state scale."
+    },
+    "grid_n": {
+      "category": "engineering_initialization",
+      "note": "Numerical grid resolution (101 points)."
+    },
+    "cold_start_mean": {
+      "category": "engineering_initialization",
+      "note": "Transparent neutral population prior at 0.5 on the 0-1 scale. It is not an individualized estimate and is not derived from the papers."
+    },
+    "cold_start_sd": {
+      "category": "engineering_initialization",
+      "note": "Transparent cold-start uncertainty (0.25 on the 0-1 scale)."
+    },
+    "persistence_rho": {
+      "category": "engineering_initialization",
+      "note": "AR(1) persistence value 0.6. The design is literature-consistent, but this exact value is an engineering initialization, not estimated."
+    },
+    "process_noise_sd": {
+      "category": "engineering_initialization",
+      "note": "Day-to-day process noise 0.12. It prevents uncertainty collapse and state lock; it is not a published coefficient."
+    },
+    "evidence_sharpness": {
+      "category": "engineering_initialization",
+      "note": "Likelihood tilt per unit evidence strength (2.0). It controls how far one explicit statement can move a state."
+    },
+    "strength_weights": {
+      "category": "engineering_initialization",
+      "note": "Mapping from weak/moderate/strong evidence to numeric strength (0.35/0.65/1.0)."
+    },
+    "goal_attainment_weight": {
+      "category": "engineering_initialization",
+      "note": "Weight of the task-log goal-attainment signal on self-efficacy (0.6). The direction is supported by Wäschle et al. (2014); the magnitude is an engineering choice."
+    },
+    "uncertainty_floor": {
+      "category": "engineering_initialization",
+      "note": "Posterior SD floor (0.02) to avoid overconfident point states."
+    },
+    "uncertainty_ceiling": {
+      "category": "engineering_initialization",
+      "note": "Prior/posterior SD ceiling (0.50) to avoid uncertainty explosion."
+    },
+    "late_start_candidate_minutes": {
+      "category": "engineering_initialization",
+      "note": "A start delay of at least 60 minutes is recorded only as a candidate for review; it is never labelled procrastination by itself."
+    },
+    "min_quote_chars": {
+      "category": "engineering_initialization",
+      "note": "Minimum audit quote length (2 characters)."
+    },
+    "conflict_policy": {
+      "category": "engineering_initialization",
+      "note": "Opposing evidence is combined by symmetric Bayesian likelihood multiplication; conflicts are flagged, not silently discarded."
+    },
+    "extraction_failure_policy": {
+      "category": "engineering_initialization",
+      "note": "Fail closed: an invalid LLM extraction contributes no evidence and is recorded as an error; the day still completes with higher uncertainty."
+    },
+    "passive_context_enabled": {
+      "category": "engineering_initialization",
+      "note": "V1 never reads passive context. The interface exists only for future wearable/phone data."
+    },
+    "personalization_enabled": {
+      "category": "learned_or_personalized",
+      "note": "V1 does not learn personalized transition parameters. Prediction errors are stored as future training data, not used for online learning."
+    }
+  },
+  "level1_assets_sha256": {
+    "context/cat.py": "62bb5fcda605dc98ee92d0ccaa435c03953c98484f6eaffe986f6cec02d4cc95",
+    "context/cat_config.json": "6263ac91ec48d117bf43b2650a76baa477785dbe8ad88ff46a08a9d6ad581163",
+    "context/grm_parameters.json": "93d0fbb0aae7539c73e2846a94ee67bf616ad7e8862358a520fc545c73da7afb",
+    "context/questions.json": "264f6cec3ad1d7ce60970df34d9148efa9e99a89affacd3bb77a51d18fa7355c",
+    "context/交接文档.md": "7fae73e6c94e398b36e0faa9aa9dc136b48e3306fcca42de3fe97c760bb08428"
+  },
+  "level1_files_modified": false,
+  "limitations": [
+    "No large-scale real longitudinal ground truth was available; no accuracy is claimed.",
+    "The 0-1 state scale is an engineering scale, not a published or clinical scale.",
+    "Persistence, noise, evidence-sharpness, and goal-attainment weights are engineering initializations.",
+    "Prediction errors are stored but no personalized transition learning is active in V1.",
+    "Passive context is accepted by the interface but never interpreted in V1.",
+    "The rule-based extractor is a deterministic fallback; the production path is the audited LLM extractor."
+  ],
+  "acceptance": {
+    "data_flow_correct": true,
+    "state_behavior_boundary_correct": true,
+    "llm_evidence_only": true,
+    "prediction_correction_reproducible": true,
+    "uncertainty_reflects_missing_evidence": true,
+    "prediction_error_saved": true,
+    "multi_day_replay_stable": true,
+    "level1_unmodified": true,
+    "minimal_parameters": true,
+    "assumptions_traceable": true
+  },
+  "DYNAMIC_STATE_MODEL_V1_READY": "YES"
+}

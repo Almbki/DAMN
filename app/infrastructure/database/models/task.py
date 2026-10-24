@@ -65,6 +65,13 @@ class Task(Base):
         default=TaskStatus.PENDING,
     )
     completion_probability: Mapped[float | None] = mapped_column(Float, nullable=True)
+    #: Truthful provenance of the numbers above (e.g. deterministic:estimate,
+    #: level3_v1:shadow would be wrong here - shadow never writes task fields).
+    prediction_source: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    prediction_mode: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    data_origin: Mapped[str] = mapped_column(
+        String(16), nullable=False, default="real", server_default="real"
+    )
     is_flexible: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
     task_kind: Mapped[TaskKind] = mapped_column(
         Enum(TaskKind, values_callable=enum_values, native_enum=False, length=32),

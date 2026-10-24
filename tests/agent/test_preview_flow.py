@@ -6,7 +6,7 @@ from datetime import date, timedelta
 
 from fastapi.testclient import TestClient
 
-from app.ml.base import AdjustmentRoute
+from app.domain.feedback.models import AdjustmentRoute
 from tests.agent.conftest import override_plan_service, preview_of, run_job
 
 
@@ -37,8 +37,12 @@ def test_preview_then_confirm_creates_plan_v1(
     assert preview["can_adjust"] is True
     assert preview["adjustment_count"] == 0
     assert body["goals_persisted"] == 2
-    # The preview carries ML output (completion probability from the predictor).
-    assert all(task["completion_probability"] == 0.65 for task in preview["tasks"])
+    # Production is deterministic: no completion probability is fabricated.
+    assert all(task["completion_probability"] is None for task in preview["tasks"])
+    assert all(
+        task["predicted_duration"] == task["estimated_duration"]
+        for task in preview["tasks"]
+    )
     # And the scheduler already proposed placement.
     assert all(task["scheduled_date"] for task in preview["tasks"])
 
@@ -51,8 +55,12 @@ def test_preview_then_confirm_creates_plan_v1(
     assert plan["version"] == 1
     assert len(plan["tasks"]) == 2
     assert plan["status"] == "active"
-    # ML completion probability must survive persistence (regression guard).
-    assert [task["completion_probability"] for task in plan["tasks"]] == [0.65, 0.65]
+    # No production completion probability exists; it must stay null.
+    assert [task["completion_probability"] for task in plan["tasks"]] == [None, None]
+    assert all(
+        task["prediction_source"] == "deterministic:workload_estimate"
+        for task in plan["tasks"]
+    )
 
 
 def test_long_term_goal_persists_daily_occurrences(

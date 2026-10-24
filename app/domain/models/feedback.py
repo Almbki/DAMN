@@ -28,4 +28,6 @@ class Feedback(DomainModel):
     # Optional context used as ML features later.
     sleep_hours: float | None = Field(default=None, ge=0, le=24)
     dominant_time_of_day: TimeOfDay | None = None
+    #: real | synthetic - provenance for training/evaluation isolation.
+    data_origin: str = "real"
     created_at: datetime = Field(default_factory=utcnow)

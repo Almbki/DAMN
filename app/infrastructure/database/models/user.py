@@ -40,6 +40,15 @@ class User(Base):
     #: Per-dimension weights {"ie","sn","tf","jp"} -> [0, 1]; NULL = not answered.
     mbti_dims: Mapped[dict[str, Any] | None] = mapped_column(JSON, nullable=True, default=None)
     identity: Mapped[str | None] = mapped_column(String(200), nullable=True)
+    # --- Level 1 real trait model (IPIP-NEO-120 CAT output) ---------------
+    #: Validated TraitProfileV1 JSON. This is the authoritative stable-trait
+    #: record; the legacy MBTI columns above remain only as a soft self-report.
+    trait_profile: Mapped[dict[str, Any] | None] = mapped_column(
+        JSON, nullable=True, default=None
+    )
+    trait_model_version: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    trait_artifact_hash: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    trait_feature_version: Mapped[str | None] = mapped_column(String(64), nullable=True)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, default=utcnow
     )

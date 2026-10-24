@@ -83,7 +83,7 @@ class UserSituationResult(LLMOutput):
     completion_ability: float = Field(default=0.7, ge=0.0, le=1.0)
     stress_state: float = Field(default=5.0, ge=0.0, le=10.0)
     fatigue_state: LoadLevel = LoadLevel.MODERATE
-    recommended_time_slot: TimeOfDay = TimeOfDay.MORNING
+    recommended_time_slot: TimeOfDay | None = None
     predicted_duration: dict[int, int] = Field(default_factory=dict)
     predicted_completion_probability: dict[int, float] = Field(default_factory=dict)
     should_reduce_load: bool = False
@@ -95,9 +95,8 @@ class UserSituationResult(LLMOutput):
 class UserSituationNarrative(LLMOutput):
     """Narrow output for the optional ``user_situation`` narrative step.
 
-    The numeric predictions are produced by the ML predictors. Asking the model
-    to echo the full :class:`UserSituationResult` made it return wrappers or
-    aliases that failed validation; this step only needs the narrative.
+    The numeric estimates are produced deterministically and the real user model
+    snapshot is passed separately; this step only needs the narrative.
     """
 
     model_config = ConfigDict(extra="ignore")
@@ -174,14 +173,6 @@ class RequestIntent(StrEnum):
     USER_ADJUSTMENT = "USER_ADJUSTMENT"
     REPLAN_REQUEST = "REPLAN_REQUEST"
     FEEDBACK_DRIVEN = "FEEDBACK_DRIVEN"
-
-
-class ClassifyResult(BaseModel):
-    """Output of the ``classify_request`` node (deterministic first version)."""
-
-    intent: RequestIntent = RequestIntent.INITIAL_PLAN
-    confidence: float = Field(default=0.5, ge=0.0, le=1.0)
-    reasons: list[str] = Field(default_factory=list)
 
 
 # ---------------------------------------------------------------------------

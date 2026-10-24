@@ -107,6 +107,7 @@ def preview_node(state: PlannerState, runtime: object) -> dict:
     if decision.action == "adjust" and not payload.can_adjust:
         updates["adjustment_rejected"] = True
         updates["user_adjustment"] = None
+        updates["workflow"] = "preview_confirm"
         updates["notes"] = [
             "preview: adjustment budget exhausted - please start executing the plan"
         ]
@@ -118,12 +119,14 @@ def preview_node(state: PlannerState, runtime: object) -> dict:
         updates["user_adjustment"] = note
         updates["adjustment_count"] = payload.adjustment_count + 1
         updates["adjustment_rejected"] = False
+        updates["workflow"] = "preview_adjust"
         updates["notes"] = [
             f"preview: adjustment #{payload.adjustment_count + 1} requested"
         ]
     else:
         updates["user_adjustment"] = None
         updates["adjustment_rejected"] = False
+        updates["workflow"] = "preview_confirm"
         updates["notes"] = ["preview: confirmed by the user"]
 
     if errors:

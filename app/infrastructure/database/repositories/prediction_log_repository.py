@@ -23,6 +23,7 @@ class PredictionLogRepository(RepositoryBase):
             feature_hash=entry.feature_hash,
             predicted=entry.predicted,
             source=entry.source,
+            data_origin=entry.data_origin,
             created_at=entry.created_at,
         )
         self._session.add(orm)

@@ -71,6 +71,9 @@ export function taskFromApi(raw: TaskRead): Task {
     standards,
     completionProbability: raw.completion_probability ?? null,
     predictedDuration: raw.predicted_duration ?? null,
+    predictionSource: raw.prediction_source ?? null,
+    predictionMode: raw.prediction_mode ?? null,
+    startedAt: raw.started_at ?? null,
     isFlexible: raw.is_flexible,
   };
 }
@@ -100,7 +103,54 @@ export function previewToDrafts(tasks: PreviewTaskRead[]): DraftTask[] {
  * on `completed: true`, so `{ completed: false }` is a silent no-op there.
  */
 export function patchDone(done: boolean): TaskUpdateRequest {
-  return done ? { completed: true } : { status: 'scheduled' };
+  return done
+    ? { completed: true, finished_at: new Date().toISOString() }
+    : { status: 'scheduled' };
+}
+
+/** Execution capture: start a task (backend records a partial TaskExecution). */
+export function taskStartPatch(now = new Date()): TaskUpdateRequest {
+  return { started_at: now.toISOString() };
+}
+
+/** Execution capture: complete a task with a best-effort actual duration. */
+export function taskCompletePatch(
+  actualMinutes?: number | null,
+  interruptionCount?: number | null,
+  now = new Date(),
+): TaskUpdateRequest {
+  const body: TaskUpdateRequest = {
+    completed: true,
+    finished_at: now.toISOString(),
+  };
+  if (actualMinutes != null && Number.isFinite(actualMinutes) && actualMinutes > 0) {
+    body.actual_duration = Math.round(actualMinutes);
+  }
+  if (interruptionCount != null) {
+    body.interruption_count = Math.max(0, Math.round(interruptionCount));
+  }
+  return body;
+}
+
+/** Execution capture: partial completion (0..1) + actual duration. */
+export function taskPartialPatch(
+  completionRate: number,
+  actualMinutes?: number | null,
+  interruptionCount?: number | null,
+  now = new Date(),
+): TaskUpdateRequest {
+  const body: TaskUpdateRequest = {
+    completed: false,
+    completion_rate: Math.min(1, Math.max(0, completionRate)),
+    finished_at: now.toISOString(),
+  };
+  if (actualMinutes != null && Number.isFinite(actualMinutes) && actualMinutes > 0) {
+    body.actual_duration = Math.round(actualMinutes);
+  }
+  if (interruptionCount != null) {
+    body.interruption_count = Math.max(0, Math.round(interruptionCount));
+  }
+  return body;
 }
 
 export function patchSkipped(): TaskUpdateRequest {

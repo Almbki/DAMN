@@ -26,6 +26,19 @@ function formatCalendarDay(date: string): string {
   return `${day.getMonth() + 1} 月 ${day.getDate()} 日`;
 }
 
+function formatClock(iso: string): string {
+  const date = new Date(iso);
+  if (Number.isNaN(date.getTime())) return '刚刚';
+  return date.toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' });
+}
+
+function predictionSourceLabel(source: string): string {
+  if (source.includes('shadow')) return '影子预测（不参与决策）';
+  if (source.includes('deterministic') || source.includes('workload')) return '任务估算';
+  if (source.includes('level3')) return '模型预测（影子）';
+  return '系统估算';
+}
+
 /**
  * The single place where a task can be inspected and acted on. Every action is
  * visible here, so nothing depends on hover or a hidden gesture.
@@ -55,7 +68,7 @@ export function TaskDetailSheet({
   onRequestDelete?: (id: number) => void;
 }) {
   const { colors } = useTheme();
-  const { actionError, clearActionError } = usePlan();
+  const { actionError, clearActionError, startTask, completeTask, partialCompleteTask } = usePlan();
 
   const [title, setTitle] = useState(task.title);
   const [minutes, setMinutes] = useState(
@@ -65,6 +78,17 @@ export function TaskDetailSheet({
   const [dueDate, setDueDate] = useState(task.dueDate ?? '');
   const [startTime, setStartTime] = useState(task.startTime ?? '');
   const [endTime, setEndTime] = useState(task.endTime ?? '');
+  const [startedAt, setStartedAt] = useState<string | null>(task.startedAt ?? null);
+  const [actualMinutes, setActualMinutes] = useState(
+    task.actualMinutes != null
+      ? String(task.actualMinutes)
+      : task.estimatedMinutes != null
+        ? String(task.estimatedMinutes)
+        : '25',
+  );
+  const [completionChoice, setCompletionChoice] = useState(1);
+  const [interruptions, setInterruptions] = useState('');
+  const [executionNote, setExecutionNote] = useState<string | null>(null);
 
   const [titleError, setTitleError] = useState<string | null>(null);
   const [minutesError, setMinutesError] = useState<string | null>(null);
@@ -185,6 +209,42 @@ export function TaskDetailSheet({
     }
   }
 
+  function actualMinutesValue(): number | null {
+    const value = Number(actualMinutes);
+    return Number.isFinite(value) && value > 0 ? Math.round(value) : null;
+  }
+
+  function interruptionValue(): number | null {
+    const text = interruptions.trim();
+    if (!text) return null; // not observed, not zero
+    const value = Number(text);
+    if (!Number.isInteger(value) || value < 0) return null;
+    return value;
+  }
+
+  function beginTask() {
+    const now = new Date();
+    setStartedAt(now.toISOString());
+    setExecutionNote(null);
+    startTask(task.id);
+  }
+
+  function saveProgress() {
+    const rate = (completionChoice + 1) * 0.25;
+    if (rate >= 1) {
+      completeTask(task.id, actualMinutesValue(), interruptionValue());
+      setExecutionNote('已记录完成');
+      return;
+    }
+    partialCompleteTask(task.id, rate, actualMinutesValue(), interruptionValue());
+    setExecutionNote(`已记录 ${Math.round(rate * 100)}% 进度`);
+  }
+
+  function finishTask() {
+    completeTask(task.id, actualMinutesValue(), interruptionValue());
+    setExecutionNote('已记录完成');
+  }
+
   return (
     <BottomSheet
       visible
@@ -254,10 +314,66 @@ export function TaskDetailSheet({
         ) : null}
         <MetaItem label="优先级" value={PRIORITY_LABEL[priority - 1] ?? '中'} />
         <MetaItem label="认知负荷" value={COGNITIVE_LABEL[task.cognitiveLoad]} />
+        {task.predictionSource ? (
+          <MetaItem label="计划依据" value={predictionSourceLabel(task.predictionSource)} />
+        ) : null}
         {task.predictedDuration != null ? (
           <MetaItem label="预测时长" value={`${task.predictedDuration} 分钟`} mono />
         ) : null}
       </View>
+
+      {canEdit && !task.done && !task.skipped ? (
+        <View style={styles.execution}>
+          <Text style={[styles.sectionTitle, { color: colors.ink }]}>执行记录</Text>
+          {startedAt == null ? (
+            <View style={styles.executionRow}>
+              <Button label="开始任务" variant="filled" icon="arrowRight" onPress={beginTask} />
+              <Text style={[styles.note, { color: colors.inkMuted }]}>
+                开始后可以记录实际用时和完成度；这些数据会用于更新当前状态。
+              </Text>
+            </View>
+          ) : (
+            <>
+              <Text style={[styles.note, { color: colors.inkMuted }]}>
+                已开始 {formatClock(startedAt)}。不需要填问卷，只记录实际情况。
+              </Text>
+              <TextField
+                label="实际用时（分钟）"
+                value={actualMinutes}
+                onChangeText={setActualMinutes}
+                placeholder="25"
+                keyboardType="number-pad"
+                background={colors.surfaceContainerLowest}
+              />
+              <TextField
+                label="中断次数（可选）"
+                value={interruptions}
+                onChangeText={setInterruptions}
+                placeholder="留空表示未记录"
+                keyboardType="number-pad"
+                background={colors.surfaceContainerLowest}
+              />
+              <Text style={[styles.note, { color: colors.inkFaint }]}>
+                中断次数留空表示“未观察”，不会当成 0 次。
+              </Text>
+              <Segmented
+                label="完成度"
+                options={['25%', '50%', '75%', '100%']}
+                value={completionChoice}
+                onChange={setCompletionChoice}
+                size="sm"
+              />
+              <View style={styles.executionRow}>
+                <Button label="保存进度" variant="tonal" onPress={saveProgress} />
+                <Button label="完成任务" variant="filled" onPress={finishTask} />
+              </View>
+            </>
+          )}
+          {executionNote ? (
+            <Text style={[styles.note, { color: colors.primary }]}>{executionNote}</Text>
+          ) : null}
+        </View>
+      ) : null}
 
       {probability != null ? (
         <View style={styles.probability}>
@@ -532,6 +648,15 @@ const styles = StyleSheet.create({
   },
   probability: {
     gap: Space.sm,
+  },
+  execution: {
+    gap: Space.md,
+  },
+  executionRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    flexWrap: 'wrap',
+    gap: Space.md,
   },
   sectionHead: {
     flexDirection: 'row',

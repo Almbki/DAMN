@@ -24,6 +24,7 @@ dependencies = [
     "langgraph-checkpoint-postgres>=3.1.2",
     "langchain-openai>=1.6.3",
     "openpyxl>=3.1.5",
+    "numpy>=1.26.0",
 ]
 
 [project.optional-dependencies]
@@ -53,11 +54,18 @@ filterwarnings = ["ignore::DeprecationWarning"]
 [tool.ruff]
 line-length = 100
 target-version = "py312"
-extend-exclude = ["alembic/versions"]
+extend-exclude = ["alembic/versions", "models_test"]
 
 [tool.ruff.lint]
 select = ["E", "F", "I", "B", "UP"]
 ignore = ["B008"]
+
+# Copied verbatim from the validated model packages (models_test/). Their maths
+# and comments are frozen; formatting them here would make the frozen artifacts
+# diverge from their provenance.
+[tool.ruff.lint.per-file-ignores]
+"app/user_models/level1/cat.py" = ["E501"]
+"app/user_models/level3/*.py" = ["E501"]
 
 [tool.uv]
 package = true

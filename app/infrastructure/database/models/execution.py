@@ -32,11 +32,16 @@ class TaskExecution(Base):
     stress_before: Mapped[int | None] = mapped_column(Integer, nullable=True)
     stress_after: Mapped[int | None] = mapped_column(Integer, nullable=True)
     failure_reason: Mapped[str | None] = mapped_column(String(500), nullable=True)
+    #: Observed interruption count; NULL means not observed (never forced to 0).
+    interruption_count: Mapped[int | None] = mapped_column(Integer, nullable=True)
     time_of_day: Mapped[TimeOfDay | None] = mapped_column(
         Enum(TimeOfDay, values_callable=enum_values, native_enum=False, length=32),
         nullable=True,
     )
     completed: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    data_origin: Mapped[str] = mapped_column(
+        String(16), nullable=False, default="real", server_default="real"
+    )
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, default=utcnow
     )

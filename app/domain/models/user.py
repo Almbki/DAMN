@@ -34,6 +34,12 @@ class User(DomainModel):
     mbti_dims: dict[str, float] | None = None
     #: Free-text self description from the profile questionnaire.
     identity: str | None = None
+    # --- Level 1 real trait model (authoritative stable traits) -----------
+    #: Validated TraitProfileV1 JSON from the frozen IPIP-NEO-120 CAT.
+    trait_profile: dict[str, Any] | None = None
+    trait_model_version: str | None = None
+    trait_artifact_hash: str | None = None
+    trait_feature_version: str | None = None
     created_at: datetime = Field(default_factory=utcnow)
 
     @field_validator("profile", "scheduling_preferences", mode="before")

@@ -6,7 +6,7 @@ from datetime import date
 
 from fastapi.testclient import TestClient
 
-from app.ml.base import AdjustmentRoute, AdjustmentSeverity
+from app.domain.feedback.models import AdjustmentRoute, AdjustmentSeverity
 from tests.agent.conftest import override_plan_service, preview_of
 
 

@@ -50,18 +50,18 @@ def test_llm_path_stamps_the_truthful_prediction_source() -> None:
     tool = PlanDrafterTool(llm=_StubLLM(generated))  # type: ignore[arg-type]
     payload = PlanDrafterInput(
         mode=PlanDrafterMode.INITIAL,
-        prediction_source="mock:statistical",
+        prediction_source="deterministic:workload_estimate",
     )
 
     result = tool.run(payload)
 
     # The LLM does not get to author provenance; the ML predictor's source wins.
-    assert result.tasks[0].prediction_source == "mock:statistical"
+    assert result.tasks[0].prediction_source == "deterministic:workload_estimate"
 
 
 def test_truthful_source_override_handles_no_tasks() -> None:
     tool = PlanDrafterTool(llm=_StubLLM(PlanGenerationResult(title="T")))  # type: ignore[arg-type]
-    result = tool.run(PlanDrafterInput(prediction_source="mock:statistical"))
+    result = tool.run(PlanDrafterInput(prediction_source="deterministic:workload_estimate"))
     assert result.tasks == []
 
 
@@ -75,4 +75,7 @@ def test_prediction_source_is_capped_to_the_column_width() -> None:
 def test_short_source_falls_back_to_unknown() -> None:
     assert PlanService._short_source(None) == "unknown"
     assert PlanService._short_source("   ") == "unknown"
-    assert PlanService._short_source("  mock:statistical  ") == "mock:statistical"
+    assert (
+        PlanService._short_source("  deterministic:workload_estimate  ")
+        == "deterministic:workload_estimate"
+    )

@@ -10,10 +10,10 @@ from __future__ import annotations
 
 from sqlalchemy.orm import Session
 
+from app.application.dto.goal import GoalCreateData
 from app.application.exceptions import ConflictError, NotFoundError, PermissionDeniedError
 from app.domain.models import Goal
 from app.infrastructure.database.repositories import GoalRepository, TaskRepository
-from app.schemas.goal import GoalCreate, GoalUpdate
 
 
 class GoalService:
@@ -40,7 +40,7 @@ class GoalService:
             raise PermissionDeniedError("goal belongs to another user")
         return goal
 
-    def create(self, user_id: int, payload: GoalCreate) -> Goal:
+    def create(self, user_id: int, payload: GoalCreateData) -> Goal:
         goal = Goal(
             user_id=user_id,
             title=payload.title,
@@ -62,10 +62,10 @@ class GoalService:
         self._session.commit()
         return created
 
-    def update(self, user_id: int, goal_id: int, payload: GoalUpdate) -> Goal:
+    def update(self, user_id: int, goal_id: int, updates: dict[str, object]) -> Goal:
         self.get_goal(user_id, goal_id)  # ownership
+        provided = dict(updates)
         updates: dict[str, object] = {}
-        provided = payload.model_dump(exclude_unset=True)
 
         for field in (
             "title",

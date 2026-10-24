@@ -29,8 +29,8 @@ THEORETICAL WORKLOAD:
 USER SITUATION:
 {{user_situation}}
 
-PROFILE (cold-start prior - bias the mix, never exclude work):
-{{profile}}
+USER MODEL (Level 1 traits + Level 2 state - evidence, never a hard constraint):
+{{user_model}}
 
 GOALS:
 {{goals}}

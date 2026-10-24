@@ -1,94 +1,158 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
 
 import { isApiError, setAuthToken, setUnauthorizedHandler } from '@/api/client';
-import { dataSource, devEmail, devPassword } from '@/api/config';
-import { getMe, login as loginRequest, register } from '@/api/endpoints';
-import type { UserRead } from '@/api/types';
+import { dataSource, demoEmail, demoLoginEnabled, demoPassword } from '@/api/config';
+import { getMe, login as loginRequest, register as registerRequest } from '@/api/endpoints';
+import type { RegisterRequest, UserRead } from '@/api/types';
+import type { SessionStatus } from '@/domain/auth';
 
-type SessionStatus = 'idle' | 'loading' | 'ready' | 'error';
+export type { SessionStatus };
 
 type SessionContextValue = {
   status: SessionStatus;
   user: UserRead | null;
   error: string | null;
+  /** Normal JWT login; throws ApiError so the login form can show the message. */
+  login: (email: string, password: string) => Promise<void>;
+  /** Register via the normal backend endpoint, then perform a normal login. */
+  register: (input: RegisterRequest) => Promise<void>;
+  logout: () => void;
   retry: () => void;
+  clearError: () => void;
   setUser: (user: UserRead) => void;
+  /** True only when public demo credentials are explicitly configured. */
+  demoMode: boolean;
 };
 
 const SessionContext = createContext<SessionContextValue | null>(null);
 
-/** Silently sign in the dev account: login, else register then login. */
-async function acquireToken(): Promise<void> {
-  try {
-    const token = await loginRequest(devEmail, devPassword);
-    setAuthToken(token.access_token);
-    return;
-  } catch (error) {
-    if (!isApiError(error) || (error.status !== 401 && error.status !== 404)) throw error;
-  }
-
-  try {
-    await register({ email: devEmail, password: devPassword, display_name: '演示用户' });
-  } catch (error) {
-    if (!isApiError(error) || error.status !== 409) throw error;
-  }
-
-  const token = await loginRequest(devEmail, devPassword);
-  setAuthToken(token.access_token);
+function messageOf(error: unknown, fallback: string): string {
+  if (isApiError(error)) return error.message;
+  return fallback;
 }
 
+/**
+ * Session bootstrap:
+ *   stored valid token -> authenticated
+ *   no/invalid token + demo credentials -> normal POST /auth/login
+ *   otherwise -> unauthenticated (Login/Register)
+ *
+ * There is no auth bypass: demo mode uses the same JWT endpoint and dependency
+ * checks as every other user.
+ */
 export function SessionProvider({ children }: { children: React.ReactNode }) {
-  const [status, setStatus] = useState<SessionStatus>(dataSource === 'api' ? 'loading' : 'idle');
+  const [status, setStatus] = useState<SessionStatus>(
+    dataSource === 'api' ? 'booting' : 'authenticated',
+  );
   const [user, setUserState] = useState<UserRead | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const signingInRef = useRef(false);
+  const busyRef = useRef(false);
 
-  const signIn = useCallback(async () => {
-    if (dataSource !== 'api') return;
-    if (signingInRef.current) return;
-    signingInRef.current = true;
+  const login = useCallback(async (email: string, password: string) => {
+    const token = await loginRequest(email, password);
+    setAuthToken(token.access_token);
     try {
-      await acquireToken();
       const me = await getMe();
       setUserState(me);
-      setStatus('ready');
+      setStatus('authenticated');
       setError(null);
     } catch (caught) {
       setAuthToken(null);
-      setError(isApiError(caught) ? caught.message : '登录失败');
-      setStatus('error');
-    } finally {
-      signingInRef.current = false;
+      throw caught;
     }
   }, []);
 
+  const register = useCallback(
+    async (input: RegisterRequest) => {
+      await registerRequest(input);
+      await login(input.email, input.password);
+    },
+    [login],
+  );
+
+  const logout = useCallback(() => {
+    setAuthToken(null);
+    setUserState(null);
+    setStatus('unauthenticated');
+    setError(null);
+  }, []);
+
+  const bootstrap = useCallback(async () => {
+    if (dataSource !== 'api') {
+      setStatus('authenticated');
+      return;
+    }
+    if (busyRef.current) return;
+    busyRef.current = true;
+    setStatus('booting');
+    setError(null);
+
+    try {
+      try {
+        const me = await getMe();
+        setUserState(me);
+        setStatus('authenticated');
+        return;
+      } catch (caught) {
+        if (!isApiError(caught) || caught.status !== 401) {
+          setError(messageOf(caught, '连不上后端'));
+          setStatus('error');
+          return;
+        }
+        // Expired/invalid stored token: drop it and continue to demo/login.
+        setAuthToken(null);
+      }
+
+      if (demoLoginEnabled) {
+        try {
+          await login(demoEmail, demoPassword);
+          return;
+        } catch (caught) {
+          // Do not fake a session; fall back to the login screen with a safe
+          // error instead of looping.
+          setError(`演示账号登录失败：${messageOf(caught, '请检查后端')}`);
+        }
+      }
+      setStatus('unauthenticated');
+    } finally {
+      busyRef.current = false;
+    }
+  }, [login]);
+
   useEffect(() => {
-    // A 401 from any request drops the token; re-authenticate exactly once.
     setUnauthorizedHandler(() => {
-      if (signingInRef.current) return;
-      setStatus('loading');
-      setError(null);
-      void signIn();
+      setAuthToken(null);
+      setUserState(null);
+      setStatus('unauthenticated');
     });
     return () => setUnauthorizedHandler(null);
-  }, [signIn]);
+  }, []);
 
   useEffect(() => {
-    // eslint-disable-next-line react-hooks/set-state-in-effect -- sign in once on mount
-    void signIn();
-  }, [signIn]);
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- one bootstrap per mount
+    void bootstrap();
+  }, [bootstrap]);
 
   const retry = useCallback(() => {
-    setStatus('loading');
-    setError(null);
-    void signIn();
-  }, [signIn]);
+    void bootstrap();
+  }, [bootstrap]);
 
   const setUser = useCallback((next: UserRead) => setUserState(next), []);
 
   const value = useMemo<SessionContextValue>(
-    () => ({ status, user, error, retry, setUser }),
-    [status, user, error, retry, setUser],
+    () => ({
+      status,
+      user,
+      error,
+      login,
+      register,
+      logout,
+      retry,
+      clearError: () => setError(null),
+      setUser,
+      demoMode: dataSource === 'api' && demoLoginEnabled,
+    }),
+    [status, user, error, login, register, logout, retry, setUser],
   );
 
   return <SessionContext.Provider value={value}>{children}</SessionContext.Provider>;

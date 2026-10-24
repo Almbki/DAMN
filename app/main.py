@@ -25,6 +25,7 @@ from app.core.config import get_settings
 from app.core.logging import setup_logging
 from app.infrastructure.database import init_db
 from app.schemas.common import ErrorResponse, HealthResponse
+from app.user_models.errors import ModelInputError, ModelUnavailableError
 
 logger = logging.getLogger(__name__)
 
@@ -125,6 +126,22 @@ def create_app() -> FastAPI:
             detail={"errors": jsonable_encoder(exc.errors())},
         )
         return JSONResponse(status_code=422, content=payload.model_dump(mode="json"))
+
+    @app.exception_handler(ModelInputError)
+    async def model_input_error_handler(_: Request, exc: ModelInputError) -> JSONResponse:
+        payload = ErrorResponse(
+            code="invalid_model_input", message=str(exc)
+        )
+        return JSONResponse(status_code=422, content=payload.model_dump(mode="json"))
+
+    @app.exception_handler(ModelUnavailableError)
+    async def model_unavailable_handler(_: Request, exc: ModelUnavailableError) -> JSONResponse:
+        payload = ErrorResponse(
+            code="model_unavailable",
+            message="the user-model layer is unavailable; the request can be retried",
+            detail={"reason": str(exc)},
+        )
+        return JSONResponse(status_code=503, content=payload.model_dump(mode="json"))
 
     @app.get("/health", response_model=HealthResponse, tags=["system"], summary="Health check")
     def health() -> HealthResponse:

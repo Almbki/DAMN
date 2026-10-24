@@ -61,8 +61,10 @@ export const apiBaseUrl = resolveApiBaseUrl();
 
 export const apiPrefix = '/api/v1';
 
-export const devEmail = process.env.EXPO_PUBLIC_DEV_EMAIL ?? 'demo@damn.app';
-export const devPassword = process.env.EXPO_PUBLIC_DEV_PASSWORD ?? 'password123';
+export const demoEmail = (process.env.EXPO_PUBLIC_DEMO_EMAIL ?? '').trim();
+export const demoPassword = process.env.EXPO_PUBLIC_DEMO_PASSWORD ?? '';
+/** Auto demo login is enabled only when BOTH credentials are configured. */
+export const demoLoginEnabled = Boolean(demoEmail && demoPassword);
 
 /** The LAN backend has been measured stalling ~18s; keep this generous. */
 export const requestTimeoutMs = 30_000;

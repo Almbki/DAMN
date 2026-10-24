@@ -37,10 +37,9 @@ from datetime import date, time, timedelta
 from app.domain.models import Task
 from app.domain.models.enums import CognitiveLoad
 from app.domain.rules.base import RuleContext
+from app.domain.scheduling.constants import DEFAULT_HORIZON_DAYS
 from app.domain.scheduling.schedule_result import CandidateSchedule, ScheduledTask
 
-#: Default horizon length (days past ``start_date``) when no deadline is longer.
-DEFAULT_HORIZON_DAYS = 14
 #: Minimum gap between two consecutive HIGH tasks (mirrors the rule module).
 HIGH_GAP_MINUTES = 30
 #: ``date`` sentinel used to push deadline-less tasks to the back of the sort.

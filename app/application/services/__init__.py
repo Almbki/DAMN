@@ -11,6 +11,8 @@ from app.application.services.profile_service import ProfileService
 from app.application.services.replan_service import ReplanService
 from app.application.services.schedule_event_service import ScheduleEventService
 from app.application.services.situation_service import SituationService
+from app.application.services.synthetic_scenario_service import SyntheticScenarioService
+from app.application.services.trait_assessment_service import TraitAssessmentService
 
 __all__ = [
     "AuthService",
@@ -24,4 +26,6 @@ __all__ = [
     "ReplanService",
     "ScheduleEventService",
     "SituationService",
+    "SyntheticScenarioService",
+    "TraitAssessmentService",
 ]

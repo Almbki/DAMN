@@ -23,8 +23,10 @@ class TaskExecutionRepository(RepositoryBase):
             stress_before=execution.stress_before,
             stress_after=execution.stress_after,
             failure_reason=execution.failure_reason,
+            interruption_count=execution.interruption_count,
             time_of_day=execution.time_of_day,
             completed=execution.completed,
+            data_origin=execution.data_origin,
             created_at=execution.created_at,
         )
         self._session.add(orm)

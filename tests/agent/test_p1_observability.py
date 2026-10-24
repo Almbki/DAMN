@@ -8,14 +8,15 @@ from fastapi.testclient import TestClient
 
 from app.agent.context import MemoryItem, MemoryKind
 from app.application.context.repo_context_builder import merge_memory
+from app.domain.feedback.models import AdjustmentRoute
 from app.domain.models import AgentMemory
 from app.infrastructure.database import SessionLocal
 from app.infrastructure.database.repositories import (
     AgentMemoryRepository,
     AgentRunRepository,
     PredictionLogRepository,
+    ShadowPredictionRepository,
 )
-from app.ml.base import AdjustmentRoute
 from tests.agent.conftest import override_plan_service, preview_of
 
 
@@ -102,7 +103,7 @@ def test_preview_run_is_traced_and_records_tool_calls(
 # ---------------------------------------------------------------------------
 # prediction_logs
 # ---------------------------------------------------------------------------
-def test_confirm_logs_every_prediction_with_a_truthful_source(
+def test_confirm_logs_production_estimates_with_a_truthful_source(
     client: TestClient, auth_headers: dict, preview_payload: dict
 ) -> None:
     override_plan_service(client)
@@ -111,22 +112,27 @@ def test_confirm_logs_every_prediction_with_a_truthful_source(
     session = SessionLocal()
     try:
         logs = PredictionLogRepository(session).list_by_plan(plan_id)
+        shadow = ShadowPredictionRepository(session).list_by_plan(plan_id)
     finally:
         session.close()
 
-    assert logs, "persisting a plan must log its predictions"
+    assert logs, "persisting a plan must log its production estimates"
     by_type = {log.prediction_type for log in logs}
-    # duration + completion come from the predictors; time_slot from the same call.
-    assert {"duration", "completion", "time_slot"} <= by_type
-
+    # Production is a deterministic estimate: no fabricated completion or slot.
+    assert "duration" in by_type
+    assert "completion" not in by_type
     for log in logs:
-        assert log.source, "source must never be empty (no pretending it was ML)"
-        assert log.feature_hash, "a feature fingerprint is required for drift analysis"
+        assert log.source == "deterministic:workload_estimate"
+        assert log.feature_hash, "a feature fingerprint is required"
         assert log.task_id is not None
         assert log.predicted
 
-    completion = next(log for log in logs if log.prediction_type == "completion")
-    assert completion.predicted["probability"] == 0.65  # the test predictor's value
+    # Level 3 ran in shadow mode but could not use Level 1 (no trait profile).
+    assert len(shadow) == 2
+    assert all(not row.success for row in shadow)
+    assert all("level1_unavailable" in (row.failure_reason or "") for row in shadow)
+    assert all(row.mode == "shadow" for row in shadow)
+    assert all(row.production_decision for row in shadow)
 
 
 # ---------------------------------------------------------------------------

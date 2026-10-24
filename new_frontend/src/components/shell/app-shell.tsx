@@ -8,6 +8,7 @@ import { useInteraction } from '@/components/ui/interaction';
 import { NAV, routeMetaFor, type NavItem } from '@/constants/nav';
 import { Elevation, Layout, Line, Radius, Space, Type } from '@/constants/tokens';
 import { usePlan } from '@/state/plan';
+import { useSession } from '@/state/session';
 import { useTheme } from '@/state/theme';
 
 function useWide() {
@@ -19,6 +20,7 @@ function useWide() {
 export function AppShell({ children }: { children: React.ReactNode }) {
   const { colors } = useTheme();
   const { actionError, clearActionError } = usePlan();
+  const { demoMode } = useSession();
   const insets = useSafeAreaInsets();
   const wide = useWide();
   const pathname = usePathname();
@@ -86,6 +88,13 @@ export function AppShell({ children }: { children: React.ReactNode }) {
               style={[styles.headerTitle, { color: colors.ink }]}>
               {meta.title}
             </Text>
+            {demoMode ? (
+              <View style={[styles.demoBadge, { backgroundColor: colors.warningContainer }]}>
+                <Text style={[styles.demoBadgeText, { color: colors.onWarningContainer }]}>
+                  DEMO
+                </Text>
+              </View>
+            ) : null}
           </View>
         </View>
 
@@ -279,6 +288,16 @@ const styles = StyleSheet.create({
     flexShrink: 1,
     fontSize: Type.titleLarge,
     fontWeight: '600',
+  },
+  demoBadge: {
+    borderRadius: 999,
+    paddingHorizontal: Space.sm,
+    paddingVertical: 2,
+  },
+  demoBadgeText: {
+    fontSize: Type.labelSmall,
+    fontWeight: '700',
+    letterSpacing: 0.5,
   },
   errorBanner: {
     flexDirection: 'row',

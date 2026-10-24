@@ -24,6 +24,7 @@ class PlanRepository(RepositoryBase):
             end_date=plan.end_date,
             parent_plan_id=plan.parent_plan_id,
             confidence=plan.confidence,
+            data_origin=plan.data_origin,
             created_at=plan.created_at,
         )
         self._session.add(orm)

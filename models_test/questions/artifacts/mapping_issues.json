@@ -1,0 +1,244 @@
+{
+  "status": "resolved",
+  "identity_status": "clean",
+  "canonical_metadata_status": "adopted_in_production_bank",
+  "legacy_bank_status": "archived_in_tests_fixtures",
+  "blocking_scope": "none",
+  "identity_issues": 0,
+  "metadata_issues": 4,
+  "issues": [
+    {
+      "item_id": "IPIP_016",
+      "local_question_id": 16,
+      "official_order": 16,
+      "type": "metadata_mismatch",
+      "description": "Local metadata says Extraversion/Friendliness/reverse=True; official ItemKey says Neuroticism/Self-Consciousness/reverse=False.",
+      "official": {
+        "domain_code": "N",
+        "domain_name": "Neuroticism",
+        "facet_code": "N4",
+        "facet_name": "Self-Consciousness",
+        "facet_slug": "self_consciousness",
+        "official_sign": "+N4",
+        "reverse": false
+      },
+      "legacy": {
+        "id": 16,
+        "order": 16,
+        "domain_name": "Extraversion",
+        "domain_key": "extraversion",
+        "facet_name": "Friendliness",
+        "facet_key": "friendliness",
+        "reverse": true
+      },
+      "evidence": [
+        "Local text '觉得主动接近别人很困难。' is the Chinese rendering of official item 'Find it difficult to approach others.' (Short#16, Full#76).",
+        "Dataset correlations place this item with the other N4 items, not with E1 items (see the validation block in dataset_schema.json)."
+      ],
+      "canonical_status": "adopted_in_production_bank",
+      "resolution_state": "questions.json now uses the official N4/Self-Consciousness metadata. The legacy bank is archived at tests/fixtures/legacy_questions.json for audit only.",
+      "requires_decision": false
+    },
+    {
+      "item_id": "IPIP_046",
+      "local_question_id": 46,
+      "official_order": 46,
+      "type": "metadata_mismatch",
+      "description": "Local metadata says Extraversion/Friendliness/reverse=True; official ItemKey says Neuroticism/Self-Consciousness/reverse=False.",
+      "official": {
+        "domain_code": "N",
+        "domain_name": "Neuroticism",
+        "facet_code": "N4",
+        "facet_name": "Self-Consciousness",
+        "facet_slug": "self_consciousness",
+        "official_sign": "+N4",
+        "reverse": false
+      },
+      "legacy": {
+        "id": 46,
+        "order": 46,
+        "domain_name": "Extraversion",
+        "domain_key": "extraversion",
+        "facet_name": "Friendliness",
+        "facet_key": "friendliness",
+        "reverse": true
+      },
+      "evidence": [
+        "Local text '害怕引起别人的注意。' is the Chinese rendering of official item 'Am afraid to draw attention to myself.' (Short#46, Full#106).",
+        "Dataset correlations place this item with the other N4 items, not with E1 items (see the validation block in dataset_schema.json)."
+      ],
+      "canonical_status": "adopted_in_production_bank",
+      "resolution_state": "questions.json now uses the official N4/Self-Consciousness metadata. The legacy bank is archived at tests/fixtures/legacy_questions.json for audit only.",
+      "requires_decision": false
+    },
+    {
+      "item_id": "IPIP_076",
+      "local_question_id": 76,
+      "official_order": 76,
+      "type": "metadata_mismatch",
+      "description": "Local metadata says Extraversion/Friendliness/reverse=True; official ItemKey says Neuroticism/Self-Consciousness/reverse=False.",
+      "official": {
+        "domain_code": "N",
+        "domain_name": "Neuroticism",
+        "facet_code": "N4",
+        "facet_name": "Self-Consciousness",
+        "facet_slug": "self_consciousness",
+        "official_sign": "+N4",
+        "reverse": false
+      },
+      "legacy": {
+        "id": 76,
+        "order": 76,
+        "domain_name": "Extraversion",
+        "domain_key": "extraversion",
+        "facet_name": "Friendliness",
+        "facet_key": "friendliness",
+        "reverse": true
+      },
+      "evidence": [
+        "Local text '只和朋友在一起才感到舒服。' is the Chinese rendering of official item 'Only feel comfortable with friends.' (Short#76, Full#136).",
+        "Dataset correlations place this item with the other N4 items, not with E1 items (see the validation block in dataset_schema.json)."
+      ],
+      "canonical_status": "adopted_in_production_bank",
+      "resolution_state": "questions.json now uses the official N4/Self-Consciousness metadata. The legacy bank is archived at tests/fixtures/legacy_questions.json for audit only.",
+      "requires_decision": false
+    },
+    {
+      "item_id": "IPIP_106",
+      "local_question_id": 106,
+      "official_order": 106,
+      "type": "metadata_mismatch",
+      "description": "Local metadata says Extraversion/Friendliness/reverse=False; official ItemKey says Neuroticism/Self-Consciousness/reverse=True.",
+      "official": {
+        "domain_code": "N",
+        "domain_name": "Neuroticism",
+        "facet_code": "N4",
+        "facet_name": "Self-Consciousness",
+        "facet_slug": "self_consciousness",
+        "official_sign": "-N4",
+        "reverse": true
+      },
+      "legacy": {
+        "id": 106,
+        "order": 106,
+        "domain_name": "Extraversion",
+        "domain_key": "extraversion",
+        "facet_name": "Friendliness",
+        "facet_key": "friendliness",
+        "reverse": false
+      },
+      "evidence": [
+        "Local text '在困难的社交场合不觉得困扰。' is the Chinese rendering of official item 'Am not bothered by difficult social situations.' (Short#106, Full#256).",
+        "Dataset correlations place this item with the other N4 items, not with E1 items (see the validation block in dataset_schema.json)."
+      ],
+      "canonical_status": "adopted_in_production_bank",
+      "resolution_state": "questions.json now uses the official N4/Self-Consciousness metadata. The legacy bank is archived at tests/fixtures/legacy_questions.json for audit only.",
+      "requires_decision": false
+    }
+  ],
+  "non_blocking_normalizations": [
+    {
+      "item_id": "IPIP_020",
+      "local_question_id": 20,
+      "official_order": 20,
+      "type": "naming_normalization",
+      "official_facet_name": "Achievement-Striving",
+      "legacy_facet_name": "Achievement Striving",
+      "normalized_facet": "achievement_striving",
+      "blocking": false
+    },
+    {
+      "item_id": "IPIP_022",
+      "local_question_id": 22,
+      "official_order": 22,
+      "type": "naming_normalization",
+      "official_facet_name": "Excitement-Seeking",
+      "legacy_facet_name": "Excitement Seeking",
+      "normalized_facet": "excitement_seeking",
+      "blocking": false
+    },
+    {
+      "item_id": "IPIP_050",
+      "local_question_id": 50,
+      "official_order": 50,
+      "type": "naming_normalization",
+      "official_facet_name": "Achievement-Striving",
+      "legacy_facet_name": "Achievement Striving",
+      "normalized_facet": "achievement_striving",
+      "blocking": false
+    },
+    {
+      "item_id": "IPIP_052",
+      "local_question_id": 52,
+      "official_order": 52,
+      "type": "naming_normalization",
+      "official_facet_name": "Excitement-Seeking",
+      "legacy_facet_name": "Excitement Seeking",
+      "normalized_facet": "excitement_seeking",
+      "blocking": false
+    },
+    {
+      "item_id": "IPIP_080",
+      "local_question_id": 80,
+      "official_order": 80,
+      "type": "naming_normalization",
+      "official_facet_name": "Achievement-Striving",
+      "legacy_facet_name": "Achievement Striving",
+      "normalized_facet": "achievement_striving",
+      "blocking": false
+    },
+    {
+      "item_id": "IPIP_082",
+      "local_question_id": 82,
+      "official_order": 82,
+      "type": "naming_normalization",
+      "official_facet_name": "Excitement-Seeking",
+      "legacy_facet_name": "Excitement Seeking",
+      "normalized_facet": "excitement_seeking",
+      "blocking": false
+    },
+    {
+      "item_id": "IPIP_110",
+      "local_question_id": 110,
+      "official_order": 110,
+      "type": "naming_normalization",
+      "official_facet_name": "Achievement-Striving",
+      "legacy_facet_name": "Achievement Striving",
+      "normalized_facet": "achievement_striving",
+      "blocking": false
+    },
+    {
+      "item_id": "IPIP_112",
+      "local_question_id": 112,
+      "official_order": 112,
+      "type": "naming_normalization",
+      "official_facet_name": "Excitement-Seeking",
+      "legacy_facet_name": "Excitement Seeking",
+      "normalized_facet": "excitement_seeking",
+      "blocking": false
+    }
+  ],
+  "summary": {
+    "missing": 0,
+    "duplicate": 0,
+    "ambiguous_identity": 0,
+    "unverified": 0,
+    "metadata_mismatch": 4,
+    "naming_normalizations": 8,
+    "official_domains": {
+      "N": 24,
+      "E": 24,
+      "O": 24,
+      "A": 24,
+      "C": 24
+    },
+    "official_facets": 30,
+    "official_items_per_facet": 4,
+    "legacy_distinct_facets": 29,
+    "legacy_friendliness_items": 8
+  },
+  "resolution": "The four legacy E1/Friendliness labels were corrected to the official N4/Self-Consciousness labels and adopted in questions.json. The legacy bank is archived at tests/fixtures/legacy_questions.json for audit only. Historical scores remain reproducible through scoring.score_legacy().",
+  "canonical_bank_file": "questions.json",
+  "legacy_bank_file": "tests/fixtures/legacy_questions.json",
+  "grm_or_cat_started": false
+}

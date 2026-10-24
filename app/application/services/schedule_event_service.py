@@ -11,6 +11,7 @@ from datetime import date
 
 from sqlalchemy.orm import Session
 
+from app.application.dto.schedule_import import ScheduleImportData
 from app.application.exceptions import DomainValidationError, NotFoundError
 from app.application.schedule_import import (
     MAX_FILE_BYTES,
@@ -29,7 +30,6 @@ from app.infrastructure.database.repositories import (
     ScheduleEventRepository,
     TaskRepository,
 )
-from app.schemas.schedule_event import ScheduleImportResult
 
 #: Cap the conflict list so a pathological file cannot produce a huge response.
 MAX_CONFLICTS = 100
@@ -51,7 +51,7 @@ class ScheduleEventService:
         content: bytes,
         dry_run: bool = False,
         term_start: date | None = None,
-    ) -> ScheduleImportResult:
+    ) -> ScheduleImportData:
         if len(content) > MAX_FILE_BYTES:
             raise DomainValidationError(
                 "file is too large: the limit is 2 MB"
@@ -81,7 +81,7 @@ class ScheduleEventService:
             self._session.commit()
 
         conflicts = self._conflicts(user_id, outcome.rows)
-        return ScheduleImportResult(
+        return ScheduleImportData(
             imported=imported,
             updated=updated,
             skipped=outcome.skipped,

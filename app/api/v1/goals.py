@@ -10,6 +10,7 @@ from __future__ import annotations
 from fastapi import APIRouter, Depends, Query, status
 
 from app.api.deps import get_current_user, get_goal_service
+from app.application.dto.goal import GoalCreateData
 from app.application.services import GoalService
 from app.domain.models import Goal, User
 from app.schemas.common import ErrorResponse
@@ -49,7 +50,9 @@ def create_goal(
     current_user: User = Depends(get_current_user),
     service: GoalService = Depends(get_goal_service),
 ) -> GoalDetailRead:
-    goal: Goal = service.create(current_user.id or 0, payload)
+    goal: Goal = service.create(
+        current_user.id or 0, GoalCreateData(**payload.model_dump())
+    )
     return GoalDetailRead.model_validate(goal)
 
 
@@ -65,7 +68,9 @@ def update_goal(
     current_user: User = Depends(get_current_user),
     service: GoalService = Depends(get_goal_service),
 ) -> GoalDetailRead:
-    goal = service.update(current_user.id or 0, goal_id, payload)
+    goal = service.update(
+        current_user.id or 0, goal_id, payload.model_dump(exclude_unset=True)
+    )
     return GoalDetailRead.model_validate(goal)
 
 

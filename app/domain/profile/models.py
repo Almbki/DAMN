@@ -1,27 +1,24 @@
-"""User-profile domain dataclasses (stdlib only - no FastAPI/SQLAlchemy).
+"""Profile data contracts (persistence/display only).
 
-Mirrors ``ideas and structures/Prompts/画像.md`` §1: static profile + dynamic
-state, per ``docs/fin/核心闭环.md`` 环节 1. All dynamic fields are plain Python
-floats in [0, 1] (except ``duration_factor`` which is a unitless multiplier and
-``update_count``).
+The old EWMA/MBTI engine was a second, competing source of dynamic state. It has
+been removed; traits come from ``app.user_models.level1`` and dynamic state from
+``app.user_models.level2``. This package now only holds the dataclasses used by
+repositories and the compatibility API.
 
-Every dataclass is frozen: ``update_state`` returns a brand-new
-``UserStateData`` via ``dataclasses.replace`` and never mutates its input.
+``UserStateData`` is a *view*: ``level2_profile`` is the source of truth and the
+legacy float fields are projections that keep the existing wire contract stable.
 """
 
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+from datetime import date, datetime
+from typing import Any
 
 
 @dataclass(frozen=True, slots=True)
 class UserProfileData:
-    """Static per-user portrait from registration / questionnaire.
-
-    ``mbti_dims`` holds a subset of the ``ie``/``sn``/``tf``/``jp`` keys with
-    weights in [0, 1]; each weight is the pull toward the FIRST letter of the
-    matching ``DIMENSION_LETTERS`` pair (e.g. ``ie=0.65`` means 65% I, 35% E).
-    """
+    """Static soft profile (MBTI is a self-report hint, never a diagnosis)."""
 
     mbti_type: str | None = None
     mbti_dims: dict[str, float] | None = None
@@ -30,11 +27,7 @@ class UserProfileData:
 
 @dataclass(frozen=True, slots=True)
 class UserStateData:
-    """Dynamic, feedback-updated state (EWMA) of the user model.
-
-    Fields 2-8 are seeded from the MBTI template at registration; the rest
-    start at template-neutral 0.5 and are updated by ``engine.update_state``.
-    """
+    """Persistence/display view of the Level 2 dynamic state."""
 
     duration_factor: float = 1.3
     completion_prob: float = 0.7
@@ -48,32 +41,22 @@ class UserStateData:
     state_fatigue: float = 0.5
     self_efficacy: float = 0.5
     update_count: int = 0
+    # --- Level 2 real dynamic state (DDSR-V1) -----------------------------
+    state_stress: float = 0.5
+    state_fatigue_uncertainty: float = 0.25
+    state_stress_uncertainty: float = 0.25
+    self_efficacy_uncertainty: float = 0.25
+    #: The auditable Level 2 profile JSON; the source of truth for state.
+    level2_profile: dict[str, Any] | None = None
+    level2_profile_date: date | None = None
+    level2_model_version: str | None = None
+    level2_config_version: str | None = None
+    level2_artifact_hash: str | None = None
+    level2_updated_at: datetime | None = None
 
     def is_degraded(self) -> bool:
-        """Fewer than 3 feedback updates: predictions are cold-start degraded."""
-        return self.update_count < 3
+        """True until a real Level 2 profile with enough history exists."""
+        return self.level2_profile is None or self.update_count < 3
 
 
-@dataclass(frozen=True, slots=True)
-class DurationEstimate:
-    """Duration point estimate plus degradation flag."""
-
-    q50: float
-    q80: float
-    degraded: bool
-
-
-@dataclass(frozen=True, slots=True)
-class CompletionEstimate:
-    """Completion-probability estimate plus degradation flag."""
-
-    prob: float
-    degraded: bool
-
-
-@dataclass(frozen=True, slots=True)
-class ReplanDecision:
-    """Replan verdict (画像.md §4)."""
-
-    decision: str
-    reason_code: str
+__all__ = ["UserProfileData", "UserStateData"]

@@ -7,6 +7,7 @@ from datetime import UTC, date, datetime
 from sqlalchemy import delete, select, update
 
 from app.domain.models import Task
+from app.infrastructure.database.models.plan import Plan as PlanORM
 from app.infrastructure.database.models.task import Task as TaskORM
 from app.infrastructure.database.repositories.base import RepositoryBase
 
@@ -29,6 +30,9 @@ class TaskRepository(RepositoryBase):
                 end_time=t.end_time,
                 status=t.status,
                 completion_probability=t.completion_probability,
+                prediction_source=t.prediction_source,
+                prediction_mode=t.prediction_mode,
+                data_origin=t.data_origin,
                 is_flexible=t.is_flexible,
                 task_kind=t.task_kind,
                 series_id=t.series_id,
@@ -58,6 +62,17 @@ class TaskRepository(RepositoryBase):
             stmt = stmt.where(TaskORM.deleted_at.is_(None))
         orm = self._session.scalars(stmt).first()
         return self._to_domain(orm) if orm is not None else None
+
+    def list_by_user(self, user_id: int, *, limit: int = 2000) -> list[Task]:
+        """Every active task belonging to a user (across plan versions)."""
+        stmt = (
+            select(TaskORM)
+            .join(PlanORM, TaskORM.plan_id == PlanORM.id)
+            .where(PlanORM.user_id == user_id, TaskORM.deleted_at.is_(None))
+            .order_by(TaskORM.scheduled_date, TaskORM.order_index, TaskORM.id)
+            .limit(limit)
+        )
+        return [self._to_domain(orm) for orm in self._session.scalars(stmt).all()]
 
     def list_by_plan(self, plan_id: int) -> list[Task]:
         stmt = (

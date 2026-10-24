@@ -18,14 +18,12 @@ from app.agent.state import AgentConfig, PlannerContext, PlannerRequest, Prefere
 from app.domain.models.enums import CognitiveLoad, Priority
 from app.domain.rules.base import RuleEngine
 from app.domain.scheduling.scheduler import Scheduler
-from app.ml.predictors import PredictorSet
 
 
 def _context() -> PlannerContext:
     return PlannerContext(
         scheduler=Scheduler(),
         rule_engine=RuleEngine(),
-        predictors=PredictorSet.default(),
         config=AgentConfig(max_repair_attempts=2),
         llm=None,
         context_builder=None,
