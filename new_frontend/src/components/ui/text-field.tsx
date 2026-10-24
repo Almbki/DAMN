@@ -20,6 +20,8 @@ export function TextField({
   keyboardType,
   testID,
   background,
+  secureTextEntry = false,
+  autoCapitalize = 'none',
 }: {
   label: string;
   value: string;
@@ -32,6 +34,8 @@ export function TextField({
   testID?: string;
   /** Surface colour the field sits on, used to notch the floating label. */
   background?: string;
+  secureTextEntry?: boolean;
+  autoCapitalize?: TextInputProps['autoCapitalize'];
 }) {
   const { colors } = useTheme();
   const [focused, setFocused] = useState(false);
@@ -69,6 +73,8 @@ export function TextField({
           multiline={multiline}
           autoFocus={autoFocus}
           keyboardType={keyboardType}
+          secureTextEntry={secureTextEntry}
+          autoCapitalize={autoCapitalize}
           accessibilityLabel={label}
           testID={testID}
           style={[styles.input, multiline && styles.inputMultiline, { color: colors.ink }]}

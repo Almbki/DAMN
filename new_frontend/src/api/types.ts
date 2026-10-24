@@ -47,6 +47,11 @@ export interface TaskRead {
   end_time: string | null;
   status: TaskStatus;
   completion_probability: number | null;
+  /** Truthful production provenance (null for legacy/mock-shaped rows). */
+  prediction_source?: string | null;
+  prediction_mode?: string | null;
+  /** Active execution start (survives a refresh; read-only). */
+  started_at?: string | null;
   is_flexible: boolean;
   task_kind?: TaskKind | null;
   series_id?: string | null;
@@ -100,6 +105,8 @@ export interface UserRead {
   mbti_type?: string | null;
   mbti_dims?: MbtiDims | null;
   identity?: string | null;
+  /** Validated Level 1 trait profile (authoritative stable traits). */
+  trait_profile?: Record<string, unknown> | null;
   created_at: string;
 }
 
@@ -138,6 +145,8 @@ export interface UserStateRead {
   stress_response: number;
   state_energy: number;
   state_fatigue: number;
+  /** Level 2 stress projection (0..1); compatibility/display only. */
+  state_stress: number;
   self_efficacy: number;
   update_count: number;
   /** True while `update_count < 3` (冷启动校准中). */
@@ -153,7 +162,7 @@ export interface ProfileRead {
   mbti_type: string | null;
   mbti_dims: MbtiDims | null;
   identity: string | null;
-  // --- adaptive state (EWMA-updated by feedback) ---
+  // --- compatibility projections (do not use as the product state) ---
   duration_factor: number;
   completion_prob: number;
   stress_baseline: number;
@@ -164,10 +173,185 @@ export interface ProfileRead {
   stress_response: number;
   state_energy: number;
   state_fatigue: number;
+  state_stress: number;
   self_efficacy: number;
   update_count: number;
-  /** True while `update_count < 3` (冷启动校准中). */
   degraded: boolean;
+  // --- real three-layer model snapshots (authoritative) ---
+  trait: TraitSnapshot | null;
+  state: DynamicStateSnapshot | null;
+  model_metadata: ModelMetadata[];
+}
+
+/** Level 1 / Level 2 / Level 3 metadata (artifact identity + status). */
+export type ModelStatus = 'ok' | 'degraded' | 'unavailable' | 'not_fitted';
+
+export interface ModelMetadata {
+  level: 'level1' | 'level2' | 'level3';
+  model_version: string;
+  artifact_version: string;
+  artifact_hash: string;
+  feature_version: string;
+  mode: string | null;
+  status: ModelStatus;
+  degraded_reason: string | null;
+}
+
+export interface TraitDomain {
+  theta: number;
+  se: number;
+  ci95: [number, number] | null;
+  items_answered: number;
+}
+
+export type TraitDomainKey = 'N' | 'E' | 'O' | 'A' | 'C';
+
+export interface TraitSnapshot {
+  model_version: string;
+  schema_version: string;
+  domains: Record<TraitDomainKey, TraitDomain>;
+  calibration: Record<string, unknown>;
+  metadata: ModelMetadata;
+}
+
+export interface StateEstimate {
+  value: number;
+  uncertainty: number;
+  evidence_availability: string;
+  evidence_count: number;
+  conflict: boolean;
+}
+
+export interface DynamicStateSnapshot {
+  date: string;
+  fatigue: StateEstimate;
+  stress: StateEstimate;
+  self_efficacy: StateEstimate;
+  next_day_prior: Record<string, number>;
+  next_day_uncertainty: Record<string, number>;
+  model_version: string;
+  config_version: string;
+  cold_start: boolean;
+  gap_days: number;
+  profile_json: Record<string, unknown>;
+  metadata: ModelMetadata;
+}
+
+/** `GET /users/me/model-runtime` (developer/debug surface). */
+export interface ModelRuntimeLayer {
+  level: 'level1' | 'level2' | 'level3';
+  model_version: string;
+  artifact_version: string;
+  artifact_hash: string;
+  feature_version: string;
+  status: ModelStatus;
+  mode: string | null;
+  degraded_reason: string | null;
+}
+
+export interface ShadowSummary {
+  runs: number;
+  success_rate: number | null;
+  failures: number;
+  mean_disagreement: number | null;
+  status: 'ok' | 'no_runtime_data';
+}
+
+export interface ModelRuntimeRead {
+  requested_mode: string;
+  effective_mode: string;
+  mode_reason: string | null;
+  layers: ModelRuntimeLayer[];
+  shadow_summary: ShadowSummary;
+}
+
+/** Level 1 CAT assessment wire contract. */
+export interface TraitAssessmentItem {
+  item_id: string;
+  text: string;
+  text_en: string;
+  domain: TraitDomainKey;
+  domain_name: string;
+  facet: string;
+  facet_name: string;
+}
+
+export interface TraitAssessmentDomainProgress {
+  answered: number;
+  stopped: boolean;
+  domain_name: string;
+}
+
+export interface TraitAssessmentProgress {
+  answered: number;
+  remaining_min: number;
+  remaining_max: number;
+  completed_domains: number;
+  total_domains: number;
+  current_domain: TraitDomainKey | null;
+  domains: Partial<Record<TraitDomainKey, TraitAssessmentDomainProgress>>;
+}
+
+export interface TraitAssessmentRead {
+  assessment_id: string;
+  status: 'in_progress' | 'completed' | 'abandoned';
+  next_item: TraitAssessmentItem | null;
+  progress: TraitAssessmentProgress;
+  trait_profile: Record<string, unknown> | null;
+  created_at: string;
+  updated_at: string;
+  completed_at: string | null;
+}
+
+export interface TraitAssessmentAnswerRequest {
+  item_id: string;
+  response: number;
+}
+
+export interface TraitReassessmentEligibilityRead {
+  eligible: boolean;
+  cooldown_days: number;
+  last_completed_at: string | null;
+  next_eligible_at: string | null;
+}
+
+export interface SyntheticScenarioInfo {
+  name: string;
+  description: string;
+  scenario_version: string;
+  days: number;
+  tasks: number;
+}
+
+export interface SyntheticScenarioList {
+  scenarios: SyntheticScenarioInfo[];
+}
+
+export interface SyntheticImportSummary {
+  scenario: string;
+  days_imported: number;
+  tasks_imported: number;
+  executions_imported: number;
+  feedback_imported: number;
+  level1_status: string;
+  level2_status: string;
+  level2_observed_on: string | null;
+  shadow_runs_before: number;
+  shadow_runs_after: number;
+  warnings: string[];
+}
+
+export interface SyntheticResetSummary {
+  deleted: Record<string, number>;
+  level1_status: string;
+  level2_status: string;
+  warnings: string[];
+}
+
+export interface SyntheticStatus {
+  enabled: boolean;
+  synthetic_present: boolean;
+  counts: Record<string, number>;
 }
 
 /** Body for `PATCH /users/me`; sending any field re-initialises the state. */
@@ -175,6 +359,7 @@ export interface ProfileUpdateRequest {
   mbti_type?: string | null;
   mbti_dims?: MbtiDims | null;
   identity?: string | null;
+  trait_profile?: Record<string, unknown> | null;
 }
 
 export interface DailyCompletionRead {
@@ -217,6 +402,10 @@ export interface TaskUpdateRequest {
   status?: TaskStatus;
   completed?: boolean;
   actual_duration?: number;
+  /** Partial completion (0..1); backend records a TaskExecution row. */
+  completion_rate?: number | null;
+  /** Optional observed interruptions; null/omitted = not observed. */
+  interruption_count?: number | null;
   difficulty_feedback?: number;
   stress_before?: number;
   stress_after?: number;

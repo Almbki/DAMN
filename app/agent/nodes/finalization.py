@@ -8,17 +8,20 @@ from __future__ import annotations
 from app.agent.nodes._shared import compute_confidence, current_drafts, get_context
 from app.agent.schemas import FinalPlanPayload
 from app.agent.state import PlannerState
+from app.domain.feedback.models import AdjustmentRoute
 
 NODE = "plan_finalization"
 
 
 def _trigger_source(state: PlannerState) -> str:
-    from app.ml.base import AdjustmentRoute
-
-    if state.get("route") is AdjustmentRoute.MICRO_ADJUST:
-        return "micro_adjust"
-    if state.get("replan_reason"):
-        return "replan"
+    """Explicit workflow metadata -> audit trigger (never guessed from notes)."""
+    workflow = str(state.get("workflow") or "")
+    if workflow == "manual_replan":
+        return "manual_replan"
+    if workflow == "feedback_replan":
+        if state.get("route") is AdjustmentRoute.MICRO_ADJUST:
+            return "micro_adjust"
+        return "feedback_full_replan"
     if int(state.get("adjustment_count") or 0) > 0:
         return "preview_adjusted"
     return "initial_plan"

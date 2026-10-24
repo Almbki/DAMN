@@ -68,15 +68,22 @@ class FeedbackService:
         if plan.user_id != user_id:
             raise PermissionDeniedError("plan belongs to another user")
 
-        payload = feedback.model_copy(update={"user_id": user_id, "plan_id": plan_id})
+        payload = feedback.model_copy(
+            update={
+                "user_id": user_id,
+                "plan_id": plan_id,
+                # A check-in on a synthetic demo plan is synthetic provenance too.
+                "data_origin": plan.data_origin,
+            }
+        )
         saved = self._feedback.create(payload)
         self._session.commit()
 
         # Consolidate what we just learned into persisted memory (semantic /
         # episodic / procedural), so the next planning run reads it back.
         self._refresh_memory(user_id)
-        # ... and into the adaptive portrait state (EWMA).
-        self._update_profile_state(user_id, saved)
+        # ... and refresh the real Level 2 dynamic state from the new check-in.
+        self._refresh_user_model(user_id)
 
         eligibility = None
         if self._replan_service is not None:
@@ -93,7 +100,7 @@ class FeedbackService:
             # Free text is context for the prompt only: it no longer sets
             # `user_adjustment`, so it cannot force a FULL_REPLAN by itself.
             outcome = self._plan_service.process_feedback_cycle(
-                user_id, plan_id, note=saved.free_text
+                user_id, plan_id, note=saved.free_text, route=decision.route
             )
             if not outcome.reasons:
                 outcome.reasons = [decision.reason]
@@ -130,22 +137,17 @@ class FeedbackService:
     ) -> FeedbackReplanDecision:
         """Gate the agent cycle with the feedback policy.
 
-        Reads the portrait through ``ProfileService`` (duration bias + recent
-        completion rates). Best-effort: a portrait failure must never invalidate
-        the already-persisted check-in, so we fall back to a no-history portrait.
+        Reads the observed duration bias. Level 2 state is refreshed separately;
+        the policy itself is driven by the current check-in plus that observed
+        bias, never by a second portrait engine.
         """
-        from app.application.services.profile_service import ProfileService
-
-        duration_bias = 0.0
-        portrait_decision = "none"
         try:
-            profiles = ProfileService(self._session)
-            duration_bias = profiles.duration_bias(user_id)
-            portrait_decision = profiles.replan_decision_for(
-                user_id, duration_bias=duration_bias
-            ).decision
+            from app.application.services.profile_service import ProfileService
+
+            duration_bias = ProfileService(self._session).duration_bias(user_id)
         except Exception:  # noqa: BLE001 - the feedback row is the record of truth
             self._session.rollback()
+            duration_bias = 0.0
 
         settings = get_settings()
         return decide_feedback_replan(
@@ -153,7 +155,7 @@ class FeedbackService:
             energy=feedback.energy_level,
             completion_rate=feedback.completion_rate or 0.0,
             duration_bias=duration_bias,
-            portrait_decision=portrait_decision,
+            portrait_decision="none",
             stress_high=settings.agent_feedback_stress_high,
             energy_low=settings.agent_feedback_energy_low,
             stress_severe=settings.agent_feedback_stress_severe,
@@ -171,19 +173,11 @@ class FeedbackService:
         except Exception:  # noqa: BLE001 - memory is best-effort, feedback is the record
             self._session.rollback()
 
-    def _update_profile_state(self, user_id: int, feedback: Feedback) -> None:
-        """Feed the check-in through the portrait EWMA; best-effort only."""
-        from app.application.services.profile_service import ProfileService
+    def _refresh_user_model(self, user_id: int) -> None:
+        """Replay Level 2 from real history; best-effort only."""
+        from app.application.services.user_model_service import UserModelService
 
-        service = ProfileService(self._session)
         try:
-            rate = feedback.completion_rate or 0.0
-            service.update_from_feedback(
-                user_id,
-                completed=rate >= 0.999,
-                partial_pct=rate,
-                energy_after=feedback.energy_level,
-                stress_after=feedback.stress_level,
-            )
+            UserModelService(self._session).refresh_dynamic_state(user_id)
         except Exception:  # noqa: BLE001 - the feedback row is the record of truth
             self._session.rollback()

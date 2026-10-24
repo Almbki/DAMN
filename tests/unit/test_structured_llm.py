@@ -27,7 +27,7 @@ def _run(text: str) -> StructuredResult[UserSituationNarrative]:
     return StructuredLLM(_FakeClient(text), max_retries=0).complete_model(
         prompt_name="user_situation",
         schema=UserSituationNarrative,
-        variables={"user_context": "", "ml_prediction": {}, "progress": {}},
+        variables={"user_context": "", "user_model": {}, "situation_estimate": {}, "progress": {}},
         fallback=UserSituationNarrative(narrative="fallback"),
     )
 

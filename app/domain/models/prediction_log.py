@@ -31,4 +31,6 @@ class PredictionLog(DomainModel):
     predicted: dict[str, Any] = Field(default_factory=dict)
     #: Truthful origin: mock:statistical | fallback:rule | llm | xgboost-v1 ...
     source: str = ""
+    #: real | synthetic - synthetic predictions must be excluded by default.
+    data_origin: str = "real"
     created_at: datetime = Field(default_factory=utcnow)

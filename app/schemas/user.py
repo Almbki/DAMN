@@ -31,6 +31,8 @@ class UserRead(BaseModel):
     mbti_type: str | None = None
     mbti_dims: dict[str, float] | None = None
     identity: str | None = None
+    #: Level 1 TraitProfileV1 JSON (authoritative stable traits).
+    trait_profile: dict[str, Any] | None = None
     created_at: datetime
 
 
@@ -43,6 +45,8 @@ class UserUpdate(BaseModel):
     mbti_type: str | None = Field(default=None, max_length=4)
     mbti_dims: dict[str, float] | None = None
     identity: str | None = Field(default=None, max_length=200)
+    #: Optional validated Level 1 trait profile (e.g. produced by the CAT).
+    trait_profile: dict[str, Any] | None = None
 
     _normalise_type = field_validator("mbti_type")(normalise_mbti_type)
     _validate_dims = field_validator("mbti_dims")(validate_mbti_dims)

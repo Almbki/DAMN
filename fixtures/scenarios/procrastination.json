@@ -1,0 +1,221 @@
+{
+  "scenario_version": "1.0",
+  "name": "procrastination",
+  "description": "拖延模式：任务推迟、部分完成，并在反馈里明确提到主动拖延。",
+  "level1": {
+    "trait_profile": {
+      "schema_version": "1.0",
+      "model": "trait_v1",
+      "instrument": "IPIP-NEO-120",
+      "method": "bayesian_cat",
+      "calibration": {
+        "model": "samejima_grm",
+        "version": "grm_v1",
+        "reference_population": "Johnson_IPIP_NEO_120"
+      },
+      "domains": {
+        "N": {
+          "theta": 0.2,
+          "se": 0.3,
+          "ci95": [
+            -0.39999999999999997,
+            0.8
+          ],
+          "items_answered": 8
+        },
+        "E": {
+          "theta": 0.2,
+          "se": 0.3,
+          "ci95": [
+            -0.39999999999999997,
+            0.8
+          ],
+          "items_answered": 8
+        },
+        "O": {
+          "theta": 0.2,
+          "se": 0.3,
+          "ci95": [
+            -0.39999999999999997,
+            0.8
+          ],
+          "items_answered": 8
+        },
+        "A": {
+          "theta": 0.2,
+          "se": 0.3,
+          "ci95": [
+            -0.39999999999999997,
+            0.8
+          ],
+          "items_answered": 8
+        },
+        "C": {
+          "theta": 0.4,
+          "se": 0.3,
+          "ci95": [
+            -0.39999999999999997,
+            0.8
+          ],
+          "items_answered": 8
+        }
+      },
+      "assessment": {
+        "total_items_answered": 40,
+        "completed": true
+      }
+    }
+  },
+  "days": [
+    {
+      "date": "2026-09-01",
+      "tasks": [
+        {
+          "title": "论文写作",
+          "estimated_duration_minutes": 60,
+          "actual_duration_minutes": 20,
+          "completion_rate": 0.25,
+          "completed": false,
+          "interruption_count": null,
+          "difficulty": 3
+        },
+        {
+          "title": "整理笔记",
+          "estimated_duration_minutes": 30,
+          "actual_duration_minutes": 10,
+          "completion_rate": 0.2,
+          "completed": false,
+          "interruption_count": null,
+          "difficulty": 2
+        }
+      ],
+      "feedback": {
+        "completion_rate": 0.25,
+        "stress_level": 5,
+        "energy_level": 5,
+        "free_text": "今天明知道该做却一直拖延，刷手机去了。",
+        "sleep_hours": 7.0
+      }
+    },
+    {
+      "date": "2026-09-02",
+      "tasks": [
+        {
+          "title": "论文写作",
+          "estimated_duration_minutes": 60,
+          "actual_duration_minutes": 20,
+          "completion_rate": 0.25,
+          "completed": false,
+          "interruption_count": null,
+          "difficulty": 3
+        },
+        {
+          "title": "整理笔记",
+          "estimated_duration_minutes": 30,
+          "actual_duration_minutes": 10,
+          "completion_rate": 0.2,
+          "completed": false,
+          "interruption_count": null,
+          "difficulty": 2
+        }
+      ],
+      "feedback": {
+        "completion_rate": 0.25,
+        "stress_level": 5,
+        "energy_level": 5,
+        "free_text": "今天明知道该做却一直拖延，刷手机去了。",
+        "sleep_hours": 7.0
+      }
+    },
+    {
+      "date": "2026-09-03",
+      "tasks": [
+        {
+          "title": "论文写作",
+          "estimated_duration_minutes": 60,
+          "actual_duration_minutes": 20,
+          "completion_rate": 0.25,
+          "completed": false,
+          "interruption_count": null,
+          "difficulty": 3
+        },
+        {
+          "title": "整理笔记",
+          "estimated_duration_minutes": 30,
+          "actual_duration_minutes": 10,
+          "completion_rate": 0.2,
+          "completed": false,
+          "interruption_count": null,
+          "difficulty": 2
+        }
+      ],
+      "feedback": {
+        "completion_rate": 0.25,
+        "stress_level": 5,
+        "energy_level": 5,
+        "free_text": "今天明知道该做却一直拖延，刷手机去了。",
+        "sleep_hours": 7.0
+      }
+    },
+    {
+      "date": "2026-09-04",
+      "tasks": [
+        {
+          "title": "论文写作",
+          "estimated_duration_minutes": 60,
+          "actual_duration_minutes": 20,
+          "completion_rate": 0.25,
+          "completed": false,
+          "interruption_count": null,
+          "difficulty": 3
+        },
+        {
+          "title": "整理笔记",
+          "estimated_duration_minutes": 30,
+          "actual_duration_minutes": 10,
+          "completion_rate": 0.2,
+          "completed": false,
+          "interruption_count": null,
+          "difficulty": 2
+        }
+      ],
+      "feedback": {
+        "completion_rate": 0.25,
+        "stress_level": 5,
+        "energy_level": 5,
+        "free_text": "今天明知道该做却一直拖延，刷手机去了。",
+        "sleep_hours": 7.0
+      }
+    },
+    {
+      "date": "2026-09-05",
+      "tasks": [
+        {
+          "title": "论文写作",
+          "estimated_duration_minutes": 60,
+          "actual_duration_minutes": 20,
+          "completion_rate": 0.25,
+          "completed": false,
+          "interruption_count": null,
+          "difficulty": 3
+        },
+        {
+          "title": "整理笔记",
+          "estimated_duration_minutes": 30,
+          "actual_duration_minutes": 10,
+          "completion_rate": 0.2,
+          "completed": false,
+          "interruption_count": null,
+          "difficulty": 2
+        }
+      ],
+      "feedback": {
+        "completion_rate": 0.25,
+        "stress_level": 5,
+        "energy_level": 5,
+        "free_text": "今天明知道该做却一直拖延，刷手机去了。",
+        "sleep_hours": 7.0
+      }
+    }
+  ]
+}

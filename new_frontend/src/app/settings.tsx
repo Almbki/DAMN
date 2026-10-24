@@ -1,4 +1,4 @@
-import { useRouter } from 'expo-router';
+import { useRouter, type Href } from 'expo-router';
 import { useEffect, useRef, useState } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 
@@ -8,6 +8,7 @@ import { Surface } from '@/components/ui/surface';
 import { Fonts, Line, Radius, Space, Type } from '@/constants/tokens';
 import { PREFERENCE_BOUNDS, clampPreference } from '@/domain/preferences';
 import { usePlan } from '@/state/plan';
+import { useSession } from '@/state/session';
 import { useTheme } from '@/state/theme';
 
 type PreferenceKey = 'dailyLimitMinutes' | 'bufferMinutes' | 'highCognitiveMaxPerDay';
@@ -15,6 +16,7 @@ type PreferenceKey = 'dailyLimitMinutes' | 'bufferMinutes' | 'highCognitiveMaxPe
 export default function SettingsScreen() {
   const { colors } = useTheme();
   const router = useRouter();
+  const session = useSession();
   const {
     user,
     mode,
@@ -139,9 +141,9 @@ export default function SettingsScreen() {
             <Text style={[styles.factLabel, { color: colors.inkMuted }]}>数据来源</Text>
             <View style={styles.sourceRow}>
               <Text style={[styles.factValue, { color: colors.ink }]}>
-                {mode === 'api' ? '真实后端' : '演示模式'}
+                {session.demoMode ? '演示账号' : mode === 'api' ? '真实后端' : '演示模式'}
               </Text>
-              {mode === 'mock' ? (
+              {mode === 'mock' || session.demoMode ? (
                 <View style={[styles.demoBadge, { backgroundColor: colors.warningContainer }]}>
                   <Text style={[styles.demoText, { color: colors.onWarningContainer }]}>DEMO</Text>
                 </View>
@@ -161,10 +163,17 @@ export default function SettingsScreen() {
             </View>
           </View>
           <Text style={[styles.helper, { color: colors.inkFaint }]}>
-            {mode === 'api'
-              ? '演示账号自动登录；执行权重会同步到后端。'
-              : '演示模式：数据只保存在本机，不会写入后台。'}
+            {session.demoMode
+              ? '当前使用公开演示账号自动登录；数据仅用于演示，请勿放入真实账号。'
+              : mode === 'api'
+                ? '已登录；执行权重会同步到后端。'
+                : '演示模式：数据只保存在本机，不会写入后台。'}
           </Text>
+          {mode === 'api' ? (
+            <View style={styles.logoutRow}>
+              <Button label="退出登录" variant="outlined" onPress={session.logout} />
+            </View>
+          ) : null}
         </View>
       </Surface>
 
@@ -214,6 +223,23 @@ export default function SettingsScreen() {
           </View>
         </View>
       </Surface>
+
+      {mode === 'api' ? (
+        <Surface level="level1" radius="lg">
+          <View style={styles.card}>
+            <Text style={[styles.title, { color: colors.ink }]}>开发与诊断</Text>
+            <Text style={[styles.body, { color: colors.inkMuted }]}>
+              查看 Level 1/2/3 模型版本、artifact hash 与 Level 3 Shadow 的运行情况。仅用于开发和比赛演示，不影响普通画像页。
+            </Text>
+            <Button
+              label="模型运行时"
+              variant="tonal"
+              icon="arrowRight"
+              onPress={() => router.push('/developer' as Href)}
+            />
+          </View>
+        </Surface>
+      ) : null}
     </View>
   );
 }
@@ -387,5 +413,10 @@ const styles = StyleSheet.create({
     borderTopWidth: 1,
     paddingTop: Space.lg,
     marginTop: Space.xs,
+  },
+  logoutRow: {
+    flexDirection: 'row',
+    justifyContent: 'flex-end',
+    paddingTop: Space.xs,
   },
 });

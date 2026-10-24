@@ -28,7 +28,7 @@ EXPECTED_TOOLS = {
     "rule_validator",
     "schedule_generator",
     "task_decomposer",
-    "task_duration_predictor",
+    "task_estimator",
     "workload_estimator",
 }
 #: Only language-understanding tools may ever be exposed to a model.

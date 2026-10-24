@@ -99,6 +99,11 @@ export interface Task {
   completionProbability: number | null;
   /** ML predicted duration in minutes (`TaskRead.predicted_duration`). */
   predictedDuration: number | null;
+  /** Truthful provenance of the production estimate. */
+  predictionSource?: string | null;
+  predictionMode?: string | null;
+  /** Local start timestamp for execution capture (not persisted on TaskRead). */
+  startedAt?: string | null;
   /** Whether the scheduler may move this task (`TaskRead.is_flexible`). */
   isFlexible: boolean;
 }

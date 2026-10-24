@@ -39,6 +39,9 @@ class PredictionLog(Base):
     predicted: Mapped[dict[str, Any]] = mapped_column(JSON, nullable=False, default=dict)
     #: mock:statistical | fallback:rule | llm | <real model name>
     source: Mapped[str] = mapped_column(String(64), nullable=False, default="")
+    data_origin: Mapped[str] = mapped_column(
+        String(16), nullable=False, default="real", server_default="real"
+    )
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, default=utcnow, index=True
     )

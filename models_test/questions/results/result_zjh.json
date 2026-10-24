@@ -1,0 +1,1269 @@
+{
+  "schema_version": "2.0",
+  "assessment": {
+    "instrument": "IPIP-NEO-120",
+    "method": "full_test",
+    "items_answered": 120,
+    "scoring_mode": "canonical",
+    "item_id_scheme": "IPIP_001..IPIP_120",
+    "item_key_source": "IPIP-NEO-ItemKey.xls (official Johnson 2014 key)"
+  },
+  "domains": {
+    "neuroticism": {
+      "domain_code": "N",
+      "domain_name": "Neuroticism",
+      "raw_score": 88,
+      "standardized_score": null,
+      "percentile": null,
+      "level": "high"
+    },
+    "extraversion": {
+      "domain_code": "E",
+      "domain_name": "Extraversion",
+      "raw_score": 61,
+      "standardized_score": null,
+      "percentile": null,
+      "level": "average"
+    },
+    "openness": {
+      "domain_code": "O",
+      "domain_name": "Openness",
+      "raw_score": 90,
+      "standardized_score": null,
+      "percentile": null,
+      "level": "high"
+    },
+    "agreeableness": {
+      "domain_code": "A",
+      "domain_name": "Agreeableness",
+      "raw_score": 88,
+      "standardized_score": null,
+      "percentile": null,
+      "level": "high"
+    },
+    "conscientiousness": {
+      "domain_code": "C",
+      "domain_name": "Conscientiousness",
+      "raw_score": 63,
+      "standardized_score": null,
+      "percentile": null,
+      "level": "average"
+    }
+  },
+  "facets": {
+    "anxiety": {
+      "facet_code": "N1",
+      "facet_name": "Anxiety",
+      "domain": "neuroticism",
+      "domain_name": "Neuroticism",
+      "domain_code": "N",
+      "legacy_key": "anxiety",
+      "raw_score": 16,
+      "standardized_score": null,
+      "percentile": null,
+      "level": "high"
+    },
+    "friendliness": {
+      "facet_code": "E1",
+      "facet_name": "Friendliness",
+      "domain": "extraversion",
+      "domain_name": "Extraversion",
+      "domain_code": "E",
+      "legacy_key": "friendliness",
+      "raw_score": 10,
+      "standardized_score": null,
+      "percentile": null,
+      "level": "average"
+    },
+    "imagination": {
+      "facet_code": "O1",
+      "facet_name": "Imagination",
+      "domain": "openness",
+      "domain_name": "Openness",
+      "domain_code": "O",
+      "legacy_key": "imagination",
+      "raw_score": 17,
+      "standardized_score": null,
+      "percentile": null,
+      "level": "high"
+    },
+    "trust": {
+      "facet_code": "A1",
+      "facet_name": "Trust",
+      "domain": "agreeableness",
+      "domain_name": "Agreeableness",
+      "domain_code": "A",
+      "legacy_key": "trust",
+      "raw_score": 17,
+      "standardized_score": null,
+      "percentile": null,
+      "level": "high"
+    },
+    "self_efficacy": {
+      "facet_code": "C1",
+      "facet_name": "Self-Efficacy",
+      "domain": "conscientiousness",
+      "domain_name": "Conscientiousness",
+      "domain_code": "C",
+      "legacy_key": "self__efficacy",
+      "raw_score": 11,
+      "standardized_score": null,
+      "percentile": null,
+      "level": "average"
+    },
+    "anger": {
+      "facet_code": "N2",
+      "facet_name": "Anger",
+      "domain": "neuroticism",
+      "domain_name": "Neuroticism",
+      "domain_code": "N",
+      "legacy_key": "anger",
+      "raw_score": 12,
+      "standardized_score": null,
+      "percentile": null,
+      "level": "average"
+    },
+    "gregariousness": {
+      "facet_code": "E2",
+      "facet_name": "Gregariousness",
+      "domain": "extraversion",
+      "domain_name": "Extraversion",
+      "domain_code": "E",
+      "legacy_key": "gregariousness",
+      "raw_score": 6,
+      "standardized_score": null,
+      "percentile": null,
+      "level": "low"
+    },
+    "artistic_interests": {
+      "facet_code": "O2",
+      "facet_name": "Artistic Interests",
+      "domain": "openness",
+      "domain_name": "Openness",
+      "domain_code": "O",
+      "legacy_key": "artistic__interests",
+      "raw_score": 13,
+      "standardized_score": null,
+      "percentile": null,
+      "level": "average"
+    },
+    "morality": {
+      "facet_code": "A2",
+      "facet_name": "Morality",
+      "domain": "agreeableness",
+      "domain_name": "Agreeableness",
+      "domain_code": "A",
+      "legacy_key": "morality",
+      "raw_score": 15,
+      "standardized_score": null,
+      "percentile": null,
+      "level": "high"
+    },
+    "orderliness": {
+      "facet_code": "C2",
+      "facet_name": "Orderliness",
+      "domain": "conscientiousness",
+      "domain_name": "Conscientiousness",
+      "domain_code": "C",
+      "legacy_key": "orderliness",
+      "raw_score": 4,
+      "standardized_score": null,
+      "percentile": null,
+      "level": "low"
+    },
+    "depression": {
+      "facet_code": "N3",
+      "facet_name": "Depression",
+      "domain": "neuroticism",
+      "domain_name": "Neuroticism",
+      "domain_code": "N",
+      "legacy_key": "depression",
+      "raw_score": 15,
+      "standardized_score": null,
+      "percentile": null,
+      "level": "high"
+    },
+    "assertiveness": {
+      "facet_code": "E3",
+      "facet_name": "Assertiveness",
+      "domain": "extraversion",
+      "domain_name": "Extraversion",
+      "domain_code": "E",
+      "legacy_key": "assertiveness",
+      "raw_score": 14,
+      "standardized_score": null,
+      "percentile": null,
+      "level": "average"
+    },
+    "emotionality": {
+      "facet_code": "O3",
+      "facet_name": "Emotionality",
+      "domain": "openness",
+      "domain_name": "Openness",
+      "domain_code": "O",
+      "legacy_key": "emotionality",
+      "raw_score": 15,
+      "standardized_score": null,
+      "percentile": null,
+      "level": "high"
+    },
+    "altruism": {
+      "facet_code": "A3",
+      "facet_name": "Altruism",
+      "domain": "agreeableness",
+      "domain_name": "Agreeableness",
+      "domain_code": "A",
+      "legacy_key": "altruism",
+      "raw_score": 14,
+      "standardized_score": null,
+      "percentile": null,
+      "level": "average"
+    },
+    "dutifulness": {
+      "facet_code": "C3",
+      "facet_name": "Dutifulness",
+      "domain": "conscientiousness",
+      "domain_name": "Conscientiousness",
+      "domain_code": "C",
+      "legacy_key": "dutifulness",
+      "raw_score": 12,
+      "standardized_score": null,
+      "percentile": null,
+      "level": "average"
+    },
+    "self_consciousness": {
+      "facet_code": "N4",
+      "facet_name": "Self-Consciousness",
+      "domain": "neuroticism",
+      "domain_name": "Neuroticism",
+      "domain_code": "N",
+      "legacy_key": "self__consciousness",
+      "raw_score": 18,
+      "standardized_score": null,
+      "percentile": null,
+      "level": "high"
+    },
+    "activity_level": {
+      "facet_code": "E4",
+      "facet_name": "Activity Level",
+      "domain": "extraversion",
+      "domain_name": "Extraversion",
+      "domain_code": "E",
+      "legacy_key": "activity__level",
+      "raw_score": 14,
+      "standardized_score": null,
+      "percentile": null,
+      "level": "average"
+    },
+    "adventurousness": {
+      "facet_code": "O4",
+      "facet_name": "Adventurousness",
+      "domain": "openness",
+      "domain_name": "Openness",
+      "domain_code": "O",
+      "legacy_key": "adventurousness",
+      "raw_score": 12,
+      "standardized_score": null,
+      "percentile": null,
+      "level": "average"
+    },
+    "cooperation": {
+      "facet_code": "A4",
+      "facet_name": "Cooperation",
+      "domain": "agreeableness",
+      "domain_name": "Agreeableness",
+      "domain_code": "A",
+      "legacy_key": "cooperation",
+      "raw_score": 16,
+      "standardized_score": null,
+      "percentile": null,
+      "level": "high"
+    },
+    "achievement_striving": {
+      "facet_code": "C4",
+      "facet_name": "Achievement-Striving",
+      "domain": "conscientiousness",
+      "domain_name": "Conscientiousness",
+      "domain_code": "C",
+      "legacy_key": "achievement__striving",
+      "raw_score": 11,
+      "standardized_score": null,
+      "percentile": null,
+      "level": "average"
+    },
+    "immoderation": {
+      "facet_code": "N5",
+      "facet_name": "Immoderation",
+      "domain": "neuroticism",
+      "domain_name": "Neuroticism",
+      "domain_code": "N",
+      "legacy_key": "immoderation",
+      "raw_score": 12,
+      "standardized_score": null,
+      "percentile": null,
+      "level": "average"
+    },
+    "excitement_seeking": {
+      "facet_code": "E5",
+      "facet_name": "Excitement-Seeking",
+      "domain": "extraversion",
+      "domain_name": "Extraversion",
+      "domain_code": "E",
+      "legacy_key": "excitement__seeking",
+      "raw_score": 6,
+      "standardized_score": null,
+      "percentile": null,
+      "level": "low"
+    },
+    "intellect": {
+      "facet_code": "O5",
+      "facet_name": "Intellect",
+      "domain": "openness",
+      "domain_name": "Openness",
+      "domain_code": "O",
+      "legacy_key": "intellect",
+      "raw_score": 18,
+      "standardized_score": null,
+      "percentile": null,
+      "level": "high"
+    },
+    "modesty": {
+      "facet_code": "A5",
+      "facet_name": "Modesty",
+      "domain": "agreeableness",
+      "domain_name": "Agreeableness",
+      "domain_code": "A",
+      "legacy_key": "modesty",
+      "raw_score": 12,
+      "standardized_score": null,
+      "percentile": null,
+      "level": "average"
+    },
+    "self_discipline": {
+      "facet_code": "C5",
+      "facet_name": "Self-Discipline",
+      "domain": "conscientiousness",
+      "domain_name": "Conscientiousness",
+      "domain_code": "C",
+      "legacy_key": "self__discipline",
+      "raw_score": 8,
+      "standardized_score": null,
+      "percentile": null,
+      "level": "low"
+    },
+    "vulnerability": {
+      "facet_code": "N6",
+      "facet_name": "Vulnerability",
+      "domain": "neuroticism",
+      "domain_name": "Neuroticism",
+      "domain_code": "N",
+      "legacy_key": "vulnerability",
+      "raw_score": 15,
+      "standardized_score": null,
+      "percentile": null,
+      "level": "high"
+    },
+    "cheerfulness": {
+      "facet_code": "E6",
+      "facet_name": "Cheerfulness",
+      "domain": "extraversion",
+      "domain_name": "Extraversion",
+      "domain_code": "E",
+      "legacy_key": "cheerfulness",
+      "raw_score": 11,
+      "standardized_score": null,
+      "percentile": null,
+      "level": "average"
+    },
+    "liberalism": {
+      "facet_code": "O6",
+      "facet_name": "Liberalism",
+      "domain": "openness",
+      "domain_name": "Openness",
+      "domain_code": "O",
+      "legacy_key": "liberalism",
+      "raw_score": 15,
+      "standardized_score": null,
+      "percentile": null,
+      "level": "high"
+    },
+    "sympathy": {
+      "facet_code": "A6",
+      "facet_name": "Sympathy",
+      "domain": "agreeableness",
+      "domain_name": "Agreeableness",
+      "domain_code": "A",
+      "legacy_key": "sympathy",
+      "raw_score": 14,
+      "standardized_score": null,
+      "percentile": null,
+      "level": "average"
+    },
+    "cautiousness": {
+      "facet_code": "C6",
+      "facet_name": "Cautiousness",
+      "domain": "conscientiousness",
+      "domain_name": "Conscientiousness",
+      "domain_code": "C",
+      "legacy_key": "cautiousness",
+      "raw_score": 17,
+      "standardized_score": null,
+      "percentile": null,
+      "level": "high"
+    }
+  },
+  "responses": [
+    {
+      "item_id": "IPIP_001",
+      "legacy_id": 1,
+      "response": 5
+    },
+    {
+      "item_id": "IPIP_002",
+      "legacy_id": 2,
+      "response": 3
+    },
+    {
+      "item_id": "IPIP_003",
+      "legacy_id": 3,
+      "response": 4
+    },
+    {
+      "item_id": "IPIP_004",
+      "legacy_id": 4,
+      "response": 5
+    },
+    {
+      "item_id": "IPIP_005",
+      "legacy_id": 5,
+      "response": 2
+    },
+    {
+      "item_id": "IPIP_006",
+      "legacy_id": 6,
+      "response": 3
+    },
+    {
+      "item_id": "IPIP_007",
+      "legacy_id": 7,
+      "response": 1
+    },
+    {
+      "item_id": "IPIP_008",
+      "legacy_id": 8,
+      "response": 4
+    },
+    {
+      "item_id": "IPIP_009",
+      "legacy_id": 9,
+      "response": 2
+    },
+    {
+      "item_id": "IPIP_010",
+      "legacy_id": 10,
+      "response": 1
+    },
+    {
+      "item_id": "IPIP_011",
+      "legacy_id": 11,
+      "response": 4
+    },
+    {
+      "item_id": "IPIP_012",
+      "legacy_id": 12,
+      "response": 4
+    },
+    {
+      "item_id": "IPIP_013",
+      "legacy_id": 13,
+      "response": 4
+    },
+    {
+      "item_id": "IPIP_014",
+      "legacy_id": 14,
+      "response": 4
+    },
+    {
+      "item_id": "IPIP_015",
+      "legacy_id": 15,
+      "response": 3
+    },
+    {
+      "item_id": "IPIP_016",
+      "legacy_id": 16,
+      "response": 3
+    },
+    {
+      "item_id": "IPIP_017",
+      "legacy_id": 17,
+      "response": 4
+    },
+    {
+      "item_id": "IPIP_018",
+      "legacy_id": 18,
+      "response": 3
+    },
+    {
+      "item_id": "IPIP_019",
+      "legacy_id": 19,
+      "response": 2
+    },
+    {
+      "item_id": "IPIP_020",
+      "legacy_id": 20,
+      "response": 3
+    },
+    {
+      "item_id": "IPIP_021",
+      "legacy_id": 21,
+      "response": 3
+    },
+    {
+      "item_id": "IPIP_022",
+      "legacy_id": 22,
+      "response": 2
+    },
+    {
+      "item_id": "IPIP_023",
+      "legacy_id": 23,
+      "response": 4
+    },
+    {
+      "item_id": "IPIP_024",
+      "legacy_id": 24,
+      "response": 4
+    },
+    {
+      "item_id": "IPIP_025",
+      "legacy_id": 25,
+      "response": 3
+    },
+    {
+      "item_id": "IPIP_026",
+      "legacy_id": 26,
+      "response": 3
+    },
+    {
+      "item_id": "IPIP_027",
+      "legacy_id": 27,
+      "response": 3
+    },
+    {
+      "item_id": "IPIP_028",
+      "legacy_id": 28,
+      "response": 4
+    },
+    {
+      "item_id": "IPIP_029",
+      "legacy_id": 29,
+      "response": 4
+    },
+    {
+      "item_id": "IPIP_030",
+      "legacy_id": 30,
+      "response": 1
+    },
+    {
+      "item_id": "IPIP_031",
+      "legacy_id": 31,
+      "response": 4
+    },
+    {
+      "item_id": "IPIP_032",
+      "legacy_id": 32,
+      "response": 2
+    },
+    {
+      "item_id": "IPIP_033",
+      "legacy_id": 33,
+      "response": 4
+    },
+    {
+      "item_id": "IPIP_034",
+      "legacy_id": 34,
+      "response": 5
+    },
+    {
+      "item_id": "IPIP_035",
+      "legacy_id": 35,
+      "response": 4
+    },
+    {
+      "item_id": "IPIP_036",
+      "legacy_id": 36,
+      "response": 4
+    },
+    {
+      "item_id": "IPIP_037",
+      "legacy_id": 37,
+      "response": 2
+    },
+    {
+      "item_id": "IPIP_038",
+      "legacy_id": 38,
+      "response": 3
+    },
+    {
+      "item_id": "IPIP_039",
+      "legacy_id": 39,
+      "response": 3
+    },
+    {
+      "item_id": "IPIP_040",
+      "legacy_id": 40,
+      "response": 5
+    },
+    {
+      "item_id": "IPIP_041",
+      "legacy_id": 41,
+      "response": 3
+    },
+    {
+      "item_id": "IPIP_042",
+      "legacy_id": 42,
+      "response": 3
+    },
+    {
+      "item_id": "IPIP_043",
+      "legacy_id": 43,
+      "response": 4
+    },
+    {
+      "item_id": "IPIP_044",
+      "legacy_id": 44,
+      "response": 4
+    },
+    {
+      "item_id": "IPIP_045",
+      "legacy_id": 45,
+      "response": 4
+    },
+    {
+      "item_id": "IPIP_046",
+      "legacy_id": 46,
+      "response": 5
+    },
+    {
+      "item_id": "IPIP_047",
+      "legacy_id": 47,
+      "response": 4
+    },
+    {
+      "item_id": "IPIP_048",
+      "legacy_id": 48,
+      "response": 4
+    },
+    {
+      "item_id": "IPIP_049",
+      "legacy_id": 49,
+      "response": 1
+    },
+    {
+      "item_id": "IPIP_050",
+      "legacy_id": 50,
+      "response": 2
+    },
+    {
+      "item_id": "IPIP_051",
+      "legacy_id": 51,
+      "response": 3
+    },
+    {
+      "item_id": "IPIP_052",
+      "legacy_id": 52,
+      "response": 2
+    },
+    {
+      "item_id": "IPIP_053",
+      "legacy_id": 53,
+      "response": 1
+    },
+    {
+      "item_id": "IPIP_054",
+      "legacy_id": 54,
+      "response": 4
+    },
+    {
+      "item_id": "IPIP_055",
+      "legacy_id": 55,
+      "response": 3
+    },
+    {
+      "item_id": "IPIP_056",
+      "legacy_id": 56,
+      "response": 4
+    },
+    {
+      "item_id": "IPIP_057",
+      "legacy_id": 57,
+      "response": 2
+    },
+    {
+      "item_id": "IPIP_058",
+      "legacy_id": 58,
+      "response": 5
+    },
+    {
+      "item_id": "IPIP_059",
+      "legacy_id": 59,
+      "response": 3
+    },
+    {
+      "item_id": "IPIP_060",
+      "legacy_id": 60,
+      "response": 2
+    },
+    {
+      "item_id": "IPIP_061",
+      "legacy_id": 61,
+      "response": 4
+    },
+    {
+      "item_id": "IPIP_062",
+      "legacy_id": 62,
+      "response": 3
+    },
+    {
+      "item_id": "IPIP_063",
+      "legacy_id": 63,
+      "response": 4
+    },
+    {
+      "item_id": "IPIP_064",
+      "legacy_id": 64,
+      "response": 4
+    },
+    {
+      "item_id": "IPIP_065",
+      "legacy_id": 65,
+      "response": 3
+    },
+    {
+      "item_id": "IPIP_066",
+      "legacy_id": 66,
+      "response": 3
+    },
+    {
+      "item_id": "IPIP_067",
+      "legacy_id": 67,
+      "response": 4
+    },
+    {
+      "item_id": "IPIP_068",
+      "legacy_id": 68,
+      "response": 3
+    },
+    {
+      "item_id": "IPIP_069",
+      "legacy_id": 69,
+      "response": 3
+    },
+    {
+      "item_id": "IPIP_070",
+      "legacy_id": 70,
+      "response": 5
+    },
+    {
+      "item_id": "IPIP_071",
+      "legacy_id": 71,
+      "response": 3
+    },
+    {
+      "item_id": "IPIP_072",
+      "legacy_id": 72,
+      "response": 4
+    },
+    {
+      "item_id": "IPIP_073",
+      "legacy_id": 73,
+      "response": 3
+    },
+    {
+      "item_id": "IPIP_074",
+      "legacy_id": 74,
+      "response": 3
+    },
+    {
+      "item_id": "IPIP_075",
+      "legacy_id": 75,
+      "response": 4
+    },
+    {
+      "item_id": "IPIP_076",
+      "legacy_id": 76,
+      "response": 5
+    },
+    {
+      "item_id": "IPIP_077",
+      "legacy_id": 77,
+      "response": 4
+    },
+    {
+      "item_id": "IPIP_078",
+      "legacy_id": 78,
+      "response": 3
+    },
+    {
+      "item_id": "IPIP_079",
+      "legacy_id": 79,
+      "response": 2
+    },
+    {
+      "item_id": "IPIP_080",
+      "legacy_id": 80,
+      "response": 4
+    },
+    {
+      "item_id": "IPIP_081",
+      "legacy_id": 81,
+      "response": 4
+    },
+    {
+      "item_id": "IPIP_082",
+      "legacy_id": 82,
+      "response": 1
+    },
+    {
+      "item_id": "IPIP_083",
+      "legacy_id": 83,
+      "response": 2
+    },
+    {
+      "item_id": "IPIP_084",
+      "legacy_id": 84,
+      "response": 3
+    },
+    {
+      "item_id": "IPIP_085",
+      "legacy_id": 85,
+      "response": 5
+    },
+    {
+      "item_id": "IPIP_086",
+      "legacy_id": 86,
+      "response": 4
+    },
+    {
+      "item_id": "IPIP_087",
+      "legacy_id": 87,
+      "response": 3
+    },
+    {
+      "item_id": "IPIP_088",
+      "legacy_id": 88,
+      "response": 2
+    },
+    {
+      "item_id": "IPIP_089",
+      "legacy_id": 89,
+      "response": 3
+    },
+    {
+      "item_id": "IPIP_090",
+      "legacy_id": 90,
+      "response": 2
+    },
+    {
+      "item_id": "IPIP_091",
+      "legacy_id": 91,
+      "response": 3
+    },
+    {
+      "item_id": "IPIP_092",
+      "legacy_id": 92,
+      "response": 4
+    },
+    {
+      "item_id": "IPIP_093",
+      "legacy_id": 93,
+      "response": 5
+    },
+    {
+      "item_id": "IPIP_094",
+      "legacy_id": 94,
+      "response": 3
+    },
+    {
+      "item_id": "IPIP_095",
+      "legacy_id": 95,
+      "response": 2
+    },
+    {
+      "item_id": "IPIP_096",
+      "legacy_id": 96,
+      "response": 4
+    },
+    {
+      "item_id": "IPIP_097",
+      "legacy_id": 97,
+      "response": 5
+    },
+    {
+      "item_id": "IPIP_098",
+      "legacy_id": 98,
+      "response": 3
+    },
+    {
+      "item_id": "IPIP_099",
+      "legacy_id": 99,
+      "response": 1
+    },
+    {
+      "item_id": "IPIP_100",
+      "legacy_id": 100,
+      "response": 5
+    },
+    {
+      "item_id": "IPIP_101",
+      "legacy_id": 101,
+      "response": 1
+    },
+    {
+      "item_id": "IPIP_102",
+      "legacy_id": 102,
+      "response": 3
+    },
+    {
+      "item_id": "IPIP_103",
+      "legacy_id": 103,
+      "response": 2
+    },
+    {
+      "item_id": "IPIP_104",
+      "legacy_id": 104,
+      "response": 3
+    },
+    {
+      "item_id": "IPIP_105",
+      "legacy_id": 105,
+      "response": 3
+    },
+    {
+      "item_id": "IPIP_106",
+      "legacy_id": 106,
+      "response": 1
+    },
+    {
+      "item_id": "IPIP_107",
+      "legacy_id": 107,
+      "response": 4
+    },
+    {
+      "item_id": "IPIP_108",
+      "legacy_id": 108,
+      "response": 2
+    },
+    {
+      "item_id": "IPIP_109",
+      "legacy_id": 109,
+      "response": 3
+    },
+    {
+      "item_id": "IPIP_110",
+      "legacy_id": 110,
+      "response": 2
+    },
+    {
+      "item_id": "IPIP_111",
+      "legacy_id": 111,
+      "response": 2
+    },
+    {
+      "item_id": "IPIP_112",
+      "legacy_id": 112,
+      "response": 1
+    },
+    {
+      "item_id": "IPIP_113",
+      "legacy_id": 113,
+      "response": 1
+    },
+    {
+      "item_id": "IPIP_114",
+      "legacy_id": 114,
+      "response": 1
+    },
+    {
+      "item_id": "IPIP_115",
+      "legacy_id": 115,
+      "response": 5
+    },
+    {
+      "item_id": "IPIP_116",
+      "legacy_id": 116,
+      "response": 2
+    },
+    {
+      "item_id": "IPIP_117",
+      "legacy_id": 117,
+      "response": 3
+    },
+    {
+      "item_id": "IPIP_118",
+      "legacy_id": 118,
+      "response": 4
+    },
+    {
+      "item_id": "IPIP_119",
+      "legacy_id": 119,
+      "response": 2
+    },
+    {
+      "item_id": "IPIP_120",
+      "legacy_id": 120,
+      "response": 2
+    }
+  ],
+  "migration": {
+    "source_result_file": "tests/fixtures/legacy_results.json#zjh",
+    "source_item_id_scheme": "legacy integer id 1..120",
+    "target_item_id_scheme": "IPIP_001..IPIP_120",
+    "raw_responses_preserved": true,
+    "legacy_scoring_matches_original": true,
+    "legacy_domains": {
+      "neuroticism": {
+        "raw_score": 70,
+        "standardized_score": null,
+        "percentile": null,
+        "level": "average"
+      },
+      "extraversion": {
+        "raw_score": 67,
+        "standardized_score": null,
+        "percentile": null,
+        "level": "average"
+      },
+      "openness": {
+        "raw_score": 90,
+        "standardized_score": null,
+        "percentile": null,
+        "level": "high"
+      },
+      "agreeableness": {
+        "raw_score": 88,
+        "standardized_score": null,
+        "percentile": null,
+        "level": "high"
+      },
+      "conscientiousness": {
+        "raw_score": 63,
+        "standardized_score": null,
+        "percentile": null,
+        "level": "average"
+      }
+    },
+    "legacy_facets": {
+      "anxiety": {
+        "domain": "neuroticism",
+        "raw_score": 16,
+        "standardized_score": null,
+        "level": "high"
+      },
+      "friendliness": {
+        "domain": "extraversion",
+        "raw_score": 16,
+        "standardized_score": null,
+        "level": "high"
+      },
+      "imagination": {
+        "domain": "openness",
+        "raw_score": 17,
+        "standardized_score": null,
+        "level": "high"
+      },
+      "trust": {
+        "domain": "agreeableness",
+        "raw_score": 17,
+        "standardized_score": null,
+        "level": "high"
+      },
+      "self__efficacy": {
+        "domain": "conscientiousness",
+        "raw_score": 11,
+        "standardized_score": null,
+        "level": "average"
+      },
+      "anger": {
+        "domain": "neuroticism",
+        "raw_score": 12,
+        "standardized_score": null,
+        "level": "average"
+      },
+      "gregariousness": {
+        "domain": "extraversion",
+        "raw_score": 6,
+        "standardized_score": null,
+        "level": "low"
+      },
+      "artistic__interests": {
+        "domain": "openness",
+        "raw_score": 13,
+        "standardized_score": null,
+        "level": "average"
+      },
+      "morality": {
+        "domain": "agreeableness",
+        "raw_score": 15,
+        "standardized_score": null,
+        "level": "high"
+      },
+      "orderliness": {
+        "domain": "conscientiousness",
+        "raw_score": 4,
+        "standardized_score": null,
+        "level": "low"
+      },
+      "depression": {
+        "domain": "neuroticism",
+        "raw_score": 15,
+        "standardized_score": null,
+        "level": "high"
+      },
+      "assertiveness": {
+        "domain": "extraversion",
+        "raw_score": 14,
+        "standardized_score": null,
+        "level": "average"
+      },
+      "emotionality": {
+        "domain": "openness",
+        "raw_score": 15,
+        "standardized_score": null,
+        "level": "high"
+      },
+      "altruism": {
+        "domain": "agreeableness",
+        "raw_score": 14,
+        "standardized_score": null,
+        "level": "average"
+      },
+      "dutifulness": {
+        "domain": "conscientiousness",
+        "raw_score": 12,
+        "standardized_score": null,
+        "level": "average"
+      },
+      "activity__level": {
+        "domain": "extraversion",
+        "raw_score": 14,
+        "standardized_score": null,
+        "level": "average"
+      },
+      "adventurousness": {
+        "domain": "openness",
+        "raw_score": 12,
+        "standardized_score": null,
+        "level": "average"
+      },
+      "cooperation": {
+        "domain": "agreeableness",
+        "raw_score": 16,
+        "standardized_score": null,
+        "level": "high"
+      },
+      "achievement__striving": {
+        "domain": "conscientiousness",
+        "raw_score": 11,
+        "standardized_score": null,
+        "level": "average"
+      },
+      "immoderation": {
+        "domain": "neuroticism",
+        "raw_score": 12,
+        "standardized_score": null,
+        "level": "average"
+      },
+      "excitement__seeking": {
+        "domain": "extraversion",
+        "raw_score": 6,
+        "standardized_score": null,
+        "level": "low"
+      },
+      "intellect": {
+        "domain": "openness",
+        "raw_score": 18,
+        "standardized_score": null,
+        "level": "high"
+      },
+      "modesty": {
+        "domain": "agreeableness",
+        "raw_score": 12,
+        "standardized_score": null,
+        "level": "average"
+      },
+      "self__discipline": {
+        "domain": "conscientiousness",
+        "raw_score": 8,
+        "standardized_score": null,
+        "level": "low"
+      },
+      "vulnerability": {
+        "domain": "neuroticism",
+        "raw_score": 15,
+        "standardized_score": null,
+        "level": "high"
+      },
+      "cheerfulness": {
+        "domain": "extraversion",
+        "raw_score": 11,
+        "standardized_score": null,
+        "level": "average"
+      },
+      "liberalism": {
+        "domain": "openness",
+        "raw_score": 15,
+        "standardized_score": null,
+        "level": "high"
+      },
+      "sympathy": {
+        "domain": "agreeableness",
+        "raw_score": 14,
+        "standardized_score": null,
+        "level": "average"
+      },
+      "cautiousness": {
+        "domain": "conscientiousness",
+        "raw_score": 17,
+        "standardized_score": null,
+        "level": "high"
+      }
+    },
+    "canonical_vs_legacy_domain_diffs": [
+      {
+        "key": "extraversion",
+        "old_raw_score": 67,
+        "new_raw_score": 61,
+        "delta": -6,
+        "old_level": "average",
+        "new_level": "average"
+      },
+      {
+        "key": "neuroticism",
+        "old_raw_score": 70,
+        "new_raw_score": 88,
+        "delta": 18,
+        "old_level": "average",
+        "new_level": "high"
+      }
+    ],
+    "canonical_vs_legacy_facet_diffs": [
+      {
+        "key": "friendliness",
+        "old_raw_score": 16,
+        "new_raw_score": 10,
+        "delta": -6,
+        "old_level": "high",
+        "new_level": "average"
+      },
+      {
+        "key": "self_consciousness",
+        "old_raw_score": null,
+        "new_raw_score": 18,
+        "delta": null,
+        "old_level": null,
+        "new_level": "high"
+      }
+    ],
+    "note": "The canonical block uses official ItemKey metadata. The legacy block reproduces the pre-migration eval.py scores. They differ only at the four corrected N4 items."
+  }
+}

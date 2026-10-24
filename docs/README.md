@@ -6,8 +6,12 @@
 
 | 文档 | 内容 |
 | --- | --- |
+| ⭐ [`model-agent-integration-v1.md`](model-agent-integration-v1.md) | **本次三层模型 + Agent 重构交付**：真实 Level 1/2/3 运行时、Shadow Mode、PlannerRuntime/Workflow、迁移、验证、剩余风险 |
+| ⭐ [`frontend-model-integration-v1.md`](frontend-model-integration-v1.md) | **前端 ↔ 三层模型对齐**：契约审计、Level 1 CAT 测评、Profile 两层、执行数据采集、Developer 页面、验证与风险 |
+| ⭐ [`auth-demo-synthetic-v1.md`](auth-demo-synthetic-v1.md) | **V1.1 认证/引导/演示/合成数据**：Login/Register/Logout、Level 1 强制 Onboarding、重测冷却、IDOR、execution integrity、Synthetic Scenario Import/Reset |
 | ⭐ [`streaming-and-callchains.md`](streaming-and-callchains.md) | **流式手册**：真流式架构与契约、Prompt 全清单（精确行号）、全功能调用链、画像摘出清单、LangGraph 注册点/边/工具 |
 | ⭐ [`langgraph-state-machine.md`](langgraph-state-machine.md) | **LangGraph 权威文档**：两张图的节点/函数/文件行号、边与条件、Mermaid、状态键、工具、SSE 例外 |
+| ⭐ [`project-structure-audit.md`](project-structure-audit.md) | **重构盘点**：项目树（排除 `models_test`）、分层、全部接口、模块清单、真实/假数据对照、ML 模块专项、已知风险 |
 | ⭐ [`architecture-overview.md`](architecture-overview.md) | **架构总览**：分层、各层文件地图、数据模型、两条主链路、不变量、扩展接缝 |
 | ⭐ [`development-handbook.md`](development-handbook.md) | **开发手册**：核心 vs 旁路、清理记录、已知缺陷、架构 checklist、调试清单 |
 | ⭐ [`product-painpoints.md`](product-painpoints.md) | **痛点与需求建议**（信息不可信 / 拆解不可衡量 / backlog 等） |
@@ -21,8 +25,8 @@
 | [`architecture.md`](architecture.md) | ⚠️ 过时 | 英文架构（仍提 `UserModelService` / 9 个 ORM / `app/ml/user_model.py`） |
 | [`langgraph.md`](langgraph.md) | ⚠️ 自标 SUPERSEDED | 初版 6 节点原型；见 `agent/state-machine.md` |
 | [`domain.md`](domain.md) | ⚠️ 含已删的 `UserModel` 章节 | 实体、枚举、7 条规则、排期、版本语义 |
-| [`user-portrait.md`](user-portrait.md) | ✅ | 画像：MBTI 冷启动先验、EWMA、反馈闭环 |
-| [`ml.md`](ml.md) | ✅ | 预测器接口 + Feature 映射 |
+| [`user-portrait.md`](user-portrait.md) | ⚠️ EWMA 已删除 | 旧画像说明；现以 `model-agent-integration-v1.md` 与 `app/user_models` 为准 |
+| [`ml.md`](ml.md) | ⚠️ mock 已删除 | 旧预测器接口；生产已改为真实三层模型 + 确定性 estimate，Level 3 仅 shadow |
 | [`agent/`](agent/README.md) | ✅ | Agent 层：state-machine / data-flow / prompts / tools / memory / testing |
 | [`api.md`](api.md) · [`api-frontend-alignment.md`](api-frontend-alignment.md) | ✅ | 端点参考 + 前端契约对齐 |
 | [`development.md`](development.md) | ✅ | 环境/命令（入门用；深度见 `development-handbook.md`） |

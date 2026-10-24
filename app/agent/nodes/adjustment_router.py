@@ -19,7 +19,6 @@ def adjustment_router_node(state: PlannerState, runtime: object) -> dict:
     ctx.publish("node.started", {"node": NODE})
 
     router = AdjustmentRouter(
-        low_completion_threshold=ctx.config.low_completion_threshold,
         max_micro_adjustments=ctx.config.max_consecutive_micro_adjustments,
     )
     decision = router.decide(state)

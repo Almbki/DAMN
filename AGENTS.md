@@ -9,7 +9,9 @@ Single package (`app/`) at the repo root — no monorepo. Windows-first.
 ## Commands (verified)
 
 - Install: `uv sync --extra dev` (creates `.venv`; requires Python 3.12)
-- All tests: `uv run pytest` → 150 tests
+- All tests: `uv run pytest` → 229 tests
+- Frontend: `cd new_frontend && npm test` → 19 logic tests · `npm run typecheck` · `npm run lint`
+- Web export: `cd new_frontend && npx expo export --platform web`
 - One file / one test: `uv run pytest tests/unit/test_rules.py -q` · `uv run pytest -k scheduler -v`
 - Lint: `uv run ruff check .` (line length 100, target py312)
 - Run API: `uv run uvicorn app.main:app --reload` → http://localhost:8000/docs
@@ -23,7 +25,8 @@ Use port **8000**. Some Windows ports are OS-reserved and uvicorn fails with
 ## Architecture rules (easy to violate)
 
 Dependencies flow API → Application → Domain/Core → Infrastructure.
-`app/agent` and `app/ml` are side-cars driven by the Application layer.
+`app/agent` and `app/user_models` are side-cars driven by the Application layer.
+`app/user_models` is the only owner of the Level 1/2/3 models and artifacts.
 
 - `app/core` and `app/domain` must NOT import FastAPI or SQLAlchemy.
 - Agents never touch the DB. `PlanService` injects `user_features`, `goal_id_map`,
@@ -51,6 +54,26 @@ Dependencies flow API → Application → Domain/Core → Infrastructure.
 - Plan versions are immutable: replan creates `v(n+1)`, marks the old one `superseded`,
   sets `parent_plan_id`, and writes a `ReplanEvent`. Replan cooldown is **per-user**
   (not per-plan) via `ReplanEventRepository.get_latest_for_user`.
+- **Level 3 is shadow-only in v1.** `LEVEL3_MODE=off|shadow|active` defaults to
+  `shadow`; `active` is parsed but downgraded to shadow. Shadow output is written to
+  `shadow_predictions` **after** the plan is committed and must never change task
+  fields, the scheduler input or the rule-engine result.
+- Agent/Application consume `UserModelContext` (typed Level 1 trait + Level 2 state
+  snapshots); they never read model artifacts or raw model dicts.
+- **Level 1 CAT assessment is resumable server-side.** `trait_assessments` stores
+  only ordered responses + `rr_index` + artifact identity; `Level1Runtime`
+  replays them. `POST /users/me/trait-assessment/start` is idempotent (resume),
+  `?restart=true` abandons the active session, and completion writes
+  `users.trait_profile`. CAT maths live only in `level1/cat.py`.
+- **Auth is normal JWT; demo auto-login is not a bypass.** The frontend only
+  auto-calls `/auth/login` when both `EXPO_PUBLIC_DEMO_EMAIL` and
+  `EXPO_PUBLIC_DEMO_PASSWORD` are configured. `trait_profile == null` forces
+  `/assessment`; reassessment cooldown is backend-authoritative
+  (`TRAIT_REASSESSMENT_COOLDOWN_DAYS`).
+- **Synthetic scenarios are observations, never model outputs.** The dev-only
+  import (`ENABLE_SYNTHETIC_IMPORT=false` by default) writes tasks/executions/
+  feedback with `data_origin='synthetic'`; Level 2/3 are computed by the real
+  runtime. Reset deletes only the current user's synthetic rows.
 
 ## Database & config
 
@@ -77,10 +100,12 @@ Dependencies flow API → Application → Domain/Core → Infrastructure.
 
 ## Mocks — do not overclaim
 
-`app/agent/nodes/*` are deterministic heuristics (no LLM call), `MockLLMClient`
-returns canned JSON, `app/ml/*` are `statistical-*` predictors with **no trained
-model**, `app/infrastructure/ml/model_store.py` is a placeholder, and plan
-generation runs synchronously (events are stored then replayed over SSE).
+`app/agent/nodes/*` are deterministic heuristics (no LLM call). `app/user_models/**`
+contains the **real** copied model code and artifacts (Level 1 GRM/CAT, Level 2
+DDSR-V1, Level 3 predictor); `models_test/` is the frozen source package and is not
+imported at runtime. `MockLLMClient` returns canned JSON; no production model
+emits a completion probability (Level 3 runs in shadow only). Plan generation runs
+synchronously (events are stored then replayed over SSE).
 
 ## Pointers
 
@@ -88,6 +113,14 @@ generation runs synchronously (events are stored then replayed over SSE).
   adding/debugging a module.
 - **Frontend contract: `docs/api-frontend-alignment.md`** — the endpoint map,
   the decisions behind it, and what was deliberately left unchanged.
+- **Model/Agent integration: `docs/model-agent-integration-v1.md`** — the final
+  three-layer runtime, shadow mode, workflow refactor, migration and validation.
+- **Frontend integration: `docs/frontend-model-integration-v1.md`** — the
+  frontend/backend contract audit, CAT assessment UI/API, Profile Level 1/2,
+  task execution capture, developer runtime page.
+- **Auth/Demo/Synthetic: `docs/auth-demo-synthetic-v1.md`** — Login/Register/
+  Logout, Level 1 onboarding guard, reassessment cooldown, IDOR tests, execution
+  provenance, and guarded synthetic scenario import/reset.
 - **User portrait (画像): `docs/user-portrait.md`** — MBTI cold-start priors,
   the EWMA state, how it reaches the agent, and the minority-weight fix.
 - **Agent layer (P0+P1): `docs/agent/`** — state-machine, data-flow, prompts,

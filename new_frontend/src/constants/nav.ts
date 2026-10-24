@@ -33,6 +33,8 @@ export const ROUTES: Record<string, RouteMeta> = {
   '/goal': { title: '目标', navHref: '/goal', selfScroll: true },
   '/settings': { title: '设置', navHref: '/settings' },
   '/profile-details': { title: '基础档案', navHref: '/profile', back: true },
+  '/assessment': { title: '初始画像', navHref: '/profile', back: true },
+  '/developer': { title: '模型运行时', navHref: '/settings', back: true },
 };
 
 export function routeMetaFor(pathname: string): RouteMeta {

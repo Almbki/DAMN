@@ -1,0 +1,143 @@
+{
+  "config_version": "ddsr_v1_config_1",
+  "grid_min": 0.0,
+  "grid_max": 1.0,
+  "grid_n": 101,
+  "cold_start_mean": {
+    "fatigue": 0.5,
+    "stress": 0.5,
+    "self_efficacy": 0.5
+  },
+  "cold_start_sd": 0.25,
+  "persistence_rho": {
+    "fatigue": 0.6,
+    "stress": 0.6,
+    "self_efficacy": 0.6
+  },
+  "process_noise_sd": {
+    "fatigue": 0.12,
+    "stress": 0.12,
+    "self_efficacy": 0.12
+  },
+  "evidence_sharpness": 2.0,
+  "strength_weights": {
+    "weak": 0.35,
+    "moderate": 0.65,
+    "strong": 1.0
+  },
+  "goal_attainment_weight": 0.6,
+  "uncertainty_floor": 0.02,
+  "uncertainty_ceiling": 0.5,
+  "late_start_candidate_minutes": 60,
+  "min_quote_chars": 2,
+  "conflict_policy": "symmetric_bayes_product",
+  "extraction_failure_policy": "fail_closed",
+  "passive_context_enabled": false,
+  "personalization_enabled": false,
+  "parameter_sources": {
+    "state_scale": {
+      "category": "engineering_initialization",
+      "note": "All three states are mapped to 0-1 for a common grid. The papers use different published scales (1-5, 1-9, 1-6); those scales are not copied or treated as interchangeable."
+    },
+    "state_set": {
+      "category": "literature_supported_design_choice",
+      "note": "Fatigue and stress as daily states follow Åkerstedt et al. (2014); daily self-efficacy follows Bellhäuser et al. (2023) and the self-efficacy/goal-attainment loop in Wäschle et al. (2014)."
+    },
+    "nightly_reflection": {
+      "category": "literature_supported_design_choice",
+      "note": "A single evening reconstruction is supported by Kahneman et al. (2004, DRM) and by the evening diary in Bellhäuser et al. (2023)."
+    },
+    "behavior_state_separation": {
+      "category": "literature_supported_design_choice",
+      "note": "Behavioral indicators are kept separate from states. Loeffler et al. (2019) show that behavioural delay alone cannot identify procrastination and that reasons must be assessed."
+    },
+    "self_efficacy_goal_attainment_direction": {
+      "category": "literature_supported_design_choice",
+      "note": "Wäschle et al. (2014) report reciprocal positive relations between self-efficacy and perceived goal achievement. Only the direction is inherited; no coefficient is transferred."
+    },
+    "fatigue_stress_daily_states": {
+      "category": "literature_supported_design_choice",
+      "note": "Åkerstedt et al. (2014) measured fatigue daily and stress several times per day across 42 days and found day-level associations. No daily transition coefficient is taken from that paper."
+    },
+    "procrastination_definition": {
+      "category": "literature_supported_design_choice",
+      "note": "Procrastination requires voluntary delay/avoidance. External interruption, illness, task difficulty, and plan change are excluded by schema validation."
+    },
+    "persistence_autoregression": {
+      "category": "literature_supported_design_choice",
+      "note": "Day-to-day persistence is consistent with the autoregressive / lagged designs in Bellhäuser et al. (2023), Wäschle et al. (2014), and Åkerstedt et al. (2014). The numeric rho is not from them."
+    },
+    "grid_min": {
+      "category": "engineering_initialization",
+      "note": "Numerical grid lower bound for the 0-1 state scale."
+    },
+    "grid_max": {
+      "category": "engineering_initialization",
+      "note": "Numerical grid upper bound for the 0-1 state scale."
+    },
+    "grid_n": {
+      "category": "engineering_initialization",
+      "note": "Numerical grid resolution (101 points)."
+    },
+    "cold_start_mean": {
+      "category": "engineering_initialization",
+      "note": "Transparent neutral population prior at 0.5 on the 0-1 scale. It is not an individualized estimate and is not derived from the papers."
+    },
+    "cold_start_sd": {
+      "category": "engineering_initialization",
+      "note": "Transparent cold-start uncertainty (0.25 on the 0-1 scale)."
+    },
+    "persistence_rho": {
+      "category": "engineering_initialization",
+      "note": "AR(1) persistence value 0.6. The design is literature-consistent, but this exact value is an engineering initialization, not estimated."
+    },
+    "process_noise_sd": {
+      "category": "engineering_initialization",
+      "note": "Day-to-day process noise 0.12. It prevents uncertainty collapse and state lock; it is not a published coefficient."
+    },
+    "evidence_sharpness": {
+      "category": "engineering_initialization",
+      "note": "Likelihood tilt per unit evidence strength (2.0). It controls how far one explicit statement can move a state."
+    },
+    "strength_weights": {
+      "category": "engineering_initialization",
+      "note": "Mapping from weak/moderate/strong evidence to numeric strength (0.35/0.65/1.0)."
+    },
+    "goal_attainment_weight": {
+      "category": "engineering_initialization",
+      "note": "Weight of the task-log goal-attainment signal on self-efficacy (0.6). The direction is supported by Wäschle et al. (2014); the magnitude is an engineering choice."
+    },
+    "uncertainty_floor": {
+      "category": "engineering_initialization",
+      "note": "Posterior SD floor (0.02) to avoid overconfident point states."
+    },
+    "uncertainty_ceiling": {
+      "category": "engineering_initialization",
+      "note": "Prior/posterior SD ceiling (0.50) to avoid uncertainty explosion."
+    },
+    "late_start_candidate_minutes": {
+      "category": "engineering_initialization",
+      "note": "A start delay of at least 60 minutes is recorded only as a candidate for review; it is never labelled procrastination by itself."
+    },
+    "min_quote_chars": {
+      "category": "engineering_initialization",
+      "note": "Minimum audit quote length (2 characters)."
+    },
+    "conflict_policy": {
+      "category": "engineering_initialization",
+      "note": "Opposing evidence is combined by symmetric Bayesian likelihood multiplication; conflicts are flagged, not silently discarded."
+    },
+    "extraction_failure_policy": {
+      "category": "engineering_initialization",
+      "note": "Fail closed: an invalid LLM extraction contributes no evidence and is recorded as an error; the day still completes with higher uncertainty."
+    },
+    "passive_context_enabled": {
+      "category": "engineering_initialization",
+      "note": "V1 never reads passive context. The interface exists only for future wearable/phone data."
+    },
+    "personalization_enabled": {
+      "category": "learned_or_personalized",
+      "note": "V1 does not learn personalized transition parameters. Prediction errors are stored as future training data, not used for online learning."
+    }
+  }
+}

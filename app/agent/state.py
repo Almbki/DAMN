@@ -30,7 +30,6 @@ from pydantic import BaseModel, Field
 from app.agent.context import ContextBuilderProtocol, CurrentPlanSnapshot, PlanningContext
 from app.agent.schemas import (
     AgentError,
-    ClassifyResult,
     FinalPlanPayload,
     GoalAnalysisResult,
     PlanGenerationResult,
@@ -41,12 +40,11 @@ from app.agent.schemas import (
     TheoreticalAnalysisResult,
     UserSituationResult,
 )
+from app.domain.feedback.models import AdjustmentDecision, AdjustmentRoute
 from app.domain.models.enums import GoalType, Priority, TaskKind
 from app.domain.rules.base import RuleEngine, RuleViolation
 from app.domain.scheduling.schedule_result import CandidateSchedule
 from app.domain.scheduling.scheduler import Scheduler
-from app.ml.base import AdjustmentPrediction, AdjustmentRoute, PlanProgress
-from app.ml.predictors import PredictorSet
 
 # ---------------------------------------------------------------------------
 # Agent configuration (from Settings, resolved by the application layer)
@@ -65,7 +63,6 @@ class AgentConfig:
     prompt_version: str = "v1"
     trace_enabled: bool = True
     #: Adjustment policy (see app.agent.router.AdjustmentRouter).
-    low_completion_threshold: float = 0.3
     max_consecutive_micro_adjustments: int = 2
 
 
@@ -75,7 +72,6 @@ class PlannerContext:
 
     scheduler: Scheduler
     rule_engine: RuleEngine
-    predictors: PredictorSet
     config: AgentConfig = field(default_factory=AgentConfig)
     llm: Any | None = None  # StructuredLLM (app.agent.llm); None -> deterministic fallback
     context_builder: ContextBuilderProtocol | None = None
@@ -91,7 +87,6 @@ class PlannerContext:
 
             self.tools = default_registry(
                 llm=self.llm,
-                predictors=self.predictors,
                 scheduler=self.scheduler,
                 rule_engine=self.rule_engine,
             )
@@ -165,6 +160,9 @@ class PlannerRequest(BaseModel):
     # Set for everything that operates on an existing plan version.
     plan_id: int | None = None
     user_note: str | None = None
+    #: Authoritative route decided by the feedback service (`none`/`micro_adjust`/
+    #: `full_replan`). When present, the graph must not re-derive a different one.
+    feedback_route: str | None = None
     plan_title: str | None = None
     start_date: date
     end_date: date
@@ -211,15 +209,21 @@ class PlannerState(TypedDict, total=False):
     current_plan: CurrentPlanSnapshot | None
     goal_id_map: dict[int, int]
 
+    # --- workflow metadata (no guessing from ambiguous fields) ---
+    #: One of INITIAL_PLAN / PREVIEW_ADJUST / PREVIEW_CONFIRM / FEEDBACK_REPLAN /
+    #: MANUAL_REPLAN. Set by the runtime entry point, never inferred by a node.
+    workflow: str
+    run_id: str
+    thread_id: str
+
     # --- analysis ---
-    classify: ClassifyResult
     goal_analysis: GoalAnalysisResult
     theoretical_analysis: TheoreticalAnalysisResult
     user_situation: UserSituationResult
 
-    # --- ML ---
-    ml_prediction: AdjustmentPrediction | None
-    #: Truthful origin of the per-task predictions (goes into prediction_logs).
+    # --- deterministic adjustment decision ---
+    adjustment: AdjustmentDecision | None
+    #: Truthful origin of the per-task production estimates.
     prediction_source: str
 
     # --- planning ---
@@ -237,16 +241,11 @@ class PlannerState(TypedDict, total=False):
 
     # --- routing / outcome ---
     route: AdjustmentRoute | None
-    #: Cold-start portrait for prompt injection (MBTI priors; not a diagnosis).
-    profile_prompt: dict
-    #: Portrait-driven replan verdict ("full_replan" / "local_repair" / "none").
-    profile_replan: str
-    profile_replan_reason: str
     #: Multiplier applied to the daily limits (set by MICRO_ADJUST, 1.0 otherwise).
     limit_factor: float
     replan_reason: str | None
     final_plan: FinalPlanPayload | None
-    progress: PlanProgress | None
+    progress: Any | None
 
     # --- control ---
     repair_attempts: int

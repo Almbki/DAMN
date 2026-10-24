@@ -11,6 +11,7 @@ import type {
   InsightRead,
   JobAccepted,
   JobStatus,
+  ModelRuntimeRead,
   PlanChangeRead,
   PlanGenerateRequest,
   PlanListItem,
@@ -24,9 +25,15 @@ import type {
   ScheduleImportResult,
   SchedulingPreferences,
   SituationTrendRead,
+  SyntheticImportSummary,
+  SyntheticResetSummary,
+  SyntheticScenarioList,
+  SyntheticStatus,
   TaskRead,
   TaskUpdateRequest,
   TokenResponse,
+  TraitAssessmentRead,
+  TraitReassessmentEligibilityRead,
   UpdateGoalRequest,
   UserRead,
 } from '@/api/types';
@@ -88,6 +95,56 @@ export function putPreferences(body: SchedulingPreferences) {
 /** Energy / stress / efficacy trend for the profile page. */
 export function getSituationTrends(days = 14) {
   return apiRequest<SituationTrendRead>(`/users/me/situation/trends?days=${days}`);
+}
+
+/** Developer/debug: model versions, artifact hashes and Level 3 shadow summary. */
+export function getModelRuntime() {
+  return apiRequest<ModelRuntimeRead>('/users/me/model-runtime');
+}
+
+/** Start (or resume) the Level 1 CAT assessment. Idempotent. */
+export function startTraitAssessment(restart = false) {
+  const query = restart ? '?restart=true' : '';
+  return apiRequest<TraitAssessmentRead>(`/users/me/trait-assessment/start${query}`, {
+    method: 'POST',
+  });
+}
+
+export function getTraitAssessment(assessmentId: string) {
+  return apiRequest<TraitAssessmentRead>(`/users/me/trait-assessment/${assessmentId}`);
+}
+
+export function answerTraitAssessment(assessmentId: string, itemId: string, response: number) {
+  return apiRequest<TraitAssessmentRead>(
+    `/users/me/trait-assessment/${assessmentId}/answer`,
+    { method: 'POST', body: { item_id: itemId, response } },
+  );
+}
+
+export function getReassessmentEligibility() {
+  return apiRequest<TraitReassessmentEligibilityRead>(
+    '/users/me/trait-assessment/reassessment-eligibility',
+  );
+}
+
+// --- developer / synthetic scenarios (feature-flagged backend) -------------
+export function listSyntheticScenarios() {
+  return apiRequest<SyntheticScenarioList>('/dev/scenarios');
+}
+
+export function getSyntheticStatus() {
+  return apiRequest<SyntheticStatus>('/dev/scenarios/status');
+}
+
+export function importSyntheticScenario(scenarioName: string) {
+  return apiRequest<SyntheticImportSummary>('/dev/scenarios/import', {
+    method: 'POST',
+    body: { scenario_name: scenarioName },
+  });
+}
+
+export function resetSyntheticData() {
+  return apiRequest<SyntheticResetSummary>('/dev/scenarios/reset', { method: 'POST' });
 }
 
 /** List goals; pass `status='draft'` for the 待拆解清单. */

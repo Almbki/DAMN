@@ -40,6 +40,9 @@ class Plan(Base):
         ForeignKey("plans.id"), nullable=True, index=True
     )
     confidence: Mapped[float] = mapped_column(Float, nullable=False, default=0.5)
+    data_origin: Mapped[str] = mapped_column(
+        String(16), nullable=False, default="real", server_default="real"
+    )
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, default=utcnow
     )

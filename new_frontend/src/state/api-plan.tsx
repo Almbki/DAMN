@@ -32,8 +32,11 @@ import {
   planChangeFromApi,
   previewToDrafts,
   situationFromTrends,
+  taskCompletePatch,
   taskFromApi,
+  taskPartialPatch,
   taskPatchFromDomain,
+  taskStartPatch,
 } from '@/api/mapper';
 import type {
   AdjustResponse,
@@ -431,7 +434,7 @@ export function ApiPlanProvider({ children }: { children: React.ReactNode }) {
   }, [applyPlan, updateStore]);
 
   useEffect(() => {
-    if (session.status !== 'ready') return;
+    if (session.status !== 'authenticated') return;
     // eslint-disable-next-line react-hooks/set-state-in-effect -- async fetch once the session is ready
     void load();
     void loadDraftGoals();
@@ -827,6 +830,74 @@ export function ApiPlanProvider({ children }: { children: React.ReactNode }) {
     [setDone],
   );
 
+  const startTask = useCallback(
+    (id: number) => {
+      setActionError(null);
+      const now = new Date();
+      const previous = storeRef.current.tasks.find((task) => task.id === id) ?? null;
+      updateStore((prev) => ops.updateTask(prev, id, { startedAt: now.toISOString() }));
+      if (planId == null) return;
+      void patchTask(planId, id, taskStartPatch(now))
+        .then(() => refreshInsights())
+        .catch((caught) => {
+          if (previous) updateStore((prev) => ops.updateTask(prev, id, previous));
+          if (mountedRef.current) setActionError(errorMessage(caught, '记录开始时间失败'));
+        });
+    },
+    [planId, refreshInsights, updateStore],
+  );
+
+  const completeTask = useCallback(
+    (id: number, actualMinutes?: number | null, interruptionCount?: number | null) => {
+      setActionError(null);
+      const previous = storeRef.current.tasks.find((task) => task.id === id) ?? null;
+      updateStore((prev) => {
+        const done = ops.setDone(prev, id, true);
+        return actualMinutes != null
+          ? ops.updateTask(done, id, { actualMinutes: Math.round(actualMinutes) })
+          : done;
+      });
+      if (planId == null) return;
+      void patchTask(planId, id, taskCompletePatch(actualMinutes, interruptionCount))
+        .then(async () => {
+          await Promise.all([refreshInsights(), refreshFeedbackHistory()]);
+        })
+        .catch((caught) => {
+          if (previous) updateStore((prev) => ops.updateTask(prev, id, previous));
+          if (mountedRef.current) setActionError(errorMessage(caught, '同步完成记录失败'));
+        });
+    },
+    [planId, refreshInsights, refreshFeedbackHistory, updateStore],
+  );
+
+  const partialCompleteTask = useCallback(
+    (
+      id: number,
+      completionRate: number,
+      actualMinutes?: number | null,
+      interruptionCount?: number | null,
+    ) => {
+      setActionError(null);
+      const previous = storeRef.current.tasks.find((task) => task.id === id) ?? null;
+      updateStore((prev) =>
+        ops.updateTask(prev, id, {
+          actualMinutes:
+            actualMinutes != null ? Math.round(actualMinutes) : prev.tasks.find((t) => t.id === id)?.actualMinutes,
+        }),
+      );
+      if (planId == null) return;
+      void patchTask(planId, id, taskPartialPatch(completionRate, actualMinutes, interruptionCount))
+        .then(async () => {
+          await Promise.all([refreshInsights(), refreshFeedbackHistory()]);
+        })
+        .catch((caught) => {
+          if (previous) updateStore((prev) => ops.updateTask(prev, id, previous));
+          if (mountedRef.current) setActionError(errorMessage(caught, '保存进度失败'));
+        });
+    },
+    [planId, refreshInsights, refreshFeedbackHistory, updateStore],
+  );
+
   const setSkipped = useCallback(
     (id: number, skipped: boolean) => {
       setActionError(null);
@@ -1081,8 +1152,8 @@ export function ApiPlanProvider({ children }: { children: React.ReactNode }) {
       mode: 'api',
       canEditTasks: true,
       canCreateTasks: false,
-      loading: loading || session.status === 'loading',
-      error: session.status === 'error' ? session.error : error,
+      loading: loading,
+      error,
       actionError,
       clearActionError,
       refresh,
@@ -1126,6 +1197,9 @@ export function ApiPlanProvider({ children }: { children: React.ReactNode }) {
       updateStandard,
       deleteTask,
       setDone,
+      startTask,
+      completeTask,
+      partialCompleteTask,
       toggleDone,
       setSkipped,
       reorder: unsupported,
@@ -1137,8 +1211,6 @@ export function ApiPlanProvider({ children }: { children: React.ReactNode }) {
     } satisfies PlanContextValue;
   }, [
     loading,
-    session.status,
-    session.error,
     session.user,
     error,
     actionError,
@@ -1179,6 +1251,9 @@ export function ApiPlanProvider({ children }: { children: React.ReactNode }) {
     updateStandard,
     deleteTask,
     setDone,
+    startTask,
+    completeTask,
+    partialCompleteTask,
     toggleDone,
     setSkipped,
     moveBy,

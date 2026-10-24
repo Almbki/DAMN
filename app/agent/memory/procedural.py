@@ -109,22 +109,22 @@ def derive_procedural_memory(
                 )
             )
 
-    # 4. Reuse the portrait's own completion prior when it has observations.
-    if state is not None and state.update_count > 0:
+    # 4. Reuse the Level 2 self-efficacy observation when available.
+    if state is not None and state.level2_profile and state.update_count > 0:
         items.append(
             MemoryItem(
                 kind=MemoryKind.PROCEDURAL,
-                key="completion_prior",
+                key="self_efficacy_prior",
                 value={
-                    "completion_prob": round(state.completion_prob, 4),
+                    "self_efficacy": round(state.self_efficacy, 4),
                     "update_count": state.update_count,
                 },
                 summary=(
-                    f"completion prior {state.completion_prob:.2f} "
-                    f"(from {state.update_count} observed update(s))"
+                    f"Level 2 self-efficacy {state.self_efficacy:.2f} "
+                    f"(from {state.update_count} observed day(s))"
                 ),
                 confidence=min(0.4 + state.update_count / 20, 0.9),
-                source="user_states.completion_prob",
+                source="user_states.level2_profile",
             )
         )
     return items

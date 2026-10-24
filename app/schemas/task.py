@@ -42,6 +42,11 @@ class TaskRead(BaseModel):
     end_time: time | None = None
     status: TaskStatus
     completion_probability: float | None = None
+    #: Truthful provenance of the production numbers. Never "shadow".
+    prediction_source: str | None = None
+    prediction_mode: str | None = None
+    #: Active execution started_at (from the latest unfinished TaskExecution).
+    started_at: datetime | None = None
     is_flexible: bool = True
     task_kind: TaskKind = TaskKind.ONE_OFF
     series_id: str | None = None
@@ -63,8 +68,12 @@ class TaskUpdateRequest(BaseModel):
     stress_before: int | None = Field(default=None, ge=0, le=10)
     stress_after: int | None = Field(default=None, ge=0, le=10)
     failure_reason: str | None = Field(default=None, max_length=500)
+    #: Partial completion (0..1) for a task that is not fully done.
+    completion_rate: float | None = Field(default=None, ge=0.0, le=1.0)
     started_at: datetime | None = None
     finished_at: datetime | None = None
+    #: Optional observed interruption count; null means not observed.
+    interruption_count: int | None = Field(default=None, ge=0)
     # Editable / reschedulable fields (explicit user overrides).
     title: str | None = Field(default=None, min_length=1, max_length=200)
     description: str | None = Field(default=None, max_length=2000)

@@ -25,6 +25,7 @@ class FeedbackRepository(RepositoryBase):
             free_text=feedback.free_text,
             sleep_hours=feedback.sleep_hours,
             dominant_time_of_day=feedback.dominant_time_of_day,
+            data_origin=feedback.data_origin,
             created_at=feedback.created_at,
         )
         self._session.add(orm)

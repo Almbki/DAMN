@@ -14,8 +14,10 @@ from app.infrastructure.database.models.plan import Plan
 from app.infrastructure.database.models.prediction_log import PredictionLog
 from app.infrastructure.database.models.replan_event import ReplanEvent
 from app.infrastructure.database.models.schedule_event import ScheduleEvent
+from app.infrastructure.database.models.shadow_prediction import ShadowPrediction
 from app.infrastructure.database.models.task import Task
 from app.infrastructure.database.models.task_standard import TaskStandard
+from app.infrastructure.database.models.trait_assessment import TraitAssessmentModel
 from app.infrastructure.database.models.user import User
 from app.infrastructure.database.models.user_state import UserStateModel
 
@@ -28,9 +30,11 @@ __all__ = [
     "PredictionLog",
     "ReplanEvent",
     "ScheduleEvent",
+    "ShadowPrediction",
     "Task",
     "TaskExecution",
     "TaskStandard",
+    "TraitAssessmentModel",
     "User",
     "UserStateModel",
 ]

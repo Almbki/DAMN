@@ -33,6 +33,9 @@ def _drafts_from_plan(state: PlannerState) -> list[GeneratedTaskDraft]:
                 goal_id=task.goal_id,
                 estimated_duration=max(task.estimated_duration, 1),
                 predicted_duration=task.predicted_duration,
+                # Carried tasks were produced by the deterministic estimator;
+                # keep the provenance truthful through the micro-adjust path.
+                prediction_source="deterministic:workload_estimate",
                 cognitive_load=task.cognitive_load,
                 priority=task.priority if isinstance(task.priority, Priority) else Priority.MEDIUM,
                 subject=task.subject,
@@ -54,7 +57,7 @@ def micro_adjustment_node(state: PlannerState, runtime: object) -> dict:
     ctx = get_context(runtime)
     ctx.publish("node.started", {"node": NODE})
 
-    prediction = state.get("ml_prediction")
+    prediction = state.get("adjustment")
     suggested = 0.85
     if prediction is not None:
         suggested = float(

@@ -31,6 +31,10 @@ class TaskExecution(DomainModel):
     stress_before: int | None = Field(default=None, ge=0, le=10)
     stress_after: int | None = Field(default=None, ge=0, le=10)
     failure_reason: str | None = None
+    #: Observed interruption count; None means "not observed", not zero.
+    interruption_count: int | None = Field(default=None, ge=0)
     time_of_day: TimeOfDay | None = None
     completed: bool = False
+    #: real | synthetic - provenance for training/evaluation isolation.
+    data_origin: str = "real"
     created_at: datetime = Field(default_factory=utcnow)

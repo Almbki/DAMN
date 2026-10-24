@@ -75,15 +75,28 @@ def build_semantic_memory(
             )
         )
 
-    if state is not None:
+    if state is not None and state.level2_profile:
         items.append(
             MemoryItem(
                 kind=MemoryKind.SEMANTIC,
-                key="duration_factor",
-                value={"value": round(state.duration_factor, 4)},
-                summary=f"duration multiplier {state.duration_factor:.2f}",
+                key="level2_state",
+                value={
+                    "fatigue": round(state.state_fatigue, 4),
+                    "stress": round(state.state_stress, 4),
+                    "self_efficacy": round(state.self_efficacy, 4),
+                    "observed_on": (
+                        state.level2_profile_date.isoformat()
+                        if state.level2_profile_date
+                        else None
+                    ),
+                },
+                summary=(
+                    f"Level 2 state (fatigue {state.state_fatigue:.2f}, "
+                    f"stress {state.state_stress:.2f}, "
+                    f"self-efficacy {state.self_efficacy:.2f})"
+                ),
                 confidence=_confidence(state.update_count),
-                source="user_states.duration_factor",
+                source="user_states.level2_profile",
             )
         )
         items.append(

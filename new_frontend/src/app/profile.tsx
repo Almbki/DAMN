@@ -2,7 +2,8 @@ import { useRouter } from 'expo-router';
 import { StyleSheet, Text, View } from 'react-native';
 
 import { BasicProfileSection } from '@/components/profile/basic-profile';
-import { StateDashboardSection } from '@/components/profile/state-dashboard';
+import { DynamicStateSection } from '@/components/profile/dynamic-state';
+import { TraitOverviewSection } from '@/components/profile/trait-overview';
 import { TrendChart } from '@/components/trend-chart';
 import { Button } from '@/components/ui/button';
 import { EmptyState } from '@/components/ui/states';
@@ -11,34 +12,18 @@ import { Fonts, Line, Space, Type } from '@/constants/tokens';
 import { usePlan } from '@/state/plan';
 import { useTheme } from '@/state/theme';
 
-function levelLabel(value: number | null, kind: 'energy' | 'stress'): string {
-  if (value == null) return '还没有数据';
-  if (kind === 'energy') {
-    if (value >= 6.5) return '精力不错';
-    if (value <= 3.5) return '精力偏低';
-    return '精力中等';
-  }
-  if (value >= 7) return '压力偏高';
-  if (value <= 3) return '很放松';
-  return '压力中等';
-}
-
 export default function ProfileScreen() {
   const { colors } = useTheme();
   const router = useRouter();
-  const { situation, stats, user, energyLabelText, refresh, loading, mode } = usePlan();
-
-  const energy = situation.energy;
-  const stress = situation.stress;
-  const efficacyPercent = Math.round(situation.efficacy * 100);
+  const { situation, stats, refresh, loading, mode } = usePlan();
 
   return (
     <View style={styles.page}>
       <View style={styles.toolbar}>
         <Text style={[styles.toolbarText, { color: colors.inkMuted }]}>
           {mode === 'api'
-            ? '下面有两套数字：近期趋势来自每天反馈的原值，画像估计是系统平滑后的判断。它们可能不一样。'
-            : '演示模式：数字来自本机示例。近期趋势与画像估计也可能不一样，连接后端后会显示真实画像。'}
+            ? '稳定特征来自真实初始画像；当前状态来自执行与反馈更新的 Level 2 模型；下方趋势才是每日反馈原值。三者不是同一个概念。'
+            : '演示模式：显示的是本机示例数据。连接后端后，这里会显示真实初始画像、当前状态与每日反馈趋势。'}
         </Text>
         <Button
           label={loading ? '刷新中…' : '刷新数据'}
@@ -50,44 +35,22 @@ export default function ProfileScreen() {
         />
       </View>
 
-      <BasicProfileSection />
+      <TraitOverviewSection />
 
-      <StateDashboardSection />
+      <DynamicStateSection />
 
       <View style={styles.section}>
-        <Text style={[styles.sectionTitle, { color: colors.ink }]}>当前状态</Text>
-        <View style={styles.tiles}>
-          <Tile
-            title="精力"
-            value={energy == null ? '—' : energy.toFixed(1)}
-            unit={energy == null ? '' : '/ 10'}
-            note={levelLabel(energy, 'energy')}
-            tone={colors.primary}
-          />
-          <Tile
-            title="压力"
-            value={stress == null ? '—' : stress.toFixed(1)}
-            unit={stress == null ? '' : '/ 10'}
-            note={levelLabel(stress, 'stress')}
-            tone={colors.error}
-          />
-          <Tile
-            title="效能"
-            value={`${efficacyPercent}`}
-            unit="%"
-            note={`执行权重 ${user.execution_weight.toFixed(2)}`}
-            tone={colors.ink}
-          />
-        </View>
+        <Text style={[styles.sectionTitle, { color: colors.ink }]}>补充自述（可选）</Text>
         <Text style={[styles.note, { color: colors.inkMuted }]}>
-          今天的节律：{energyLabelText}。
+          MBTI 只是你自己的补充描述，不会覆盖上面的模型估计。
         </Text>
       </View>
+      <BasicProfileSection />
 
       <View style={styles.section}>
-        <Text style={[styles.sectionTitle, { color: colors.ink }]}>近期趋势（每日反馈）</Text>
+        <Text style={[styles.sectionTitle, { color: colors.ink }]}>近期反馈趋势</Text>
         <Text style={[styles.note, { color: colors.inkMuted }]}>
-          来自你每天写下的精力、压力和完成情况，显示原始走势。
+          来自你每天写下的精力、压力和完成情况，是原始反馈走势，不是 Level 2 模型状态。
         </Text>
         {situation.points.length >= 2 ? (
           <TrendChart points={situation.points} />
@@ -148,34 +111,6 @@ export default function ProfileScreen() {
         />
       </View>
     </View>
-  );
-}
-
-function Tile({
-  title,
-  value,
-  unit,
-  note,
-  tone,
-}: {
-  title: string;
-  value: string;
-  unit: string;
-  note: string;
-  tone: string;
-}) {
-  const { colors } = useTheme();
-  return (
-    <Surface level="level1" radius="lg" style={styles.tileSurface}>
-      <View style={styles.tile}>
-        <Text style={[styles.tileTitle, { color: colors.inkMuted }]}>{title}</Text>
-        <View style={styles.tileValueRow}>
-          <Text style={[styles.tileValue, { color: tone }]}>{value}</Text>
-          {unit ? <Text style={[styles.tileUnit, { color: colors.inkMuted }]}>{unit}</Text> : null}
-        </View>
-        <Text style={[styles.tileNote, { color: colors.inkMuted }]}>{note}</Text>
-      </View>
-    </Surface>
   );
 }
 

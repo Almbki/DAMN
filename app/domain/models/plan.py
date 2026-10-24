@@ -27,4 +27,6 @@ class Plan(DomainModel):
     parent_plan_id: int | None = None
     # Snapshot of the planner confidence for this version (0..1).
     confidence: float = Field(default=0.5, ge=0.0, le=1.0)
+    #: real | synthetic - demo scenarios are explicitly identifiable.
+    data_origin: str = "real"
     created_at: datetime = Field(default_factory=utcnow)

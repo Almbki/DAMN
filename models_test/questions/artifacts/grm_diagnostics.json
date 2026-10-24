@@ -1,0 +1,2198 @@
+{
+  "model": "GRM",
+  "version": "grm_v1",
+  "converged": true,
+  "respondents": 619150,
+  "items": 120,
+  "parameter_count": 600,
+  "invalid_parameters": 0,
+  "domain_dimensionality": {
+    "N": "acceptable",
+    "E": "acceptable",
+    "O": "acceptable",
+    "A": "acceptable",
+    "C": "acceptable"
+  },
+  "domains": {
+    "N": {
+      "converged": true,
+      "convergence_max_delta_a": 0.0,
+      "convergence_max_delta_b": 0.0,
+      "n_items": 24,
+      "a_min": 0.464223,
+      "a_max": 2.2738,
+      "a_median": 1.364737,
+      "threshold_order_ok": true,
+      "threshold_disorder_count": 0,
+      "extreme_threshold_count": 2,
+      "flagged_item_count": 2,
+      "flagged_items": [
+        {
+          "item_id": "IPIP_051",
+          "domain": "N",
+          "facet": "Immoderation",
+          "a": 0.464223,
+          "thresholds": [
+            -5.878919,
+            -1.959279,
+            1.068449,
+            5.291776
+          ],
+          "issues": [
+            "low_discrimination",
+            "extreme_threshold",
+            "low_first_factor_loading"
+          ]
+        },
+        {
+          "item_id": "IPIP_081",
+          "domain": "N",
+          "facet": "Immoderation",
+          "a": 0.50351,
+          "thresholds": [
+            -5.316999,
+            -1.521618,
+            0.38589,
+            4.323445
+          ],
+          "issues": [
+            "extreme_threshold",
+            "low_first_factor_loading"
+          ]
+        }
+      ],
+      "dimensionality": {
+        "status": "acceptable",
+        "complete_cases": 558777,
+        "analysis_n": 50000,
+        "eigenvalues_top6": [
+          7.6476,
+          2.2966,
+          1.7947,
+          1.3736,
+          1.1855,
+          0.8557
+        ],
+        "parallel_analysis_95_top6": [
+          1.0435,
+          1.0373,
+          1.0323,
+          1.0284,
+          1.025,
+          1.0213
+        ],
+        "parallel_analysis_factors": 5,
+        "first_factor_variance": 0.3187,
+        "lambda1_lambda2_ratio": 3.33,
+        "loading_min": 0.2361,
+        "loading_max": 0.7529,
+        "n_low_loading": 2,
+        "low_loading_items": [
+          "IPIP_051",
+          "IPIP_081"
+        ],
+        "note": "First factor dominant; parallel analysis detects minor factors. Domain-level unidimensional GRM retained."
+      }
+    },
+    "E": {
+      "converged": true,
+      "convergence_max_delta_a": 0.0,
+      "convergence_max_delta_b": 0.0,
+      "n_items": 24,
+      "a_min": 0.47403,
+      "a_max": 2.282717,
+      "a_median": 1.18842,
+      "threshold_order_ok": true,
+      "threshold_disorder_count": 0,
+      "extreme_threshold_count": 3,
+      "flagged_item_count": 4,
+      "flagged_items": [
+        {
+          "item_id": "IPIP_017",
+          "domain": "E",
+          "facet": "Activity Level",
+          "a": 0.60362,
+          "thresholds": [
+            -5.711329,
+            -2.382506,
+            -0.359794,
+            2.373032
+          ],
+          "issues": [
+            "extreme_threshold"
+          ]
+        },
+        {
+          "item_id": "IPIP_022",
+          "domain": "E",
+          "facet": "Excitement-Seeking",
+          "a": 1.162145,
+          "thresholds": [
+            -4.621783,
+            -2.88351,
+            -1.573782,
+            0.425907
+          ],
+          "issues": [
+            "sparse_category"
+          ]
+        },
+        {
+          "item_id": "IPIP_082",
+          "domain": "E",
+          "facet": "Excitement-Seeking",
+          "a": 0.47403,
+          "thresholds": [
+            -2.00933,
+            0.433562,
+            2.318682,
+            5.952575
+          ],
+          "issues": [
+            "low_discrimination",
+            "extreme_threshold",
+            "low_first_factor_loading"
+          ]
+        },
+        {
+          "item_id": "IPIP_107",
+          "domain": "E",
+          "facet": "Activity Level",
+          "a": 0.631125,
+          "thresholds": [
+            -1.804589,
+            1.609171,
+            3.305192,
+            5.927227
+          ],
+          "issues": [
+            "extreme_threshold",
+            "low_first_factor_loading"
+          ]
+        }
+      ],
+      "dimensionality": {
+        "status": "acceptable",
+        "complete_cases": 551341,
+        "analysis_n": 50000,
+        "eigenvalues_top6": [
+          7.3491,
+          2.5721,
+          1.9147,
+          1.485,
+          1.3473,
+          0.8463
+        ],
+        "parallel_analysis_95_top6": [
+          1.045,
+          1.0371,
+          1.0324,
+          1.0285,
+          1.0248,
+          1.0216
+        ],
+        "parallel_analysis_factors": 5,
+        "first_factor_variance": 0.3062,
+        "lambda1_lambda2_ratio": 2.857,
+        "loading_min": 0.0399,
+        "loading_max": 0.7324,
+        "n_low_loading": 2,
+        "low_loading_items": [
+          "IPIP_082",
+          "IPIP_107"
+        ],
+        "note": "First factor dominant; parallel analysis detects minor factors. Domain-level unidimensional GRM retained."
+      }
+    },
+    "O": {
+      "converged": true,
+      "convergence_max_delta_a": 0.0,
+      "convergence_max_delta_b": 0.0,
+      "n_items": 24,
+      "a_min": 0.391541,
+      "a_max": 1.719031,
+      "a_median": 0.747965,
+      "threshold_order_ok": true,
+      "threshold_disorder_count": 0,
+      "extreme_threshold_count": 6,
+      "flagged_item_count": 7,
+      "flagged_items": [
+        {
+          "item_id": "IPIP_013",
+          "domain": "O",
+          "facet": "Emotionality",
+          "a": 0.593001,
+          "thresholds": [
+            -5.497896,
+            -2.684312,
+            -0.75281,
+            1.951507
+          ],
+          "issues": [
+            "extreme_threshold"
+          ]
+        },
+        {
+          "item_id": "IPIP_018",
+          "domain": "O",
+          "facet": "Adventurousness",
+          "a": 0.578107,
+          "thresholds": [
+            -5.520827,
+            -2.452879,
+            -0.488187,
+            2.306394
+          ],
+          "issues": [
+            "extreme_threshold"
+          ]
+        },
+        {
+          "item_id": "IPIP_043",
+          "domain": "O",
+          "facet": "Emotionality",
+          "a": 0.680248,
+          "thresholds": [
+            -5.936492,
+            -3.608247,
+            -1.881552,
+            1.572353
+          ],
+          "issues": [
+            "extreme_threshold"
+          ]
+        },
+        {
+          "item_id": "IPIP_058",
+          "domain": "O",
+          "facet": "Liberalism",
+          "a": 0.391541,
+          "thresholds": [
+            -4.239934,
+            -1.619999,
+            0.412055,
+            3.928618
+          ],
+          "issues": [
+            "low_discrimination",
+            "low_first_factor_loading"
+          ]
+        },
+        {
+          "item_id": "IPIP_073",
+          "domain": "O",
+          "facet": "Emotionality",
+          "a": 0.591881,
+          "thresholds": [
+            -5.841484,
+            -2.75414,
+            -1.130446,
+            1.784577
+          ],
+          "issues": [
+            "extreme_threshold"
+          ]
+        },
+        {
+          "item_id": "IPIP_103",
+          "domain": "O",
+          "facet": "Emotionality",
+          "a": 0.591868,
+          "thresholds": [
+            -5.90663,
+            -3.00906,
+            -1.62438,
+            1.167644
+          ],
+          "issues": [
+            "extreme_threshold",
+            "low_first_factor_loading"
+          ]
+        },
+        {
+          "item_id": "IPIP_118",
+          "domain": "O",
+          "facet": "Liberalism",
+          "a": 0.670432,
+          "thresholds": [
+            -1.193841,
+            1.553854,
+            3.774826,
+            5.980651
+          ],
+          "issues": [
+            "extreme_threshold",
+            "low_first_factor_loading"
+          ]
+        }
+      ],
+      "dimensionality": {
+        "status": "acceptable",
+        "complete_cases": 554018,
+        "analysis_n": 50000,
+        "eigenvalues_top6": [
+          4.8802,
+          2.1859,
+          1.8318,
+          1.734,
+          1.5208,
+          1.111
+        ],
+        "parallel_analysis_95_top6": [
+          1.0438,
+          1.0373,
+          1.032,
+          1.029,
+          1.0248,
+          1.0212
+        ],
+        "parallel_analysis_factors": 6,
+        "first_factor_variance": 0.2033,
+        "lambda1_lambda2_ratio": 2.233,
+        "loading_min": 0.2105,
+        "loading_max": 0.6694,
+        "n_low_loading": 3,
+        "low_loading_items": [
+          "IPIP_058",
+          "IPIP_103",
+          "IPIP_118"
+        ],
+        "note": "First factor dominant; parallel analysis detects minor factors. Domain-level unidimensional GRM retained."
+      }
+    },
+    "A": {
+      "converged": true,
+      "convergence_max_delta_a": 0.0,
+      "convergence_max_delta_b": 0.0,
+      "n_items": 24,
+      "a_min": 0.38566,
+      "a_max": 1.679452,
+      "a_median": 1.12121,
+      "threshold_order_ok": true,
+      "threshold_disorder_count": 0,
+      "extreme_threshold_count": 3,
+      "flagged_item_count": 6,
+      "flagged_items": [
+        {
+          "item_id": "IPIP_014",
+          "domain": "A",
+          "facet": "Altruism",
+          "a": 1.364249,
+          "thresholds": [
+            -4.081598,
+            -2.663507,
+            -1.39475,
+            0.500185
+          ],
+          "issues": [
+            "sparse_category"
+          ]
+        },
+        {
+          "item_id": "IPIP_044",
+          "domain": "A",
+          "facet": "Altruism",
+          "a": 1.607316,
+          "thresholds": [
+            -3.666161,
+            -2.543258,
+            -1.619737,
+            0.482763
+          ],
+          "issues": [
+            "sparse_category"
+          ]
+        },
+        {
+          "item_id": "IPIP_054",
+          "domain": "A",
+          "facet": "Modesty",
+          "a": 0.44457,
+          "thresholds": [
+            -4.143576,
+            0.175813,
+            2.886072,
+            5.942643
+          ],
+          "issues": [
+            "low_discrimination",
+            "extreme_threshold",
+            "low_first_factor_loading"
+          ]
+        },
+        {
+          "item_id": "IPIP_084",
+          "domain": "A",
+          "facet": "Modesty",
+          "a": 0.38566,
+          "thresholds": [
+            -4.788052,
+            0.023037,
+            2.66702,
+            5.926682
+          ],
+          "issues": [
+            "low_discrimination",
+            "extreme_threshold",
+            "low_first_factor_loading"
+          ]
+        },
+        {
+          "item_id": "IPIP_099",
+          "domain": "A",
+          "facet": "Morality",
+          "a": 1.170771,
+          "thresholds": [
+            -4.896551,
+            -3.223863,
+            -1.433413,
+            0.189073
+          ],
+          "issues": [
+            "sparse_category"
+          ]
+        },
+        {
+          "item_id": "IPIP_114",
+          "domain": "A",
+          "facet": "Modesty",
+          "a": 0.724134,
+          "thresholds": [
+            -5.624498,
+            -2.816982,
+            -0.894192,
+            1.124314
+          ],
+          "issues": [
+            "extreme_threshold"
+          ]
+        }
+      ],
+      "dimensionality": {
+        "status": "acceptable",
+        "complete_cases": 557931,
+        "analysis_n": 50000,
+        "eigenvalues_top6": [
+          6.0763,
+          2.6165,
+          2.0328,
+          1.7508,
+          1.09,
+          0.9564
+        ],
+        "parallel_analysis_95_top6": [
+          1.0437,
+          1.0372,
+          1.0327,
+          1.0282,
+          1.0247,
+          1.0217
+        ],
+        "parallel_analysis_factors": 5,
+        "first_factor_variance": 0.2532,
+        "lambda1_lambda2_ratio": 2.322,
+        "loading_min": 0.1366,
+        "loading_max": 0.6475,
+        "n_low_loading": 2,
+        "low_loading_items": [
+          "IPIP_054",
+          "IPIP_084"
+        ],
+        "note": "First factor dominant; parallel analysis detects minor factors. Domain-level unidimensional GRM retained."
+      }
+    },
+    "C": {
+      "converged": true,
+      "convergence_max_delta_a": 0.0,
+      "convergence_max_delta_b": 0.0,
+      "n_items": 24,
+      "a_min": 0.857585,
+      "a_max": 1.895391,
+      "a_median": 1.272612,
+      "threshold_order_ok": true,
+      "threshold_disorder_count": 0,
+      "extreme_threshold_count": 2,
+      "flagged_item_count": 7,
+      "flagged_items": [
+        {
+          "item_id": "IPIP_005",
+          "domain": "C",
+          "facet": "Self-Efficacy",
+          "a": 1.895391,
+          "thresholds": [
+            -3.356,
+            -2.104763,
+            -1.218426,
+            0.604628
+          ],
+          "issues": [
+            "sparse_category"
+          ]
+        },
+        {
+          "item_id": "IPIP_015",
+          "domain": "C",
+          "facet": "Dutifulness",
+          "a": 1.154776,
+          "thresholds": [
+            -5.244858,
+            -3.367985,
+            -2.031197,
+            0.396576
+          ],
+          "issues": [
+            "extreme_threshold",
+            "sparse_category"
+          ]
+        },
+        {
+          "item_id": "IPIP_035",
+          "domain": "C",
+          "facet": "Self-Efficacy",
+          "a": 1.276511,
+          "thresholds": [
+            -4.497565,
+            -2.988431,
+            -1.435093,
+            0.858344
+          ],
+          "issues": [
+            "sparse_category"
+          ]
+        },
+        {
+          "item_id": "IPIP_045",
+          "domain": "C",
+          "facet": "Dutifulness",
+          "a": 1.025348,
+          "thresholds": [
+            -5.248257,
+            -3.338188,
+            -1.862212,
+            0.860236
+          ],
+          "issues": [
+            "extreme_threshold",
+            "sparse_category"
+          ]
+        },
+        {
+          "item_id": "IPIP_065",
+          "domain": "C",
+          "facet": "Self-Efficacy",
+          "a": 1.497718,
+          "thresholds": [
+            -3.958918,
+            -2.232112,
+            -0.90844,
+            1.637017
+          ],
+          "issues": [
+            "sparse_category"
+          ]
+        },
+        {
+          "item_id": "IPIP_095",
+          "domain": "C",
+          "facet": "Self-Efficacy",
+          "a": 1.488292,
+          "thresholds": [
+            -4.032283,
+            -2.567451,
+            -1.444493,
+            0.870082
+          ],
+          "issues": [
+            "sparse_category"
+          ]
+        },
+        {
+          "item_id": "IPIP_105",
+          "domain": "C",
+          "facet": "Dutifulness",
+          "a": 1.195803,
+          "thresholds": [
+            -4.769276,
+            -2.853166,
+            -1.786477,
+            0.071148
+          ],
+          "issues": [
+            "sparse_category"
+          ]
+        }
+      ],
+      "dimensionality": {
+        "status": "acceptable",
+        "complete_cases": 554765,
+        "analysis_n": 50000,
+        "eigenvalues_top6": [
+          7.8846,
+          2.3308,
+          1.9167,
+          1.3586,
+          1.1152,
+          0.8262
+        ],
+        "parallel_analysis_95_top6": [
+          1.044,
+          1.0366,
+          1.033,
+          1.0285,
+          1.0248,
+          1.0216
+        ],
+        "parallel_analysis_factors": 5,
+        "first_factor_variance": 0.3285,
+        "lambda1_lambda2_ratio": 3.383,
+        "loading_min": 0.4574,
+        "loading_max": 0.6745,
+        "n_low_loading": 0,
+        "low_loading_items": [],
+        "note": "First factor dominant; parallel analysis detects minor factors. Domain-level unidimensional GRM retained."
+      }
+    }
+  },
+  "flagged_items": [
+    {
+      "item_id": "IPIP_051",
+      "domain": "N",
+      "facet": "Immoderation",
+      "a": 0.464223,
+      "thresholds": [
+        -5.878919,
+        -1.959279,
+        1.068449,
+        5.291776
+      ],
+      "issues": [
+        "low_discrimination",
+        "extreme_threshold",
+        "low_first_factor_loading"
+      ]
+    },
+    {
+      "item_id": "IPIP_081",
+      "domain": "N",
+      "facet": "Immoderation",
+      "a": 0.50351,
+      "thresholds": [
+        -5.316999,
+        -1.521618,
+        0.38589,
+        4.323445
+      ],
+      "issues": [
+        "extreme_threshold",
+        "low_first_factor_loading"
+      ]
+    },
+    {
+      "item_id": "IPIP_017",
+      "domain": "E",
+      "facet": "Activity Level",
+      "a": 0.60362,
+      "thresholds": [
+        -5.711329,
+        -2.382506,
+        -0.359794,
+        2.373032
+      ],
+      "issues": [
+        "extreme_threshold"
+      ]
+    },
+    {
+      "item_id": "IPIP_022",
+      "domain": "E",
+      "facet": "Excitement-Seeking",
+      "a": 1.162145,
+      "thresholds": [
+        -4.621783,
+        -2.88351,
+        -1.573782,
+        0.425907
+      ],
+      "issues": [
+        "sparse_category"
+      ]
+    },
+    {
+      "item_id": "IPIP_082",
+      "domain": "E",
+      "facet": "Excitement-Seeking",
+      "a": 0.47403,
+      "thresholds": [
+        -2.00933,
+        0.433562,
+        2.318682,
+        5.952575
+      ],
+      "issues": [
+        "low_discrimination",
+        "extreme_threshold",
+        "low_first_factor_loading"
+      ]
+    },
+    {
+      "item_id": "IPIP_107",
+      "domain": "E",
+      "facet": "Activity Level",
+      "a": 0.631125,
+      "thresholds": [
+        -1.804589,
+        1.609171,
+        3.305192,
+        5.927227
+      ],
+      "issues": [
+        "extreme_threshold",
+        "low_first_factor_loading"
+      ]
+    },
+    {
+      "item_id": "IPIP_013",
+      "domain": "O",
+      "facet": "Emotionality",
+      "a": 0.593001,
+      "thresholds": [
+        -5.497896,
+        -2.684312,
+        -0.75281,
+        1.951507
+      ],
+      "issues": [
+        "extreme_threshold"
+      ]
+    },
+    {
+      "item_id": "IPIP_018",
+      "domain": "O",
+      "facet": "Adventurousness",
+      "a": 0.578107,
+      "thresholds": [
+        -5.520827,
+        -2.452879,
+        -0.488187,
+        2.306394
+      ],
+      "issues": [
+        "extreme_threshold"
+      ]
+    },
+    {
+      "item_id": "IPIP_043",
+      "domain": "O",
+      "facet": "Emotionality",
+      "a": 0.680248,
+      "thresholds": [
+        -5.936492,
+        -3.608247,
+        -1.881552,
+        1.572353
+      ],
+      "issues": [
+        "extreme_threshold"
+      ]
+    },
+    {
+      "item_id": "IPIP_058",
+      "domain": "O",
+      "facet": "Liberalism",
+      "a": 0.391541,
+      "thresholds": [
+        -4.239934,
+        -1.619999,
+        0.412055,
+        3.928618
+      ],
+      "issues": [
+        "low_discrimination",
+        "low_first_factor_loading"
+      ]
+    },
+    {
+      "item_id": "IPIP_073",
+      "domain": "O",
+      "facet": "Emotionality",
+      "a": 0.591881,
+      "thresholds": [
+        -5.841484,
+        -2.75414,
+        -1.130446,
+        1.784577
+      ],
+      "issues": [
+        "extreme_threshold"
+      ]
+    },
+    {
+      "item_id": "IPIP_103",
+      "domain": "O",
+      "facet": "Emotionality",
+      "a": 0.591868,
+      "thresholds": [
+        -5.90663,
+        -3.00906,
+        -1.62438,
+        1.167644
+      ],
+      "issues": [
+        "extreme_threshold",
+        "low_first_factor_loading"
+      ]
+    },
+    {
+      "item_id": "IPIP_118",
+      "domain": "O",
+      "facet": "Liberalism",
+      "a": 0.670432,
+      "thresholds": [
+        -1.193841,
+        1.553854,
+        3.774826,
+        5.980651
+      ],
+      "issues": [
+        "extreme_threshold",
+        "low_first_factor_loading"
+      ]
+    },
+    {
+      "item_id": "IPIP_014",
+      "domain": "A",
+      "facet": "Altruism",
+      "a": 1.364249,
+      "thresholds": [
+        -4.081598,
+        -2.663507,
+        -1.39475,
+        0.500185
+      ],
+      "issues": [
+        "sparse_category"
+      ]
+    },
+    {
+      "item_id": "IPIP_044",
+      "domain": "A",
+      "facet": "Altruism",
+      "a": 1.607316,
+      "thresholds": [
+        -3.666161,
+        -2.543258,
+        -1.619737,
+        0.482763
+      ],
+      "issues": [
+        "sparse_category"
+      ]
+    },
+    {
+      "item_id": "IPIP_054",
+      "domain": "A",
+      "facet": "Modesty",
+      "a": 0.44457,
+      "thresholds": [
+        -4.143576,
+        0.175813,
+        2.886072,
+        5.942643
+      ],
+      "issues": [
+        "low_discrimination",
+        "extreme_threshold",
+        "low_first_factor_loading"
+      ]
+    },
+    {
+      "item_id": "IPIP_084",
+      "domain": "A",
+      "facet": "Modesty",
+      "a": 0.38566,
+      "thresholds": [
+        -4.788052,
+        0.023037,
+        2.66702,
+        5.926682
+      ],
+      "issues": [
+        "low_discrimination",
+        "extreme_threshold",
+        "low_first_factor_loading"
+      ]
+    },
+    {
+      "item_id": "IPIP_099",
+      "domain": "A",
+      "facet": "Morality",
+      "a": 1.170771,
+      "thresholds": [
+        -4.896551,
+        -3.223863,
+        -1.433413,
+        0.189073
+      ],
+      "issues": [
+        "sparse_category"
+      ]
+    },
+    {
+      "item_id": "IPIP_114",
+      "domain": "A",
+      "facet": "Modesty",
+      "a": 0.724134,
+      "thresholds": [
+        -5.624498,
+        -2.816982,
+        -0.894192,
+        1.124314
+      ],
+      "issues": [
+        "extreme_threshold"
+      ]
+    },
+    {
+      "item_id": "IPIP_005",
+      "domain": "C",
+      "facet": "Self-Efficacy",
+      "a": 1.895391,
+      "thresholds": [
+        -3.356,
+        -2.104763,
+        -1.218426,
+        0.604628
+      ],
+      "issues": [
+        "sparse_category"
+      ]
+    },
+    {
+      "item_id": "IPIP_015",
+      "domain": "C",
+      "facet": "Dutifulness",
+      "a": 1.154776,
+      "thresholds": [
+        -5.244858,
+        -3.367985,
+        -2.031197,
+        0.396576
+      ],
+      "issues": [
+        "extreme_threshold",
+        "sparse_category"
+      ]
+    },
+    {
+      "item_id": "IPIP_035",
+      "domain": "C",
+      "facet": "Self-Efficacy",
+      "a": 1.276511,
+      "thresholds": [
+        -4.497565,
+        -2.988431,
+        -1.435093,
+        0.858344
+      ],
+      "issues": [
+        "sparse_category"
+      ]
+    },
+    {
+      "item_id": "IPIP_045",
+      "domain": "C",
+      "facet": "Dutifulness",
+      "a": 1.025348,
+      "thresholds": [
+        -5.248257,
+        -3.338188,
+        -1.862212,
+        0.860236
+      ],
+      "issues": [
+        "extreme_threshold",
+        "sparse_category"
+      ]
+    },
+    {
+      "item_id": "IPIP_065",
+      "domain": "C",
+      "facet": "Self-Efficacy",
+      "a": 1.497718,
+      "thresholds": [
+        -3.958918,
+        -2.232112,
+        -0.90844,
+        1.637017
+      ],
+      "issues": [
+        "sparse_category"
+      ]
+    },
+    {
+      "item_id": "IPIP_095",
+      "domain": "C",
+      "facet": "Self-Efficacy",
+      "a": 1.488292,
+      "thresholds": [
+        -4.032283,
+        -2.567451,
+        -1.444493,
+        0.870082
+      ],
+      "issues": [
+        "sparse_category"
+      ]
+    },
+    {
+      "item_id": "IPIP_105",
+      "domain": "C",
+      "facet": "Dutifulness",
+      "a": 1.195803,
+      "thresholds": [
+        -4.769276,
+        -2.853166,
+        -1.786477,
+        0.071148
+      ],
+      "issues": [
+        "sparse_category"
+      ]
+    }
+  ],
+  "flagged_item_count": 26,
+  "qc": {
+    "respondents": 619150,
+    "items": 120,
+    "item_cells": 74298000,
+    "response_min": 1,
+    "response_max": 5,
+    "missing_code": 0,
+    "missing_total": 367593,
+    "missing_rate": 0.00494755,
+    "per_item_missing_min": 785,
+    "per_item_missing_max": 4375,
+    "per_item_missing_rate_min": 0.00126787,
+    "per_item_missing_rate_max": 0.00706614,
+    "invalid_response_count": 0,
+    "reverse_scoring_applied": false,
+    "item_mean_min": 2.0621,
+    "item_mean_max": 4.2677,
+    "item_sd_min": 0.781,
+    "item_sd_max": 1.4198,
+    "forward_item_mean": 3.427,
+    "reverse_item_mean": 3.3702,
+    "sparse_category_items": [
+      "IPIP_005",
+      "IPIP_014",
+      "IPIP_015",
+      "IPIP_022",
+      "IPIP_035",
+      "IPIP_044",
+      "IPIP_045",
+      "IPIP_065",
+      "IPIP_095",
+      "IPIP_099",
+      "IPIP_105"
+    ],
+    "item_distribution": {
+      "IPIP_001": {
+        "mean": 3.6884,
+        "sd": 1.0931,
+        "p1": 0.040714,
+        "p2": 0.141234,
+        "p3": 0.133829,
+        "p4": 0.457416,
+        "p5": 0.226808
+      },
+      "IPIP_002": {
+        "mean": 3.7621,
+        "sd": 1.1076,
+        "p1": 0.038493,
+        "p2": 0.129727,
+        "p3": 0.14043,
+        "p4": 0.413859,
+        "p5": 0.27749
+      },
+      "IPIP_003": {
+        "mean": 4.0202,
+        "sd": 0.9849,
+        "p1": 0.017237,
+        "p2": 0.072482,
+        "p3": 0.154256,
+        "p4": 0.384945,
+        "p5": 0.371081
+      },
+      "IPIP_004": {
+        "mean": 3.3553,
+        "sd": 1.088,
+        "p1": 0.055051,
+        "p2": 0.195651,
+        "p3": 0.204719,
+        "p4": 0.428078,
+        "p5": 0.1165
+      },
+      "IPIP_005": {
+        "mean": 4.071,
+        "sd": 0.8597,
+        "p1": 0.008946,
+        "p2": 0.053736,
+        "p3": 0.121665,
+        "p4": 0.488668,
+        "p5": 0.326985
+      },
+      "IPIP_006": {
+        "mean": 2.8782,
+        "sd": 1.2377,
+        "p1": 0.153614,
+        "p2": 0.272026,
+        "p3": 0.218343,
+        "p4": 0.254588,
+        "p5": 0.10143
+      },
+      "IPIP_007": {
+        "mean": 3.0712,
+        "sd": 1.3532,
+        "p1": 0.160939,
+        "p2": 0.214657,
+        "p3": 0.201703,
+        "p4": 0.237681,
+        "p5": 0.18502
+      },
+      "IPIP_008": {
+        "mean": 3.6615,
+        "sd": 1.2026,
+        "p1": 0.061974,
+        "p2": 0.12234,
+        "p3": 0.210783,
+        "p4": 0.302034,
+        "p5": 0.302869
+      },
+      "IPIP_009": {
+        "mean": 3.702,
+        "sd": 1.1015,
+        "p1": 0.023037,
+        "p2": 0.135595,
+        "p3": 0.255012,
+        "p4": 0.289046,
+        "p5": 0.297309
+      },
+      "IPIP_010": {
+        "mean": 3.4338,
+        "sd": 1.2113,
+        "p1": 0.079557,
+        "p2": 0.168112,
+        "p3": 0.195224,
+        "p4": 0.353139,
+        "p5": 0.203967
+      },
+      "IPIP_011": {
+        "mean": 2.789,
+        "sd": 1.2182,
+        "p1": 0.168581,
+        "p2": 0.278459,
+        "p3": 0.233765,
+        "p4": 0.233722,
+        "p5": 0.085473
+      },
+      "IPIP_012": {
+        "mean": 3.6822,
+        "sd": 1.0203,
+        "p1": 0.030482,
+        "p2": 0.11327,
+        "p3": 0.207207,
+        "p4": 0.441613,
+        "p5": 0.207428
+      },
+      "IPIP_013": {
+        "mean": 3.6286,
+        "sd": 1.1328,
+        "p1": 0.043034,
+        "p2": 0.141471,
+        "p3": 0.213667,
+        "p4": 0.347535,
+        "p5": 0.254292
+      },
+      "IPIP_014": {
+        "mean": 4.1221,
+        "sd": 0.871,
+        "p1": 0.009202,
+        "p2": 0.043841,
+        "p3": 0.138997,
+        "p4": 0.431614,
+        "p5": 0.376345
+      },
+      "IPIP_015": {
+        "mean": 4.2418,
+        "sd": 0.781,
+        "p1": 0.004494,
+        "p2": 0.030994,
+        "p3": 0.093389,
+        "p4": 0.460512,
+        "p5": 0.410611
+      },
+      "IPIP_016": {
+        "mean": 2.8251,
+        "sd": 1.2481,
+        "p1": 0.169747,
+        "p2": 0.281804,
+        "p3": 0.19263,
+        "p4": 0.26527,
+        "p5": 0.09055
+      },
+      "IPIP_017": {
+        "mean": 3.5145,
+        "sd": 1.1083,
+        "p1": 0.036247,
+        "p2": 0.171702,
+        "p3": 0.242139,
+        "p4": 0.341078,
+        "p5": 0.208833
+      },
+      "IPIP_018": {
+        "mean": 3.5331,
+        "sd": 1.1392,
+        "p1": 0.045577,
+        "p2": 0.164283,
+        "p3": 0.225032,
+        "p4": 0.34165,
+        "p5": 0.223458
+      },
+      "IPIP_019": {
+        "mean": 3.3943,
+        "sd": 1.3785,
+        "p1": 0.110908,
+        "p2": 0.198183,
+        "p3": 0.176441,
+        "p4": 0.21464,
+        "p5": 0.299828
+      },
+      "IPIP_020": {
+        "mean": 4.1432,
+        "sd": 0.9053,
+        "p1": 0.011832,
+        "p2": 0.05239,
+        "p3": 0.120281,
+        "p4": 0.411701,
+        "p5": 0.403796
+      },
+      "IPIP_021": {
+        "mean": 2.7584,
+        "sd": 1.298,
+        "p1": 0.233015,
+        "p2": 0.19523,
+        "p3": 0.250277,
+        "p4": 0.223304,
+        "p5": 0.098174
+      },
+      "IPIP_022": {
+        "mean": 4.1504,
+        "sd": 0.8859,
+        "p1": 0.008849,
+        "p2": 0.04857,
+        "p3": 0.129691,
+        "p4": 0.409136,
+        "p5": 0.403755
+      },
+      "IPIP_023": {
+        "mean": 3.3354,
+        "sd": 1.2754,
+        "p1": 0.108292,
+        "p2": 0.169644,
+        "p3": 0.207748,
+        "p4": 0.306956,
+        "p5": 0.20736
+      },
+      "IPIP_024": {
+        "mean": 3.297,
+        "sd": 1.2554,
+        "p1": 0.068428,
+        "p2": 0.24759,
+        "p3": 0.233337,
+        "p4": 0.21987,
+        "p5": 0.230775
+      },
+      "IPIP_025": {
+        "mean": 3.3683,
+        "sd": 1.0028,
+        "p1": 0.032803,
+        "p2": 0.184066,
+        "p3": 0.269223,
+        "p4": 0.409881,
+        "p5": 0.104028
+      },
+      "IPIP_026": {
+        "mean": 2.6399,
+        "sd": 1.261,
+        "p1": 0.221057,
+        "p2": 0.294067,
+        "p3": 0.191613,
+        "p4": 0.210489,
+        "p5": 0.082773
+      },
+      "IPIP_027": {
+        "mean": 3.4009,
+        "sd": 1.0475,
+        "p1": 0.049073,
+        "p2": 0.143511,
+        "p3": 0.302694,
+        "p4": 0.366874,
+        "p5": 0.137847
+      },
+      "IPIP_028": {
+        "mean": 2.9803,
+        "sd": 1.3015,
+        "p1": 0.199265,
+        "p2": 0.108283,
+        "p3": 0.356295,
+        "p4": 0.185236,
+        "p5": 0.15092
+      },
+      "IPIP_029": {
+        "mean": 3.4698,
+        "sd": 1.1428,
+        "p1": 0.062589,
+        "p2": 0.153066,
+        "p3": 0.223957,
+        "p4": 0.372754,
+        "p5": 0.187634
+      },
+      "IPIP_030": {
+        "mean": 3.1729,
+        "sd": 1.227,
+        "p1": 0.087494,
+        "p2": 0.261755,
+        "p3": 0.198161,
+        "p4": 0.29555,
+        "p5": 0.15704
+      },
+      "IPIP_031": {
+        "mean": 3.026,
+        "sd": 1.2639,
+        "p1": 0.133826,
+        "p2": 0.254024,
+        "p3": 0.195003,
+        "p4": 0.286584,
+        "p5": 0.130563
+      },
+      "IPIP_032": {
+        "mean": 3.698,
+        "sd": 1.0634,
+        "p1": 0.033221,
+        "p2": 0.130211,
+        "p3": 0.17203,
+        "p4": 0.434442,
+        "p5": 0.230096
+      },
+      "IPIP_033": {
+        "mean": 3.4647,
+        "sd": 1.2207,
+        "p1": 0.079933,
+        "p2": 0.148397,
+        "p3": 0.231225,
+        "p4": 0.307978,
+        "p5": 0.232467
+      },
+      "IPIP_034": {
+        "mean": 3.5211,
+        "sd": 0.9702,
+        "p1": 0.030493,
+        "p2": 0.136148,
+        "p3": 0.233362,
+        "p4": 0.481743,
+        "p5": 0.118254
+      },
+      "IPIP_035": {
+        "mean": 4.0581,
+        "sd": 0.8092,
+        "p1": 0.007023,
+        "p2": 0.035133,
+        "p3": 0.152521,
+        "p4": 0.503341,
+        "p5": 0.301983
+      },
+      "IPIP_036": {
+        "mean": 3.227,
+        "sd": 1.2056,
+        "p1": 0.08778,
+        "p2": 0.228709,
+        "p3": 0.199232,
+        "p4": 0.337322,
+        "p5": 0.146956
+      },
+      "IPIP_037": {
+        "mean": 3.1565,
+        "sd": 1.3206,
+        "p1": 0.134144,
+        "p2": 0.222573,
+        "p3": 0.176924,
+        "p4": 0.285331,
+        "p5": 0.181028
+      },
+      "IPIP_038": {
+        "mean": 3.9349,
+        "sd": 0.9512,
+        "p1": 0.016038,
+        "p2": 0.071635,
+        "p3": 0.175873,
+        "p4": 0.434281,
+        "p5": 0.302174
+      },
+      "IPIP_039": {
+        "mean": 4.1393,
+        "sd": 1.066,
+        "p1": 0.018877,
+        "p2": 0.085569,
+        "p3": 0.138292,
+        "p4": 0.251939,
+        "p5": 0.505324
+      },
+      "IPIP_040": {
+        "mean": 3.1263,
+        "sd": 1.3224,
+        "p1": 0.12313,
+        "p2": 0.263133,
+        "p3": 0.164745,
+        "p4": 0.26229,
+        "p5": 0.186702
+      },
+      "IPIP_041": {
+        "mean": 2.2263,
+        "sd": 1.2107,
+        "p1": 0.369197,
+        "p2": 0.264323,
+        "p3": 0.184695,
+        "p4": 0.134585,
+        "p5": 0.047201
+      },
+      "IPIP_042": {
+        "mean": 3.4866,
+        "sd": 1.095,
+        "p1": 0.057981,
+        "p2": 0.138179,
+        "p3": 0.225644,
+        "p4": 0.415681,
+        "p5": 0.162516
+      },
+      "IPIP_043": {
+        "mean": 3.9223,
+        "sd": 0.9444,
+        "p1": 0.021257,
+        "p2": 0.072088,
+        "p3": 0.144051,
+        "p4": 0.488347,
+        "p5": 0.274258
+      },
+      "IPIP_044": {
+        "mean": 4.18,
+        "sd": 0.8091,
+        "p1": 0.009217,
+        "p2": 0.035929,
+        "p3": 0.090462,
+        "p4": 0.494423,
+        "p5": 0.369969
+      },
+      "IPIP_045": {
+        "mean": 4.1017,
+        "sd": 0.817,
+        "p1": 0.007627,
+        "p2": 0.041034,
+        "p3": 0.119216,
+        "p4": 0.506289,
+        "p5": 0.325835
+      },
+      "IPIP_046": {
+        "mean": 2.8731,
+        "sd": 1.212,
+        "p1": 0.144698,
+        "p2": 0.277631,
+        "p3": 0.231844,
+        "p4": 0.251545,
+        "p5": 0.094283
+      },
+      "IPIP_047": {
+        "mean": 3.5548,
+        "sd": 1.0682,
+        "p1": 0.030895,
+        "p2": 0.150542,
+        "p3": 0.255294,
+        "p4": 0.359452,
+        "p5": 0.203816
+      },
+      "IPIP_048": {
+        "mean": 2.6232,
+        "sd": 1.0849,
+        "p1": 0.137855,
+        "p2": 0.391365,
+        "p3": 0.223462,
+        "p4": 0.204375,
+        "p5": 0.042943
+      },
+      "IPIP_049": {
+        "mean": 3.7541,
+        "sd": 1.213,
+        "p1": 0.046334,
+        "p2": 0.145978,
+        "p3": 0.172929,
+        "p4": 0.276808,
+        "p5": 0.357951
+      },
+      "IPIP_050": {
+        "mean": 3.6792,
+        "sd": 0.959,
+        "p1": 0.019495,
+        "p2": 0.100552,
+        "p3": 0.253096,
+        "p4": 0.434968,
+        "p5": 0.19189
+      },
+      "IPIP_051": {
+        "mean": 3.1073,
+        "sd": 1.0607,
+        "p1": 0.066618,
+        "p2": 0.229196,
+        "p3": 0.320082,
+        "p4": 0.298518,
+        "p5": 0.085585
+      },
+      "IPIP_052": {
+        "mean": 3.6923,
+        "sd": 1.0476,
+        "p1": 0.031856,
+        "p2": 0.118082,
+        "p3": 0.204566,
+        "p4": 0.416943,
+        "p5": 0.228553
+      },
+      "IPIP_053": {
+        "mean": 3.6806,
+        "sd": 1.1979,
+        "p1": 0.057875,
+        "p2": 0.127543,
+        "p3": 0.198304,
+        "p4": 0.308645,
+        "p5": 0.307633
+      },
+      "IPIP_054": {
+        "mean": 2.6335,
+        "sd": 1.1222,
+        "p1": 0.145098,
+        "p2": 0.373556,
+        "p3": 0.255282,
+        "p4": 0.154872,
+        "p5": 0.071191
+      },
+      "IPIP_055": {
+        "mean": 3.829,
+        "sd": 0.8635,
+        "p1": 0.011618,
+        "p2": 0.078344,
+        "p3": 0.168241,
+        "p4": 0.553041,
+        "p5": 0.188757
+      },
+      "IPIP_056": {
+        "mean": 2.9638,
+        "sd": 1.1569,
+        "p1": 0.107627,
+        "p2": 0.279478,
+        "p3": 0.239883,
+        "p4": 0.287473,
+        "p5": 0.085538
+      },
+      "IPIP_057": {
+        "mean": 4.0005,
+        "sd": 0.9758,
+        "p1": 0.017403,
+        "p2": 0.072335,
+        "p3": 0.154461,
+        "p4": 0.403997,
+        "p5": 0.351802
+      },
+      "IPIP_058": {
+        "mean": 3.1268,
+        "sd": 1.3594,
+        "p1": 0.166621,
+        "p2": 0.184946,
+        "p3": 0.18725,
+        "p4": 0.277351,
+        "p5": 0.183832
+      },
+      "IPIP_059": {
+        "mean": 3.9477,
+        "sd": 0.9916,
+        "p1": 0.025153,
+        "p2": 0.07907,
+        "p3": 0.131088,
+        "p4": 0.452352,
+        "p5": 0.312337
+      },
+      "IPIP_060": {
+        "mean": 3.2842,
+        "sd": 1.1699,
+        "p1": 0.064918,
+        "p2": 0.215972,
+        "p3": 0.26107,
+        "p4": 0.286104,
+        "p5": 0.171936
+      },
+      "IPIP_061": {
+        "mean": 2.4208,
+        "sd": 1.1704,
+        "p1": 0.243092,
+        "p2": 0.364601,
+        "p3": 0.169147,
+        "p4": 0.174741,
+        "p5": 0.048419
+      },
+      "IPIP_062": {
+        "mean": 3.8153,
+        "sd": 1.1098,
+        "p1": 0.027341,
+        "p2": 0.136067,
+        "p3": 0.153061,
+        "p4": 0.361041,
+        "p5": 0.322491
+      },
+      "IPIP_063": {
+        "mean": 3.792,
+        "sd": 1.1262,
+        "p1": 0.042089,
+        "p2": 0.114357,
+        "p3": 0.164171,
+        "p4": 0.368207,
+        "p5": 0.311175
+      },
+      "IPIP_064": {
+        "mean": 3.2709,
+        "sd": 1.0495,
+        "p1": 0.057331,
+        "p2": 0.202168,
+        "p3": 0.230534,
+        "p4": 0.432188,
+        "p5": 0.077779
+      },
+      "IPIP_065": {
+        "mean": 3.7857,
+        "sd": 0.795,
+        "p1": 0.007708,
+        "p2": 0.06676,
+        "p3": 0.199615,
+        "p4": 0.58396,
+        "p5": 0.141957
+      },
+      "IPIP_066": {
+        "mean": 2.5907,
+        "sd": 1.2753,
+        "p1": 0.24119,
+        "p2": 0.298803,
+        "p3": 0.167231,
+        "p4": 0.213623,
+        "p5": 0.079153
+      },
+      "IPIP_067": {
+        "mean": 3.1174,
+        "sd": 1.1906,
+        "p1": 0.087784,
+        "p2": 0.245333,
+        "p3": 0.276886,
+        "p4": 0.241696,
+        "p5": 0.1483
+      },
+      "IPIP_068": {
+        "mean": 3.3836,
+        "sd": 1.3378,
+        "p1": 0.11758,
+        "p2": 0.166573,
+        "p3": 0.187891,
+        "p4": 0.270624,
+        "p5": 0.257331
+      },
+      "IPIP_069": {
+        "mean": 4.1614,
+        "sd": 1.0028,
+        "p1": 0.012356,
+        "p2": 0.077115,
+        "p3": 0.129621,
+        "p4": 0.298548,
+        "p5": 0.482359
+      },
+      "IPIP_070": {
+        "mean": 2.9019,
+        "sd": 1.4198,
+        "p1": 0.201459,
+        "p2": 0.271844,
+        "p3": 0.135624,
+        "p4": 0.205534,
+        "p5": 0.185539
+      },
+      "IPIP_071": {
+        "mean": 2.3988,
+        "sd": 1.2234,
+        "p1": 0.291064,
+        "p2": 0.297106,
+        "p3": 0.193087,
+        "p4": 0.159437,
+        "p5": 0.059306
+      },
+      "IPIP_072": {
+        "mean": 3.6772,
+        "sd": 0.9667,
+        "p1": 0.024825,
+        "p2": 0.107788,
+        "p3": 0.208419,
+        "p4": 0.483269,
+        "p5": 0.175699
+      },
+      "IPIP_073": {
+        "mean": 3.7081,
+        "sd": 1.1192,
+        "p1": 0.035685,
+        "p2": 0.143344,
+        "p3": 0.17076,
+        "p4": 0.377596,
+        "p5": 0.272615
+      },
+      "IPIP_074": {
+        "mean": 4.0194,
+        "sd": 0.9926,
+        "p1": 0.015915,
+        "p2": 0.070136,
+        "p3": 0.177229,
+        "p4": 0.352064,
+        "p5": 0.384657
+      },
+      "IPIP_075": {
+        "mean": 3.3644,
+        "sd": 1.2182,
+        "p1": 0.058788,
+        "p2": 0.238321,
+        "p3": 0.194117,
+        "p4": 0.297273,
+        "p5": 0.211501
+      },
+      "IPIP_076": {
+        "mean": 2.9899,
+        "sd": 1.2393,
+        "p1": 0.112984,
+        "p2": 0.312021,
+        "p3": 0.169108,
+        "p4": 0.283839,
+        "p5": 0.122048
+      },
+      "IPIP_077": {
+        "mean": 3.3836,
+        "sd": 1.1665,
+        "p1": 0.055631,
+        "p2": 0.213837,
+        "p3": 0.203245,
+        "p4": 0.345876,
+        "p5": 0.181411
+      },
+      "IPIP_078": {
+        "mean": 3.1689,
+        "sd": 1.164,
+        "p1": 0.079246,
+        "p2": 0.242791,
+        "p3": 0.234485,
+        "p4": 0.316733,
+        "p5": 0.126745
+      },
+      "IPIP_079": {
+        "mean": 3.9363,
+        "sd": 1.1651,
+        "p1": 0.032758,
+        "p2": 0.123897,
+        "p3": 0.144417,
+        "p4": 0.272151,
+        "p5": 0.426778
+      },
+      "IPIP_080": {
+        "mean": 3.6102,
+        "sd": 1.2365,
+        "p1": 0.058581,
+        "p2": 0.175296,
+        "p3": 0.157951,
+        "p4": 0.313664,
+        "p5": 0.294508
+      },
+      "IPIP_081": {
+        "mean": 3.1677,
+        "sd": 1.1397,
+        "p1": 0.071083,
+        "p2": 0.255365,
+        "p3": 0.219262,
+        "p4": 0.343303,
+        "p5": 0.110987
+      },
+      "IPIP_082": {
+        "mean": 2.4844,
+        "sd": 1.2603,
+        "p1": 0.287669,
+        "p2": 0.260962,
+        "p3": 0.191621,
+        "p4": 0.198804,
+        "p5": 0.060944
+      },
+      "IPIP_083": {
+        "mean": 3.7814,
+        "sd": 1.0897,
+        "p1": 0.028817,
+        "p2": 0.12106,
+        "p3": 0.190833,
+        "p4": 0.358459,
+        "p5": 0.300831
+      },
+      "IPIP_084": {
+        "mean": 2.7221,
+        "sd": 1.1888,
+        "p1": 0.142548,
+        "p2": 0.3596,
+        "p3": 0.227983,
+        "p4": 0.172951,
+        "p5": 0.096919
+      },
+      "IPIP_085": {
+        "mean": 3.2863,
+        "sd": 1.2255,
+        "p1": 0.071621,
+        "p2": 0.243824,
+        "p3": 0.201306,
+        "p4": 0.29313,
+        "p5": 0.190119
+      },
+      "IPIP_086": {
+        "mean": 2.3526,
+        "sd": 1.1853,
+        "p1": 0.281624,
+        "p2": 0.343946,
+        "p3": 0.161521,
+        "p4": 0.166001,
+        "p5": 0.046908
+      },
+      "IPIP_087": {
+        "mean": 4.122,
+        "sd": 1.0228,
+        "p1": 0.027461,
+        "p2": 0.058221,
+        "p3": 0.130064,
+        "p4": 0.333332,
+        "p5": 0.450923
+      },
+      "IPIP_088": {
+        "mean": 3.3404,
+        "sd": 1.295,
+        "p1": 0.111812,
+        "p2": 0.118528,
+        "p3": 0.359321,
+        "p4": 0.138112,
+        "p5": 0.272227
+      },
+      "IPIP_089": {
+        "mean": 3.9244,
+        "sd": 1.037,
+        "p1": 0.026263,
+        "p2": 0.09895,
+        "p3": 0.123927,
+        "p4": 0.425868,
+        "p5": 0.324993
+      },
+      "IPIP_090": {
+        "mean": 3.2393,
+        "sd": 1.1994,
+        "p1": 0.065698,
+        "p2": 0.269761,
+        "p3": 0.185566,
+        "p4": 0.317522,
+        "p5": 0.161454
+      },
+      "IPIP_091": {
+        "mean": 3.1062,
+        "sd": 1.3171,
+        "p1": 0.136442,
+        "p2": 0.247357,
+        "p3": 0.153043,
+        "p4": 0.299887,
+        "p5": 0.163271
+      },
+      "IPIP_092": {
+        "mean": 3.2175,
+        "sd": 1.2111,
+        "p1": 0.074759,
+        "p2": 0.26477,
+        "p3": 0.1879,
+        "p4": 0.313382,
+        "p5": 0.159189
+      },
+      "IPIP_093": {
+        "mean": 3.6587,
+        "sd": 1.1492,
+        "p1": 0.04981,
+        "p2": 0.137744,
+        "p3": 0.177147,
+        "p4": 0.374492,
+        "p5": 0.260807
+      },
+      "IPIP_094": {
+        "mean": 3.3368,
+        "sd": 1.1247,
+        "p1": 0.056552,
+        "p2": 0.209564,
+        "p3": 0.215972,
+        "p4": 0.376317,
+        "p5": 0.141595
+      },
+      "IPIP_095": {
+        "mean": 4.0533,
+        "sd": 0.7997,
+        "p1": 0.00711,
+        "p2": 0.043354,
+        "p3": 0.121789,
+        "p4": 0.544578,
+        "p5": 0.283169
+      },
+      "IPIP_096": {
+        "mean": 3.0179,
+        "sd": 1.222,
+        "p1": 0.109748,
+        "p2": 0.295812,
+        "p3": 0.173989,
+        "p4": 0.307695,
+        "p5": 0.112756
+      },
+      "IPIP_097": {
+        "mean": 3.2242,
+        "sd": 1.2592,
+        "p1": 0.095957,
+        "p2": 0.240835,
+        "p3": 0.183294,
+        "p4": 0.302854,
+        "p5": 0.17706
+      },
+      "IPIP_098": {
+        "mean": 3.4898,
+        "sd": 1.3459,
+        "p1": 0.113666,
+        "p2": 0.146982,
+        "p3": 0.168021,
+        "p4": 0.278553,
+        "p5": 0.292778
+      },
+      "IPIP_099": {
+        "mean": 4.203,
+        "sd": 0.8798,
+        "p1": 0.006282,
+        "p2": 0.033606,
+        "p3": 0.167621,
+        "p4": 0.335796,
+        "p5": 0.456695
+      },
+      "IPIP_100": {
+        "mean": 3.1838,
+        "sd": 1.3273,
+        "p1": 0.103541,
+        "p2": 0.285857,
+        "p3": 0.143303,
+        "p4": 0.257873,
+        "p5": 0.209427
+      },
+      "IPIP_101": {
+        "mean": 2.17,
+        "sd": 1.0704,
+        "p1": 0.282537,
+        "p2": 0.447009,
+        "p3": 0.126074,
+        "p4": 0.106689,
+        "p5": 0.037691
+      },
+      "IPIP_102": {
+        "mean": 3.4492,
+        "sd": 1.106,
+        "p1": 0.037117,
+        "p2": 0.194402,
+        "p3": 0.23288,
+        "p4": 0.353408,
+        "p5": 0.182193
+      },
+      "IPIP_103": {
+        "mean": 3.8617,
+        "sd": 1.124,
+        "p1": 0.034033,
+        "p2": 0.124843,
+        "p3": 0.131701,
+        "p4": 0.364283,
+        "p5": 0.34514
+      },
+      "IPIP_104": {
+        "mean": 4.1793,
+        "sd": 0.8937,
+        "p1": 0.011752,
+        "p2": 0.052303,
+        "p3": 0.098352,
+        "p4": 0.420074,
+        "p5": 0.417518
+      },
+      "IPIP_105": {
+        "mean": 4.2677,
+        "sd": 0.8752,
+        "p1": 0.006648,
+        "p2": 0.049271,
+        "p3": 0.097252,
+        "p4": 0.363377,
+        "p5": 0.483453
+      },
+      "IPIP_106": {
+        "mean": 3.0761,
+        "sd": 1.2476,
+        "p1": 0.105316,
+        "p2": 0.287713,
+        "p3": 0.171975,
+        "p4": 0.295543,
+        "p5": 0.139453
+      },
+      "IPIP_107": {
+        "mean": 2.175,
+        "sd": 1.0108,
+        "p1": 0.259357,
+        "p2": 0.458666,
+        "p3": 0.156653,
+        "p4": 0.098306,
+        "p5": 0.027018
+      },
+      "IPIP_108": {
+        "mean": 3.136,
+        "sd": 1.0478,
+        "p1": 0.045236,
+        "p2": 0.243145,
+        "p3": 0.353264,
+        "p4": 0.247073,
+        "p5": 0.111282
+      },
+      "IPIP_109": {
+        "mean": 3.5099,
+        "sd": 1.2423,
+        "p1": 0.061219,
+        "p2": 0.197494,
+        "p3": 0.176985,
+        "p4": 0.298807,
+        "p5": 0.265494
+      },
+      "IPIP_110": {
+        "mean": 4.0294,
+        "sd": 1.099,
+        "p1": 0.031876,
+        "p2": 0.099157,
+        "p3": 0.100927,
+        "p4": 0.343753,
+        "p5": 0.424288
+      },
+      "IPIP_111": {
+        "mean": 2.9299,
+        "sd": 1.1496,
+        "p1": 0.086945,
+        "p2": 0.350415,
+        "p3": 0.195527,
+        "p4": 0.280033,
+        "p5": 0.08708
+      },
+      "IPIP_112": {
+        "mean": 2.6576,
+        "sd": 1.2998,
+        "p1": 0.247469,
+        "p2": 0.24371,
+        "p3": 0.201133,
+        "p4": 0.219166,
+        "p5": 0.088521
+      },
+      "IPIP_113": {
+        "mean": 3.6962,
+        "sd": 1.197,
+        "p1": 0.060353,
+        "p2": 0.121812,
+        "p3": 0.186931,
+        "p4": 0.323096,
+        "p5": 0.307807
+      },
+      "IPIP_114": {
+        "mean": 3.81,
+        "sd": 1.0766,
+        "p1": 0.021362,
+        "p2": 0.113455,
+        "p3": 0.22402,
+        "p4": 0.316129,
+        "p5": 0.325034
+      },
+      "IPIP_115": {
+        "mean": 3.2109,
+        "sd": 1.2339,
+        "p1": 0.07965,
+        "p2": 0.274457,
+        "p3": 0.16591,
+        "p4": 0.315315,
+        "p5": 0.164668
+      },
+      "IPIP_116": {
+        "mean": 2.4131,
+        "sd": 1.1173,
+        "p1": 0.20204,
+        "p2": 0.435785,
+        "p3": 0.157084,
+        "p4": 0.157203,
+        "p5": 0.047887
+      },
+      "IPIP_117": {
+        "mean": 3.8131,
+        "sd": 1.0863,
+        "p1": 0.037741,
+        "p2": 0.106266,
+        "p3": 0.155689,
+        "p4": 0.405808,
+        "p5": 0.294495
+      },
+      "IPIP_118": {
+        "mean": 2.0621,
+        "sd": 0.9851,
+        "p1": 0.325576,
+        "p2": 0.395512,
+        "p3": 0.191978,
+        "p4": 0.065151,
+        "p5": 0.021784
+      },
+      "IPIP_119": {
+        "mean": 3.6476,
+        "sd": 1.056,
+        "p1": 0.029182,
+        "p2": 0.129567,
+        "p3": 0.232022,
+        "p4": 0.382906,
+        "p5": 0.226323
+      },
+      "IPIP_120": {
+        "mean": 3.4992,
+        "sd": 1.239,
+        "p1": 0.064439,
+        "p2": 0.195286,
+        "p3": 0.170934,
+        "p4": 0.315347,
+        "p5": 0.253994
+      }
+    },
+    "complete_cases": {
+      "N": 558777,
+      "E": 551341,
+      "O": 554018,
+      "A": 557931,
+      "C": 554765
+    }
+  },
+  "software": {
+    "girth": "0.8.0",
+    "numpy": "2.5.4"
+  },
+  "limitations": [
+    "Dimensionality was checked with Pearson correlations and Horn parallel analysis; polychoric EFA was not used because the installed girth polychoric helper is incompatible with SciPy 1.18.",
+    "Domain-level unidimensional GRM is an approximation: parallel analysis detects minor secondary factors, consistent with 6 facets per domain.",
+    "Item fit statistics are not included; girth.grm_mml does not expose standard item-fit indices.",
+    "The two historical local users were excluded from calibration."
+  ]
+}

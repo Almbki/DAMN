@@ -6,7 +6,7 @@ from pydantic import BaseModel, Field
 
 from app.agent.schemas import PreviewPayload
 from app.application.dto.plan import PlanDetail
-from app.ml.base import AdjustmentRoute, AdjustmentSeverity
+from app.domain.feedback.models import AdjustmentRoute, AdjustmentSeverity
 
 
 def _warnings_from_state(state: dict) -> list[str]:
@@ -37,7 +37,7 @@ class PreviewResult(BaseModel):
 class ConfirmResult(BaseModel):
     """Outcome of confirming a preview."""
 
-    detail: PlanDetail
+    detail: PlanDetail | None = None
     #: Set only when the graph paused again instead of finalising (should not
     #: happen on confirm, but the Service must not assume).
     pending_preview: PreviewPayload | None = None

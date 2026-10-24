@@ -33,16 +33,24 @@ def _completed_titles(state: PlannerState) -> list[str]:
     ]
 
 
-def _profile_block(state: PlannerState) -> str:
-    """Render the portrait for the prompt (cold-start prior, not a diagnosis)."""
-    profile = state.get("profile_prompt") or {}
-    if not profile:
+def _user_model_block(state: PlannerState) -> str:
+    """Render the real Level 1/2 snapshot for the prompt.
+
+    ``profile_json`` is excluded: it contains the Level 2 audit payload
+    (including reflection evidence) and is not needed for task drafting.
+    """
+    context = state.get("user_context")
+    model = context.user_model if context is not None else None
+    if model is None:
         return ""
-    rendered = json.dumps(profile, ensure_ascii=False, sort_keys=True)
+    payload = model.model_dump(mode="json", exclude={"state": {"profile_json"}})
+    if not payload.get("trait") and not payload.get("state"):
+        return ""
+    rendered = json.dumps(payload, ensure_ascii=False, sort_keys=True)
     return (
-        "Cold-start portrait (MBTI-derived prior, NOT a diagnosis; it is "
-        "overridden by observed feedback as update_count grows). Use it only to "
-        "bias the task mix, never to exclude work:\n" + rendered
+        "User model snapshot (Level 1 traits + Level 2 pre-task state). Treat it "
+        "as evidence about this user, never as a hard constraint and never "
+        "re-estimate its numbers:\n" + rendered
     )
 
 
@@ -90,12 +98,12 @@ def plan_generation_node(state: PlannerState, runtime: object) -> dict:
         user_adjustment=state.get("user_adjustment"),
         adjustment_count=int(state.get("adjustment_count") or 0),
         planning_context=context_block,
-        ml_prediction=state.get("ml_prediction"),
+        adjustment=state.get("adjustment"),
         progress=state.get("progress"),
         replan_reason=state.get("replan_reason"),
         completed_task_titles=_completed_titles(state),
         prediction_source=state.get("prediction_source"),
-        profile_context=_profile_block(state),
+        user_model_context=_user_model_block(state),
     )
 
     outcome = ctx.tool(TOOL).invoke(payload)

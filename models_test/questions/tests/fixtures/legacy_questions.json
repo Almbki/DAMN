@@ -1,0 +1,842 @@
+[
+  {
+    "id": 1,
+    "text": "容易担忧。",
+    "domain": "Neuroticism",
+    "facet": "Anxiety",
+    "reverse": false
+  },
+  {
+    "id": 2,
+    "text": "容易交朋友。",
+    "domain": "Extraversion",
+    "facet": "Friendliness",
+    "reverse": false
+  },
+  {
+    "id": 3,
+    "text": "想象力丰富。",
+    "domain": "Openness",
+    "facet": "Imagination",
+    "reverse": false
+  },
+  {
+    "id": 4,
+    "text": "信任他人。",
+    "domain": "Agreeableness",
+    "facet": "Trust",
+    "reverse": false
+  },
+  {
+    "id": 5,
+    "text": "能成功完成任务。",
+    "domain": "Conscientiousness",
+    "facet": "Self-Efficacy",
+    "reverse": false
+  },
+  {
+    "id": 6,
+    "text": "容易生气。",
+    "domain": "Neuroticism",
+    "facet": "Anger",
+    "reverse": false
+  },
+  {
+    "id": 7,
+    "text": "喜欢大型聚会。",
+    "domain": "Extraversion",
+    "facet": "Gregariousness",
+    "reverse": false
+  },
+  {
+    "id": 8,
+    "text": "认为艺术很重要。",
+    "domain": "Openness",
+    "facet": "Artistic Interests",
+    "reverse": false
+  },
+  {
+    "id": 9,
+    "text": "为了自己的目的而利用他人。",
+    "domain": "Agreeableness",
+    "facet": "Morality",
+    "reverse": true
+  },
+  {
+    "id": 10,
+    "text": "喜欢把东西收拾整洁。",
+    "domain": "Conscientiousness",
+    "facet": "Orderliness",
+    "reverse": false
+  },
+  {
+    "id": 11,
+    "text": "经常感到忧郁。",
+    "domain": "Neuroticism",
+    "facet": "Depression",
+    "reverse": false
+  },
+  {
+    "id": 12,
+    "text": "喜欢掌控局面（当领导）。",
+    "domain": "Extraversion",
+    "facet": "Assertiveness",
+    "reverse": false
+  },
+  {
+    "id": 13,
+    "text": "情感体验强烈。",
+    "domain": "Openness",
+    "facet": "Emotionality",
+    "reverse": false
+  },
+  {
+    "id": 14,
+    "text": "乐于助人。",
+    "domain": "Agreeableness",
+    "facet": "Altruism",
+    "reverse": false
+  },
+  {
+    "id": 15,
+    "text": "信守承诺。",
+    "domain": "Conscientiousness",
+    "facet": "Dutifulness",
+    "reverse": false
+  },
+  {
+    "id": 16,
+    "text": "觉得主动接近别人很困难。",
+    "domain": "Extraversion",
+    "facet": "Friendliness",
+    "reverse": true
+  },
+  {
+    "id": 17,
+    "text": "总是很忙碌。",
+    "domain": "Extraversion",
+    "facet": "Activity Level",
+    "reverse": false
+  },
+  {
+    "id": 18,
+    "text": "比起常规，更喜欢变化。",
+    "domain": "Openness",
+    "facet": "Adventurousness",
+    "reverse": false
+  },
+  {
+    "id": 19,
+    "text": "喜欢大吵一架。",
+    "domain": "Agreeableness",
+    "facet": "Cooperation",
+    "reverse": true
+  },
+  {
+    "id": 20,
+    "text": "工作努力。",
+    "domain": "Conscientiousness",
+    "facet": "Achievement Striving",
+    "reverse": false
+  },
+  {
+    "id": 21,
+    "text": "会放纵自己（暴饮暴食等）。",
+    "domain": "Neuroticism",
+    "facet": "Immoderation",
+    "reverse": false
+  },
+  {
+    "id": 22,
+    "text": "喜欢刺激。",
+    "domain": "Extraversion",
+    "facet": "Excitement Seeking",
+    "reverse": false
+  },
+  {
+    "id": 23,
+    "text": "喜欢阅读具有挑战性的材料。",
+    "domain": "Openness",
+    "facet": "Intellect",
+    "reverse": false
+  },
+  {
+    "id": 24,
+    "text": "认为自己比别人优秀。",
+    "domain": "Agreeableness",
+    "facet": "Modesty",
+    "reverse": true
+  },
+  {
+    "id": 25,
+    "text": "总是有备无患。",
+    "domain": "Conscientiousness",
+    "facet": "Self-Discipline",
+    "reverse": false
+  },
+  {
+    "id": 26,
+    "text": "容易惊慌失措。",
+    "domain": "Neuroticism",
+    "facet": "Vulnerability",
+    "reverse": false
+  },
+  {
+    "id": 27,
+    "text": "散发出快乐的情绪。",
+    "domain": "Extraversion",
+    "facet": "Cheerfulness",
+    "reverse": false
+  },
+  {
+    "id": 28,
+    "text": "倾向于投票给自由派（进步派）政治候选人。",
+    "domain": "Openness",
+    "facet": "Liberalism",
+    "reverse": false
+  },
+  {
+    "id": 29,
+    "text": "同情无家可归的人。",
+    "domain": "Agreeableness",
+    "facet": "Sympathy",
+    "reverse": false
+  },
+  {
+    "id": 30,
+    "text": "做事不加思考。",
+    "domain": "Conscientiousness",
+    "facet": "Cautiousness",
+    "reverse": true
+  },
+  {
+    "id": 31,
+    "text": "总是往坏处想。",
+    "domain": "Neuroticism",
+    "facet": "Anxiety",
+    "reverse": false
+  },
+  {
+    "id": 32,
+    "text": "在人群中感到自在。",
+    "domain": "Extraversion",
+    "facet": "Friendliness",
+    "reverse": false
+  },
+  {
+    "id": 33,
+    "text": "享受天马行空的幻想。",
+    "domain": "Openness",
+    "facet": "Imagination",
+    "reverse": false
+  },
+  {
+    "id": 34,
+    "text": "相信他人有良好的意图。",
+    "domain": "Agreeableness",
+    "facet": "Trust",
+    "reverse": false
+  },
+  {
+    "id": 35,
+    "text": "擅长自己所做的事情。",
+    "domain": "Conscientiousness",
+    "facet": "Self-Efficacy",
+    "reverse": false
+  },
+  {
+    "id": 36,
+    "text": "容易烦躁。",
+    "domain": "Neuroticism",
+    "facet": "Anger",
+    "reverse": false
+  },
+  {
+    "id": 37,
+    "text": "在聚会上和很多不同的人交谈。",
+    "domain": "Extraversion",
+    "facet": "Gregariousness",
+    "reverse": false
+  },
+  {
+    "id": 38,
+    "text": "能看到别人可能注意不到的美。",
+    "domain": "Openness",
+    "facet": "Artistic Interests",
+    "reverse": false
+  },
+  {
+    "id": 39,
+    "text": "为了出人头地而作弊。",
+    "domain": "Agreeableness",
+    "facet": "Morality",
+    "reverse": true
+  },
+  {
+    "id": 40,
+    "text": "经常忘记把东西放回原处。",
+    "domain": "Conscientiousness",
+    "facet": "Orderliness",
+    "reverse": true
+  },
+  {
+    "id": 41,
+    "text": "讨厌自己。",
+    "domain": "Neuroticism",
+    "facet": "Depression",
+    "reverse": false
+  },
+  {
+    "id": 42,
+    "text": "试图领导他人。",
+    "domain": "Extraversion",
+    "facet": "Assertiveness",
+    "reverse": false
+  },
+  {
+    "id": 43,
+    "text": "能感同身受他人的情绪。",
+    "domain": "Openness",
+    "facet": "Emotionality",
+    "reverse": false
+  },
+  {
+    "id": 44,
+    "text": "关心他人。",
+    "domain": "Agreeableness",
+    "facet": "Altruism",
+    "reverse": false
+  },
+  {
+    "id": 45,
+    "text": "说实话。",
+    "domain": "Conscientiousness",
+    "facet": "Dutifulness",
+    "reverse": false
+  },
+  {
+    "id": 46,
+    "text": "害怕引起别人的注意。",
+    "domain": "Extraversion",
+    "facet": "Friendliness",
+    "reverse": true
+  },
+  {
+    "id": 47,
+    "text": "总是忙忙碌碌。",
+    "domain": "Extraversion",
+    "facet": "Activity Level",
+    "reverse": false
+  },
+  {
+    "id": 48,
+    "text": "更喜欢坚持自己熟悉的事物。",
+    "domain": "Openness",
+    "facet": "Adventurousness",
+    "reverse": true
+  },
+  {
+    "id": 49,
+    "text": "对人大喊大叫。",
+    "domain": "Agreeableness",
+    "facet": "Cooperation",
+    "reverse": true
+  },
+  {
+    "id": 50,
+    "text": "做的比预期多。",
+    "domain": "Conscientiousness",
+    "facet": "Achievement Striving",
+    "reverse": false
+  },
+  {
+    "id": 51,
+    "text": "很少放纵自己。",
+    "domain": "Neuroticism",
+    "facet": "Immoderation",
+    "reverse": true
+  },
+  {
+    "id": 52,
+    "text": "寻求冒险。",
+    "domain": "Extraversion",
+    "facet": "Excitement Seeking",
+    "reverse": false
+  },
+  {
+    "id": 53,
+    "text": "避免哲学性的讨论。",
+    "domain": "Openness",
+    "facet": "Intellect",
+    "reverse": true
+  },
+  {
+    "id": 54,
+    "text": "对自己评价很高。",
+    "domain": "Agreeableness",
+    "facet": "Modesty",
+    "reverse": true
+  },
+  {
+    "id": 55,
+    "text": "执行自己的计划。",
+    "domain": "Conscientiousness",
+    "facet": "Self-Discipline",
+    "reverse": false
+  },
+  {
+    "id": 56,
+    "text": "被事情压得喘不过气来。",
+    "domain": "Neuroticism",
+    "facet": "Vulnerability",
+    "reverse": false
+  },
+  {
+    "id": 57,
+    "text": "过得很开心。",
+    "domain": "Extraversion",
+    "facet": "Cheerfulness",
+    "reverse": false
+  },
+  {
+    "id": 58,
+    "text": "相信没有绝对的对错。",
+    "domain": "Openness",
+    "facet": "Liberalism",
+    "reverse": false
+  },
+  {
+    "id": 59,
+    "text": "对境况不如自己的人感到同情。",
+    "domain": "Agreeableness",
+    "facet": "Sympathy",
+    "reverse": false
+  },
+  {
+    "id": 60,
+    "text": "做草率的决定。",
+    "domain": "Conscientiousness",
+    "facet": "Cautiousness",
+    "reverse": true
+  },
+  {
+    "id": 61,
+    "text": "害怕很多事情。",
+    "domain": "Neuroticism",
+    "facet": "Anxiety",
+    "reverse": false
+  },
+  {
+    "id": 62,
+    "text": "避免与他人接触。",
+    "domain": "Extraversion",
+    "facet": "Friendliness",
+    "reverse": true
+  },
+  {
+    "id": 63,
+    "text": "喜欢做白日梦。",
+    "domain": "Openness",
+    "facet": "Imagination",
+    "reverse": false
+  },
+  {
+    "id": 64,
+    "text": "相信别人说的话。",
+    "domain": "Agreeableness",
+    "facet": "Trust",
+    "reverse": false
+  },
+  {
+    "id": 65,
+    "text": "能顺利地处理任务。",
+    "domain": "Conscientiousness",
+    "facet": "Self-Efficacy",
+    "reverse": false
+  },
+  {
+    "id": 66,
+    "text": "发脾气。",
+    "domain": "Neuroticism",
+    "facet": "Anger",
+    "reverse": false
+  },
+  {
+    "id": 67,
+    "text": "喜欢独处。",
+    "domain": "Extraversion",
+    "facet": "Gregariousness",
+    "reverse": true
+  },
+  {
+    "id": 68,
+    "text": "不喜欢诗歌。",
+    "domain": "Openness",
+    "facet": "Artistic Interests",
+    "reverse": true
+  },
+  {
+    "id": 69,
+    "text": "占别人的便宜。",
+    "domain": "Agreeableness",
+    "facet": "Morality",
+    "reverse": true
+  },
+  {
+    "id": 70,
+    "text": "把房间弄得乱七八糟。",
+    "domain": "Conscientiousness",
+    "facet": "Orderliness",
+    "reverse": true
+  },
+  {
+    "id": 71,
+    "text": "经常感到沮丧。",
+    "domain": "Neuroticism",
+    "facet": "Depression",
+    "reverse": false
+  },
+  {
+    "id": 72,
+    "text": "掌控事物。",
+    "domain": "Extraversion",
+    "facet": "Assertiveness",
+    "reverse": false
+  },
+  {
+    "id": 73,
+    "text": "很少注意到自己的情绪反应。",
+    "domain": "Openness",
+    "facet": "Emotionality",
+    "reverse": true
+  },
+  {
+    "id": 74,
+    "text": "对他人的感受漠不关心。",
+    "domain": "Agreeableness",
+    "facet": "Altruism",
+    "reverse": true
+  },
+  {
+    "id": 75,
+    "text": "打破规则。",
+    "domain": "Conscientiousness",
+    "facet": "Dutifulness",
+    "reverse": true
+  },
+  {
+    "id": 76,
+    "text": "只和朋友在一起才感到舒服。",
+    "domain": "Extraversion",
+    "facet": "Friendliness",
+    "reverse": true
+  },
+  {
+    "id": 77,
+    "text": "业余时间做很多事情。",
+    "domain": "Extraversion",
+    "facet": "Activity Level",
+    "reverse": false
+  },
+  {
+    "id": 78,
+    "text": "不喜欢改变。",
+    "domain": "Openness",
+    "facet": "Adventurousness",
+    "reverse": true
+  },
+  {
+    "id": 79,
+    "text": "侮辱他人。",
+    "domain": "Agreeableness",
+    "facet": "Cooperation",
+    "reverse": true
+  },
+  {
+    "id": 80,
+    "text": "只做勉强能应付过去的工作。",
+    "domain": "Conscientiousness",
+    "facet": "Achievement Striving",
+    "reverse": true
+  },
+  {
+    "id": 81,
+    "text": "能轻易抵制诱惑。",
+    "domain": "Neuroticism",
+    "facet": "Immoderation",
+    "reverse": true
+  },
+  {
+    "id": 82,
+    "text": "享受鲁莽行事的快感。",
+    "domain": "Extraversion",
+    "facet": "Excitement Seeking",
+    "reverse": false
+  },
+  {
+    "id": 83,
+    "text": "难以理解抽象概念。",
+    "domain": "Openness",
+    "facet": "Intellect",
+    "reverse": true
+  },
+  {
+    "id": 84,
+    "text": "对自己有很高的评价。",
+    "domain": "Agreeableness",
+    "facet": "Modesty",
+    "reverse": true
+  },
+  {
+    "id": 85,
+    "text": "浪费时间。",
+    "domain": "Conscientiousness",
+    "facet": "Self-Discipline",
+    "reverse": true
+  },
+  {
+    "id": 86,
+    "text": "觉得自己无法应对事情。",
+    "domain": "Neuroticism",
+    "facet": "Vulnerability",
+    "reverse": false
+  },
+  {
+    "id": 87,
+    "text": "热爱生活。",
+    "domain": "Extraversion",
+    "facet": "Cheerfulness",
+    "reverse": false
+  },
+  {
+    "id": 88,
+    "text": "倾向于投票给保守派政治候选人。",
+    "domain": "Openness",
+    "facet": "Liberalism",
+    "reverse": true
+  },
+  {
+    "id": 89,
+    "text": "对别人的问题不感兴趣。",
+    "domain": "Agreeableness",
+    "facet": "Sympathy",
+    "reverse": true
+  },
+  {
+    "id": 90,
+    "text": "做事急躁。",
+    "domain": "Conscientiousness",
+    "facet": "Cautiousness",
+    "reverse": true
+  },
+  {
+    "id": 91,
+    "text": "容易感到压力。",
+    "domain": "Neuroticism",
+    "facet": "Anxiety",
+    "reverse": false
+  },
+  {
+    "id": 92,
+    "text": "与他人保持距离。",
+    "domain": "Extraversion",
+    "facet": "Friendliness",
+    "reverse": true
+  },
+  {
+    "id": 93,
+    "text": "喜欢陷入沉思。",
+    "domain": "Openness",
+    "facet": "Imagination",
+    "reverse": false
+  },
+  {
+    "id": 94,
+    "text": "不信任别人。",
+    "domain": "Agreeableness",
+    "facet": "Trust",
+    "reverse": true
+  },
+  {
+    "id": 95,
+    "text": "知道如何把事情做成。",
+    "domain": "Conscientiousness",
+    "facet": "Self-Efficacy",
+    "reverse": false
+  },
+  {
+    "id": 96,
+    "text": "不容易被惹恼。",
+    "domain": "Neuroticism",
+    "facet": "Anger",
+    "reverse": true
+  },
+  {
+    "id": 97,
+    "text": "回避人群。",
+    "domain": "Extraversion",
+    "facet": "Gregariousness",
+    "reverse": true
+  },
+  {
+    "id": 98,
+    "text": "不喜欢去美术馆。",
+    "domain": "Openness",
+    "facet": "Artistic Interests",
+    "reverse": true
+  },
+  {
+    "id": 99,
+    "text": "阻挠别人的计划。",
+    "domain": "Agreeableness",
+    "facet": "Morality",
+    "reverse": true
+  },
+  {
+    "id": 100,
+    "text": "把个人物品到处乱放。",
+    "domain": "Conscientiousness",
+    "facet": "Orderliness",
+    "reverse": true
+  },
+  {
+    "id": 101,
+    "text": "对自己感到满意（内心坦然）。",
+    "domain": "Neuroticism",
+    "facet": "Depression",
+    "reverse": true
+  },
+  {
+    "id": 102,
+    "text": "等待别人来带头。",
+    "domain": "Extraversion",
+    "facet": "Assertiveness",
+    "reverse": true
+  },
+  {
+    "id": 103,
+    "text": "不理解那些情绪化的人。",
+    "domain": "Openness",
+    "facet": "Emotionality",
+    "reverse": true
+  },
+  {
+    "id": 104,
+    "text": "不花时间关心他人。",
+    "domain": "Agreeableness",
+    "facet": "Altruism",
+    "reverse": true
+  },
+  {
+    "id": 105,
+    "text": "违背我的承诺。",
+    "domain": "Conscientiousness",
+    "facet": "Dutifulness",
+    "reverse": true
+  },
+  {
+    "id": 106,
+    "text": "在困难的社交场合不觉得困扰。",
+    "domain": "Extraversion",
+    "facet": "Friendliness",
+    "reverse": false
+  },
+  {
+    "id": 107,
+    "text": "喜欢轻松自在。",
+    "domain": "Extraversion",
+    "facet": "Activity Level",
+    "reverse": true
+  },
+  {
+    "id": 108,
+    "text": "固守传统方式。",
+    "domain": "Openness",
+    "facet": "Adventurousness",
+    "reverse": true
+  },
+  {
+    "id": 109,
+    "text": "报复他人。",
+    "domain": "Agreeableness",
+    "facet": "Cooperation",
+    "reverse": true
+  },
+  {
+    "id": 110,
+    "text": "在工作上投入很少的时间和精力。",
+    "domain": "Conscientiousness",
+    "facet": "Achievement Striving",
+    "reverse": true
+  },
+  {
+    "id": 111,
+    "text": "能够控制自己的欲望。",
+    "domain": "Neuroticism",
+    "facet": "Immoderation",
+    "reverse": true
+  },
+  {
+    "id": 112,
+    "text": "表现得狂野疯狂。",
+    "domain": "Extraversion",
+    "facet": "Excitement Seeking",
+    "reverse": false
+  },
+  {
+    "id": 113,
+    "text": "对理论讨论不感兴趣。",
+    "domain": "Openness",
+    "facet": "Intellect",
+    "reverse": true
+  },
+  {
+    "id": 114,
+    "text": "吹嘘自己的美德。",
+    "domain": "Agreeableness",
+    "facet": "Modesty",
+    "reverse": true
+  },
+  {
+    "id": 115,
+    "text": "难以开始工作（拖延）。",
+    "domain": "Conscientiousness",
+    "facet": "Self-Discipline",
+    "reverse": true
+  },
+  {
+    "id": 116,
+    "text": "在压力下保持冷静。",
+    "domain": "Neuroticism",
+    "facet": "Vulnerability",
+    "reverse": true
+  },
+  {
+    "id": 117,
+    "text": "看到生活光明的一面。",
+    "domain": "Extraversion",
+    "facet": "Cheerfulness",
+    "reverse": false
+  },
+  {
+    "id": 118,
+    "text": "认为我们应该严厉打击犯罪。",
+    "domain": "Openness",
+    "facet": "Liberalism",
+    "reverse": true
+  },
+  {
+    "id": 119,
+    "text": "尽量不去想那些需要帮助的人。",
+    "domain": "Agreeableness",
+    "facet": "Sympathy",
+    "reverse": true
+  },
+  {
+    "id": 120,
+    "text": "不假思索地行动。",
+    "domain": "Conscientiousness",
+    "facet": "Cautiousness",
+    "reverse": true
+  }
+]

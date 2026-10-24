@@ -49,13 +49,14 @@ def import_schedule(
     service: ScheduleEventService = Depends(get_schedule_event_service),
 ) -> ScheduleImportResult:
     content = file.file.read()
-    return service.import_file(
+    result = service.import_file(
         current_user.id or 0,
         filename=file.filename or "",
         content=content,
         dry_run=dry_run,
         term_start=term_start,
     )
+    return ScheduleImportResult(**result.model_dump())
 
 
 @router.get(

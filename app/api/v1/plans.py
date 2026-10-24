@@ -26,6 +26,7 @@ from app.application.services import GenerationService, PlanService, ReplanServi
 from app.core.config import get_settings
 from app.domain.models import User
 from app.domain.models.enums import Priority
+from app.domain.scheduling.constants import DEFAULT_HORIZON_DAYS
 from app.schemas.common import ErrorResponse
 from app.schemas.plan import (
     AdjustRequest,
@@ -47,8 +48,6 @@ from app.schemas.plan import (
 )
 
 #: Default scheduling horizon when the client does not send an end date.
-DEFAULT_HORIZON_DAYS = 13
-
 router = APIRouter()
 
 _NOT_FOUND = {404: {"model": ErrorResponse, "description": "Plan not found"}}
@@ -64,7 +63,7 @@ def _to_generation_request(user: User, payload: PlanGenerateRequest) -> Generati
     (`resolve_preferences`). ``user_profile`` is forwarded as ``profile``.
     """
     start = payload.start_date or date.today()
-    end = payload.end_date or (start + timedelta(days=13))
+    end = payload.end_date or (start + timedelta(days=DEFAULT_HORIZON_DAYS))
     overrides = PreferenceInput(
         available_minutes_per_day=payload.available_minutes_per_day,
         daily_limit_minutes=payload.daily_limit_minutes,
@@ -289,7 +288,7 @@ def confirm_preview(
     plan_service: PlanService = Depends(get_plan_service),
 ) -> ConfirmResponse:
     result = plan_service.confirm_plan(current_user.id or 0, thread_id)
-    if result.pending_preview is not None:  # pragma: no cover - confirm finalises
+    if result.pending_preview is not None or result.detail is None:  # pragma: no cover
         raise ConflictError("preview is still pending; adjust or confirm again")
     return ConfirmResponse(
         plan=plan_read(result.detail),
@@ -572,11 +571,7 @@ def replan(
             plan_id=detail.plan.id or 0,
             old_version=(detail.plan.version - 1),
             new_version=detail.plan.version,
-            # TODO(contract): this returns every task of the new version, not the
-            # changed set. `PlanService.list_changes` only exposes a per-day diff
-            # (and mixes old-version ids for removed tasks), so deriving the true
-            # changed ids needs a small service-level diff - left as-is for now.
-            changed_task_ids=[item.task.id or 0 for item in detail.tasks],
+            changed_task_ids=service.latest_changed_task_ids(detail.plan.id or 0),
             reason=reason,
             trigger_type=trigger_type,
         ).model_dump(mode="json")

@@ -51,6 +51,9 @@ class Feedback(Base):
         Enum(TimeOfDay, values_callable=enum_values, native_enum=False, length=32),
         nullable=True,
     )
+    data_origin: Mapped[str] = mapped_column(
+        String(16), nullable=False, default="real", server_default="real"
+    )
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, default=utcnow
     )

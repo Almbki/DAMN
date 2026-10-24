@@ -28,6 +28,13 @@ class Task(DomainModel):
     status: TaskStatus = TaskStatus.PENDING
     # Output of the completion predictor for this task (0..1).
     completion_probability: float | None = Field(default=None, ge=0.0, le=1.0)
+    #: Truthful provenance of the production numbers (never "shadow").
+    prediction_source: str | None = None
+    prediction_mode: str | None = None
+    #: Active execution started_at (read-only view; not a Task column).
+    started_at: datetime | None = None
+    #: real | synthetic - provenance for demo scenario cleanup/filtering.
+    data_origin: str = "real"
     # Higher = safer to drop when the plan is overloaded (used by repair).
     is_flexible: bool = True
     # Repetition contract: one-off tasks keep the historical single-row shape.

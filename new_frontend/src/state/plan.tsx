@@ -44,7 +44,7 @@ import {
   type PlanContextValue,
 } from '@/state/plan-context';
 import { loadPreferences, savePreferences } from '@/state/preferences-store';
-import { SessionProvider } from '@/state/session';
+
 
 const initialStore: ops.StoreState = {
   tasks: mockTasks,
@@ -142,6 +142,26 @@ function MockPlanProvider({ children }: { children: React.ReactNode }) {
   const setDone = useCallback((id: number, done: boolean) => {
     setState((prev) => ops.setDone(prev, id, done));
   }, []);
+  const startTask = useCallback((id: number) => {
+    setState((prev) => ops.updateTask(prev, id, { startedAt: new Date().toISOString() }));
+  }, []);
+  const completeTask = useCallback((id: number, actualMinutes?: number | null) => {
+    setState((prev) => {
+      const done = ops.setDone(prev, id, true);
+      return actualMinutes != null
+        ? ops.updateTask(done, id, { actualMinutes: Math.round(actualMinutes) })
+        : done;
+    });
+  }, []);
+  const partialCompleteTask = useCallback(
+    (id: number, _completionRate: number, actualMinutes?: number | null) => {
+      if (actualMinutes == null) return;
+      setState((prev) =>
+        ops.updateTask(prev, id, { actualMinutes: Math.round(actualMinutes) }),
+      );
+    },
+    [],
+  );
   const toggleDone = useCallback((id: number) => {
     setState((prev) => ops.toggleDone(prev, id));
   }, []);
@@ -366,6 +386,9 @@ function MockPlanProvider({ children }: { children: React.ReactNode }) {
       updateStandard,
       deleteTask,
       setDone,
+      startTask,
+      completeTask,
+      partialCompleteTask,
       toggleDone,
       setSkipped,
       reorder,
@@ -406,6 +429,9 @@ function MockPlanProvider({ children }: { children: React.ReactNode }) {
       updateStandard,
       deleteTask,
       setDone,
+      startTask,
+      completeTask,
+      partialCompleteTask,
       toggleDone,
       setSkipped,
       reorder,
@@ -421,13 +447,7 @@ function MockPlanProvider({ children }: { children: React.ReactNode }) {
 }
 
 export function PlanProvider({ children }: { children: React.ReactNode }) {
-  if (dataSource === 'api') {
-    return (
-      <SessionProvider>
-        <ApiPlanProvider>{children}</ApiPlanProvider>
-      </SessionProvider>
-    );
-  }
+  if (dataSource === 'api') return <ApiPlanProvider>{children}</ApiPlanProvider>;
   return <MockPlanProvider>{children}</MockPlanProvider>;
 }
 

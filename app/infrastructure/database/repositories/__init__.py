@@ -20,8 +20,17 @@ from app.infrastructure.database.repositories.replan_event_repository import Rep
 from app.infrastructure.database.repositories.schedule_event_repository import (
     ScheduleEventRepository,
 )
+from app.infrastructure.database.repositories.shadow_prediction_repository import (
+    ShadowPredictionRepository,
+)
+from app.infrastructure.database.repositories.synthetic_repository import (
+    SyntheticDataRepository,
+)
 from app.infrastructure.database.repositories.task_repository import TaskRepository
 from app.infrastructure.database.repositories.task_standard_repository import TaskStandardRepository
+from app.infrastructure.database.repositories.trait_assessment_repository import (
+    TraitAssessmentRepository,
+)
 from app.infrastructure.database.repositories.user_repository import UserRepository
 from app.infrastructure.database.repositories.user_state_repository import UserStateRepository
 
@@ -35,9 +44,12 @@ __all__ = [
     "ReplanEventRepository",
     "RepositoryBase",
     "ScheduleEventRepository",
+    "ShadowPredictionRepository",
+    "SyntheticDataRepository",
     "TaskExecutionRepository",
     "TaskRepository",
     "TaskStandardRepository",
+    "TraitAssessmentRepository",
     "UserRepository",
     "UserStateRepository",
 ]

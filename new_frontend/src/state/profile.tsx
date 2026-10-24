@@ -5,16 +5,17 @@ import { dataSource } from '@/api/config';
 import { getMyProfile, updateMyProfile } from '@/api/endpoints';
 import type { ProfileUpdateRequest, UserProfileRead, UserStateRead } from '@/api/types';
 import { mockProfile, mockResetState, mockUserState } from '@/data/mock';
-import { ProfileContext, type ProfileContextValue } from '@/state/profile-context';
+import { ProfileContext, type ProfileContextValue, type ProfileModelSnapshot } from '@/state/profile-context';
 import { useSession } from '@/state/session';
 
 type ProfileSnapshot = {
   profile: UserProfileRead | null;
   state: UserStateRead | null;
+  model: ProfileModelSnapshot | null;
   error: string | null;
 };
 
-const NO_PROFILE: ProfileSnapshot = { profile: null, state: null, error: null };
+const NO_PROFILE: ProfileSnapshot = { profile: null, state: null, model: null, error: null };
 
 function MockProfileProvider({ children }: { children: React.ReactNode }) {
   const [profile, setProfile] = useState<UserProfileRead | null>(mockProfile);
@@ -52,7 +53,7 @@ function MockProfileProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   const value = useMemo<ProfileContextValue>(
-    () => ({ loading: false, saving, error, profile, state, refresh: () => undefined, save }),
+    () => ({ loading: false, saving, error, profile, state, model: null, refresh: () => undefined, save }),
     [saving, error, profile, state, save],
   );
 
@@ -63,6 +64,7 @@ function ApiProfileProvider({ children }: { children: React.ReactNode }) {
   const session = useSession();
   const [profile, setProfile] = useState<UserProfileRead | null>(null);
   const [state, setState] = useState<UserStateRead | null>(null);
+  const [model, setModel] = useState<ProfileModelSnapshot | null>(null);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -70,6 +72,7 @@ function ApiProfileProvider({ children }: { children: React.ReactNode }) {
   const apply = useCallback((next: ProfileSnapshot) => {
     setProfile(next.profile);
     setState(next.state);
+    setModel(next.model);
     setError(next.error);
   }, []);
 
@@ -97,9 +100,15 @@ function ApiProfileProvider({ children }: { children: React.ReactNode }) {
           stress_response: flat.stress_response,
           state_energy: flat.state_energy,
           state_fatigue: flat.state_fatigue,
+          state_stress: flat.state_stress,
           self_efficacy: flat.self_efficacy,
           update_count: flat.update_count,
           degraded: flat.degraded,
+        },
+        model: {
+          trait: flat.trait ?? null,
+          state: flat.state ?? null,
+          metadata: flat.model_metadata ?? [],
         },
         error: null,
       };
@@ -108,6 +117,7 @@ function ApiProfileProvider({ children }: { children: React.ReactNode }) {
       return {
         profile: null,
         state: null,
+        model: null,
         error: isApiError(caught) ? caught.message : '读取画像失败',
       };
     }
@@ -123,7 +133,7 @@ function ApiProfileProvider({ children }: { children: React.ReactNode }) {
 
   useEffect(() => {
     // eslint-disable-next-line react-hooks/set-state-in-effect -- fetch once the session is ready
-    if (session.status === 'ready') refresh();
+    if (session.status === 'authenticated') refresh();
   }, [session.status, refresh]);
 
   const save = useCallback(
@@ -146,15 +156,16 @@ function ApiProfileProvider({ children }: { children: React.ReactNode }) {
 
   const value = useMemo<ProfileContextValue>(
     () => ({
-      loading: loading || session.status === 'loading',
+      loading: loading,
       saving,
       error,
       profile,
       state,
+      model,
       refresh,
       save,
     }),
-    [loading, session.status, saving, error, profile, state, refresh, save],
+    [loading, saving, error, profile, state, model, refresh, save],
   );
 
   return <ProfileContext.Provider value={value}>{children}</ProfileContext.Provider>;

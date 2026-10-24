@@ -1,0 +1,212 @@
+{
+  "scenario_version": "1.0",
+  "name": "deadline_stress",
+  "description": "截止日期压力：实际用时拉长、压力上升、部分任务未完成。",
+  "level1": {
+    "trait_profile": {
+      "schema_version": "1.0",
+      "model": "trait_v1",
+      "instrument": "IPIP-NEO-120",
+      "method": "bayesian_cat",
+      "calibration": {
+        "model": "samejima_grm",
+        "version": "grm_v1",
+        "reference_population": "Johnson_IPIP_NEO_120"
+      },
+      "domains": {
+        "N": {
+          "theta": 0.2,
+          "se": 0.3,
+          "ci95": [
+            -0.39999999999999997,
+            0.8
+          ],
+          "items_answered": 8
+        },
+        "E": {
+          "theta": 0.2,
+          "se": 0.3,
+          "ci95": [
+            -0.39999999999999997,
+            0.8
+          ],
+          "items_answered": 8
+        },
+        "O": {
+          "theta": 0.2,
+          "se": 0.3,
+          "ci95": [
+            -0.39999999999999997,
+            0.8
+          ],
+          "items_answered": 8
+        },
+        "A": {
+          "theta": 0.2,
+          "se": 0.3,
+          "ci95": [
+            -0.39999999999999997,
+            0.8
+          ],
+          "items_answered": 8
+        },
+        "C": {
+          "theta": 0.4,
+          "se": 0.3,
+          "ci95": [
+            -0.39999999999999997,
+            0.8
+          ],
+          "items_answered": 8
+        }
+      },
+      "assessment": {
+        "total_items_answered": 40,
+        "completed": true
+      }
+    }
+  },
+  "days": [
+    {
+      "date": "2026-09-01",
+      "tasks": [
+        {
+          "title": "项目报告",
+          "estimated_duration_minutes": 60,
+          "actual_duration_minutes": 70,
+          "completion_rate": 0.8,
+          "completed": false,
+          "interruption_count": 1,
+          "difficulty": 3
+        },
+        {
+          "title": "复习",
+          "estimated_duration_minutes": 40,
+          "actual_duration_minutes": 45,
+          "completion_rate": 1.0,
+          "completed": true,
+          "interruption_count": 0,
+          "difficulty": 2
+        }
+      ],
+      "feedback": {
+        "completion_rate": 0.7,
+        "stress_level": 6,
+        "energy_level": 5,
+        "free_text": "截止日期快到了，开始有点紧张。",
+        "sleep_hours": 7.0
+      }
+    },
+    {
+      "date": "2026-09-02",
+      "tasks": [
+        {
+          "title": "项目报告",
+          "estimated_duration_minutes": 60,
+          "actual_duration_minutes": 90,
+          "completion_rate": 0.6,
+          "completed": false,
+          "interruption_count": 2,
+          "difficulty": 4
+        },
+        {
+          "title": "复习",
+          "estimated_duration_minutes": 40,
+          "actual_duration_minutes": 50,
+          "completion_rate": 0.8,
+          "completed": false,
+          "interruption_count": 1,
+          "difficulty": 3
+        }
+      ],
+      "feedback": {
+        "completion_rate": 0.55,
+        "stress_level": 7,
+        "energy_level": 4,
+        "free_text": "任务比想象中耗时，压力明显增加。",
+        "sleep_hours": 7.0
+      }
+    },
+    {
+      "date": "2026-09-03",
+      "tasks": [
+        {
+          "title": "项目报告",
+          "estimated_duration_minutes": 60,
+          "actual_duration_minutes": 100,
+          "completion_rate": 0.5,
+          "completed": false,
+          "interruption_count": 3,
+          "difficulty": 4
+        },
+        {
+          "title": "复习",
+          "estimated_duration_minutes": 40,
+          "actual_duration_minutes": 55,
+          "completion_rate": 0.6,
+          "completed": false,
+          "interruption_count": 2,
+          "difficulty": 3
+        }
+      ],
+      "feedback": {
+        "completion_rate": 0.45,
+        "stress_level": 8,
+        "energy_level": 3,
+        "free_text": "时间不够，感觉很累。",
+        "sleep_hours": 7.0
+      }
+    },
+    {
+      "date": "2026-09-04",
+      "tasks": [
+        {
+          "title": "项目报告",
+          "estimated_duration_minutes": 60,
+          "actual_duration_minutes": 80,
+          "completion_rate": 0.7,
+          "completed": false,
+          "interruption_count": 1,
+          "difficulty": 3
+        },
+        {
+          "title": "复习",
+          "estimated_duration_minutes": 40,
+          "actual_duration_minutes": 45,
+          "completion_rate": 0.9,
+          "completed": false,
+          "interruption_count": 1,
+          "difficulty": 2
+        }
+      ],
+      "feedback": {
+        "completion_rate": 0.6,
+        "stress_level": 7,
+        "energy_level": 4,
+        "free_text": "勉强推进，精力下降。",
+        "sleep_hours": 7.0
+      }
+    },
+    {
+      "date": "2026-09-05",
+      "tasks": [
+        {
+          "title": "项目报告",
+          "estimated_duration_minutes": 60,
+          "actual_duration_minutes": 70,
+          "completion_rate": 0.8,
+          "completed": true,
+          "interruption_count": 0,
+          "difficulty": 3
+        }
+      ],
+      "feedback": {
+        "completion_rate": 0.8,
+        "stress_level": 6,
+        "energy_level": 5,
+        "free_text": "提交后稍微放松。",
+        "sleep_hours": 7.0
+      }
+    }
+  ]
+}

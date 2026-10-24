@@ -21,12 +21,14 @@ from app.agent.context import (
     PlanningContext,
     UserPreferences,
 )
+from app.agent.features import FeedbackSignal, PlanProgress
 from app.agent.memory import (
     build_episodic_memory,
     build_semantic_memory,
     derive_procedural_memory,
 )
 from app.application.preferences import effective_scheduling_preferences
+from app.application.services.user_model_service import UserModelService
 from app.domain.models import AgentMemory, Goal, Task
 from app.domain.models.enums import TaskStatus
 from app.domain.scheduling.fixed_events import expand_fixed_events
@@ -40,7 +42,6 @@ from app.infrastructure.database.repositories import (
     TaskRepository,
     UserRepository,
 )
-from app.ml.base import FeedbackSignal, PlanProgress
 
 DEFAULT_DAY_START = time(8, 0)
 DEFAULT_DAY_END = time(22, 0)
@@ -105,6 +106,7 @@ class RepoContextBuilder:
         from app.application.services.profile_service import ProfileService
 
         self._profiles = ProfileService(session)
+        self._user_models = UserModelService(session)
 
     # -- public API --------------------------------------------------------
     def build(
@@ -135,14 +137,12 @@ class RepoContextBuilder:
         goals = self._goals.list_by_user(user_id)
         goal_by_id = {goal.id: goal for goal in goals}
 
-        # ML features and memory are both driven by the portrait state now, so
-        # there is one behavioural model instead of a parallel statistical one.
+        # The three-layer user model is the single source of truth for traits/state.
+        # The legacy profile service only supplies observed aggregate features and
+        # the compatibility view used by memory derivation.
         features = self._profiles.build_user_features(user_id)
         state = self._profiles.get_state(user_id)
-        profile_snapshot = self._profiles.snapshot(user_id)
-        profile_decision = self._profiles.replan_decision_for(
-            user_id, duration_bias=self._profiles.duration_bias(user_id)
-        )
+        user_model = self._user_models.context(user_id)
 
         stored = self._memories.list_by_user(user_id)
         by_kind: dict[str, list[AgentMemory]] = {}
@@ -189,9 +189,7 @@ class RepoContextBuilder:
             recent_feedback=self._recent_feedback(feedbacks),
             fixed_events=fixed_events,
             user_note=user_note,
-            profile_prompt=profile_snapshot,
-            profile_replan=profile_decision.decision,
-            profile_replan_reason=profile_decision.reason_code,
+            user_model=user_model,
         )
 
     # -- internals ---------------------------------------------------------

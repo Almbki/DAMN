@@ -1,4 +1,4 @@
-"""Unit tests for the routing policy and conditional-edge helpers."""
+"""Unit tests for the deterministic routing policy and edge helpers."""
 
 from __future__ import annotations
 
@@ -6,30 +6,29 @@ from datetime import date
 
 from app.agent.router import (
     AdjustmentRouter,
-    ClassifyPolicy,
     route_after_adjustment,
     route_after_preview,
     should_repair,
 )
-from app.agent.schemas import ClassifyResult, RequestIntent
 from app.agent.state import PlannerRequest
-from app.ml.base import (
-    AdjustmentPrediction,
+from app.domain.feedback.adjustment import decide_adjustment
+from app.domain.feedback.models import (
+    AdjustmentDecision,
     AdjustmentRoute,
     AdjustmentSeverity,
-    PlanProgress,
 )
 
 
-def _prediction(route: AdjustmentRoute) -> AdjustmentPrediction:
-    return AdjustmentPrediction(route=route, severity=AdjustmentSeverity.LOW, source="test")
+def _decision(route: AdjustmentRoute) -> AdjustmentDecision:
+    return AdjustmentDecision(
+        route=route, severity=AdjustmentSeverity.LOW, source="policy:deterministic"
+    )
 
 
-def test_router_passes_through_ml_route_when_policy_is_neutral() -> None:
+def test_router_passes_through_policy_route_when_neutral() -> None:
     state = {
-        "ml_prediction": _prediction(AdjustmentRoute.MICRO_ADJUST),
-        "current_plan": object(),  # a plan exists
-        "progress": PlanProgress(days_elapsed=0, completion_rate=0.0),
+        "adjustment": _decision(AdjustmentRoute.MICRO_ADJUST),
+        "current_plan": object(),
     }
     decision = AdjustmentRouter().decide(state)  # type: ignore[arg-type]
     assert decision.route is AdjustmentRoute.MICRO_ADJUST
@@ -37,13 +36,13 @@ def test_router_passes_through_ml_route_when_policy_is_neutral() -> None:
 
 
 def test_router_forces_replan_when_no_current_plan() -> None:
-    state = {"ml_prediction": _prediction(AdjustmentRoute.NO_CHANGE), "current_plan": None}
+    state = {"adjustment": _decision(AdjustmentRoute.NO_CHANGE), "current_plan": None}
     decision = AdjustmentRouter().decide(state)  # type: ignore[arg-type]
     assert decision.route is AdjustmentRoute.FULL_REPLAN
     assert decision.overridden is True
 
 
-def _request(intent: RequestIntent) -> PlannerRequest:
+def _request(intent) -> PlannerRequest:
     return PlannerRequest(
         user_id=1,
         plan_id=7,
@@ -54,9 +53,10 @@ def _request(intent: RequestIntent) -> PlannerRequest:
 
 
 def test_router_free_text_does_not_force_replan() -> None:
-    """Free text is prompt context only; it is not an explicit requirement."""
+    from app.agent.schemas import RequestIntent
+
     state = {
-        "ml_prediction": _prediction(AdjustmentRoute.NO_CHANGE),
+        "adjustment": _decision(AdjustmentRoute.NO_CHANGE),
         "current_plan": object(),
         "request": _request(RequestIntent.FEEDBACK_DRIVEN),
         "user_adjustment": "please change everything",
@@ -67,8 +67,10 @@ def test_router_free_text_does_not_force_replan() -> None:
 
 
 def test_router_explicit_manual_replan_wins() -> None:
+    from app.agent.schemas import RequestIntent
+
     state = {
-        "ml_prediction": _prediction(AdjustmentRoute.NO_CHANGE),
+        "adjustment": _decision(AdjustmentRoute.NO_CHANGE),
         "current_plan": object(),
         "request": _request(RequestIntent.REPLAN_REQUEST),
     }
@@ -77,33 +79,9 @@ def test_router_explicit_manual_replan_wins() -> None:
     assert decision.overridden is True
 
 
-def test_router_does_not_escalate_a_fresh_plan() -> None:
-    """A brand-new plan has 0.0 completion for trivial reasons."""
-    state = {
-        "ml_prediction": _prediction(AdjustmentRoute.NO_CHANGE),
-        "current_plan": object(),
-        "progress": PlanProgress(days_elapsed=0, completion_rate=0.0),
-    }
-    decision = AdjustmentRouter().decide(state)  # type: ignore[arg-type]
-    assert decision.route is AdjustmentRoute.NO_CHANGE
-
-
-def test_router_completion_alone_does_not_escalate() -> None:
-    """Completion history is gated by the service policy, not the router."""
-    state = {
-        "ml_prediction": _prediction(AdjustmentRoute.MICRO_ADJUST),
-        "current_plan": object(),
-        "request": _request(RequestIntent.FEEDBACK_DRIVEN),
-        "progress": PlanProgress(days_elapsed=4, completion_rate=0.1),
-    }
-    decision = AdjustmentRouter().decide(state)  # type: ignore[arg-type]
-    assert decision.route is AdjustmentRoute.MICRO_ADJUST
-    assert decision.overridden is False
-
-
 def test_router_escalates_after_too_many_micro_adjustments() -> None:
     state = {
-        "ml_prediction": _prediction(AdjustmentRoute.MICRO_ADJUST),
+        "adjustment": _decision(AdjustmentRoute.MICRO_ADJUST),
         "current_plan": object(),
         "adjustment_count": 2,
     }
@@ -139,19 +117,31 @@ def test_route_after_preview_confirm_vs_adjust() -> None:
     assert route_after_preview({"user_adjustment": "less work"}) == "revise"  # type: ignore[arg-type]
 
 
-def test_classify_policy_paths() -> None:
-    from datetime import date
+# ---------------------------------------------------------------------------
+# deterministic policy (replaces RuleBasedAdjustmentPredictor)
+# ---------------------------------------------------------------------------
+def test_no_feedback_is_no_change() -> None:
+    decision = decide_adjustment(completion_rates=[])
+    assert decision.route is AdjustmentRoute.NO_CHANGE
+    assert decision.source == "fallback:no_data"
 
-    from app.agent.state import PlannerRequest
 
-    initial = PlannerRequest(user_id=1, start_date=date.today(), end_date=date.today())
-    intent, _confidence, _reasons = ClassifyPolicy.classify({"request": initial})  # type: ignore[arg-type]
-    assert intent is RequestIntent.INITIAL_PLAN
-
-    with_plan = PlannerRequest(
-        user_id=1, plan_id=7, start_date=date.today(), end_date=date.today()
+def test_one_bad_day_lightens_the_load_instead_of_rebuilding() -> None:
+    decision = decide_adjustment(
+        completion_rates=[0.4], stress_levels=[8], energy_levels=[3]
     )
-    intent, _confidence, _reasons = ClassifyPolicy.classify({"request": with_plan})  # type: ignore[arg-type]
-    assert intent is RequestIntent.REPLAN_REQUEST
+    assert decision.route is AdjustmentRoute.MICRO_ADJUST
+    assert decision.severity is AdjustmentSeverity.HIGH
 
-    assert ClassifyResult(intent=intent).intent is intent
+
+def test_sustained_low_completion_proposes_a_full_replan() -> None:
+    decision = decide_adjustment(completion_rates=[0.2, 0.3, 0.1])
+    assert decision.route is AdjustmentRoute.FULL_REPLAN
+    assert decision.source == "policy:deterministic"
+
+
+def test_healthy_week_is_no_change() -> None:
+    decision = decide_adjustment(
+        completion_rates=[0.9, 0.95, 0.8], stress_levels=[3], energy_levels=[8]
+    )
+    assert decision.route is AdjustmentRoute.NO_CHANGE

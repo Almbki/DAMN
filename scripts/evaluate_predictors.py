@@ -101,8 +101,17 @@ def _time_slot(metric: Metric, prediction: PredictionLog, execution: TaskExecuti
     metric.values.append(0.0 if str(predicted).lower() == str(observed).lower() else 1.0)
 
 
-def evaluate(user_id: int | None = None, *, limit: int = 10000) -> list[Metric]:
-    """Score every registered prediction that can be joined to an execution."""
+def evaluate(
+    user_id: int | None = None,
+    *,
+    limit: int = 10000,
+    include_synthetic: bool = False,
+) -> list[Metric]:
+    """Score every registered prediction that can be joined to an execution.
+
+    Real observations are the default; synthetic demo scenarios must be
+    explicitly included and must never be reported as real model accuracy.
+    """
     session = SessionLocal()
     try:
         prediction_repo = PredictionLogRepository(session)
@@ -113,6 +122,8 @@ def evaluate(user_id: int | None = None, *, limit: int = 10000) -> list[Metric]:
             if user_id is not None
             else prediction_repo.list_all(limit=limit)
         )
+        if not include_synthetic:
+            predictions = [p for p in predictions if p.data_origin == "real"]
 
         executions_by_user: dict[int, dict[int, TaskExecution]] = defaultdict(dict)
         metrics: dict[str, Metric] = {
@@ -130,6 +141,7 @@ def evaluate(user_id: int | None = None, *, limit: int = 10000) -> list[Metric]:
                 executions_by_user[prediction.user_id] = {
                     execution.task_id: execution
                     for execution in execution_repo.list_by_user(prediction.user_id)
+                    if include_synthetic or execution.data_origin == "real"
                 }
             execution = executions_by_user[prediction.user_id].get(prediction.task_id)
             if execution is None:
@@ -158,6 +170,11 @@ def main() -> None:
     parser = argparse.ArgumentParser(description="Evaluate registered predictions.")
     parser.add_argument("--user-id", type=int, default=None)
     parser.add_argument(
+        "--include-synthetic",
+        action="store_true",
+        help="include demo/synthetic observations (never report this as real accuracy)",
+    )
+    parser.add_argument(
         "--min-samples",
         type=int,
         default=1,
@@ -169,7 +186,7 @@ def main() -> None:
     print(f"database: {settings.database_url.split('@')[-1]}")
     print(f"scope   : {'user ' + str(args.user_id) if args.user_id else 'all users'}\n")
 
-    metrics = evaluate(args.user_id)
+    metrics = evaluate(args.user_id, include_synthetic=args.include_synthetic)
     for metric in metrics:
         line = metric.render()
         if metric.n and metric.n < args.min_samples:
