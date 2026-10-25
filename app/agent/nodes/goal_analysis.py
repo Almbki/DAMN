@@ -20,7 +20,6 @@ def goal_analysis_node(state: PlannerState, runtime: object) -> dict:
     payload = TaskDecomposerInput(
         goals=list(state.get("goals") or request.goals),
         user_profile=dict(request.profile or {}),
-        mbti=request.mbti,
         execution_weight=request.execution_weight,
     )
     outcome = ctx.tool(TOOL).invoke(payload)

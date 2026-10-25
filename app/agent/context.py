@@ -106,7 +106,6 @@ class PlanningContext(BaseModel):
     """
 
     user_id: int
-    mbti: str | None = None
     execution_weight: float = Field(default=0.5, ge=0.0, le=1.0)
     profile: dict = Field(default_factory=dict)
     preferences: UserPreferences = Field(default_factory=UserPreferences)
@@ -128,8 +127,6 @@ class PlanningContext(BaseModel):
     #: only user-model shape the agent consumes; it is never re-derived in a
     #: node and never includes raw SQLAlchemy rows.
     user_model: UserModelContext | None = None
-    #: Soft self-report MBTI (cold-start hint only, never a model input).
-    mbti: str | None = None
     # Free-form note the user attached to this run (adjustment / feedback text).
     user_note: str | None = None
     assembled_at: datetime = Field(default_factory=lambda: datetime.now(UTC))

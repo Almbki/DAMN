@@ -205,7 +205,9 @@ export function IconButton({
               : 'transparent',
           opacity: disabled ? 0.38 : 1,
           boxShadow: focused ? `0 0 0 2px ${colors.focusRing}` : undefined,
-          transform: pressed ? [{ translateY: 1 }] : undefined,
+          // Native `processTransform` rejects null/undefined; an empty list means
+          // "no transform" on every platform.
+          transform: pressed ? [{ translateY: 1 }] : [],
         },
         style,
       ]}>
@@ -251,7 +253,7 @@ export function Fab({
         {
           backgroundColor: bg,
           opacity: disabled ? 0.38 : 1,
-          transform: hovered && !disabled ? [{ translateY: -1 }] : undefined,
+          transform: hovered && !disabled ? [{ translateY: -1 }] : [],
           boxShadow: focused
             ? `0 0 0 2px ${colors.focusRing}`
             : disabled
@@ -292,7 +294,7 @@ export function ExtendedFab({
         {
           backgroundColor: colors.primaryContainer,
           opacity: disabled ? 0.38 : 1,
-          transform: hovered && !disabled ? [{ translateY: -1 }] : undefined,
+          transform: hovered && !disabled ? [{ translateY: -1 }] : [],
           boxShadow: focused
             ? `0 0 0 2px ${colors.focusRing}`
             : disabled

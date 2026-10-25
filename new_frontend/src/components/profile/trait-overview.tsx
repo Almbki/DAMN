@@ -19,6 +19,7 @@ import {
   uncertaintyLabel,
 } from '@/domain/traits';
 import { useProfile } from '@/state/profile';
+import { useSession } from '@/state/session';
 import { useTheme } from '@/state/theme';
 
 /** Level 1 stable traits. Unavailable is a CTA, never fake defaults. */
@@ -26,6 +27,7 @@ export function TraitOverviewSection() {
   const { colors } = useTheme();
   const router = useRouter();
   const { model, loading, error, refresh } = useProfile();
+  const { demoMode } = useSession();
   const [showTechnical, setShowTechnical] = useState(false);
   const [reassessOpen, setReassessOpen] = useState(false);
   const [reassessBusy, setReassessBusy] = useState(false);
@@ -108,12 +110,14 @@ export function TraitOverviewSection() {
             ))}
           </View>
           <View style={styles.actions}>
-            <Button
-              label={showTechnical ? '收起技术详情' : '查看技术详情'}
-              variant="text"
-              size="sm"
-              onPress={() => setShowTechnical((value) => !value)}
-            />
+            {demoMode ? (
+              <Button
+                label={showTechnical ? '收起技术详情' : '查看技术详情'}
+                variant="text"
+                size="sm"
+                onPress={() => setShowTechnical((value) => !value)}
+              />
+            ) : null}
             <Button
               label={reassessBusy ? '检查中…' : '重新测评'}
               variant="tonal"
@@ -122,7 +126,7 @@ export function TraitOverviewSection() {
               onPress={() => void beginReassessment()}
             />
           </View>
-          {showTechnical ? (
+          {demoMode && showTechnical ? (
             <Surface level="level0" radius="md" bordered>
               <View style={styles.technical}>
                 <Text style={[styles.technicalTitle, { color: colors.ink }]}>

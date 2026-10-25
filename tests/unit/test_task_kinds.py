@@ -74,10 +74,27 @@ def test_long_term_goal_splits_into_one_occurrence_per_day() -> None:
     assert {draft.estimated_duration for draft in drafts} == {60}
     assert {draft.predicted_duration for draft in drafts} == {60}
     # The usual standards / subject / priority survive the split.
-    assert all(draft.standards == ["看课", "做例题", "做练习"] for draft in drafts)
+    assert all(draft.standards == [] for draft in drafts)
     assert {draft.subject for draft in drafts} == {"math"}
     assert {int(draft.priority) for draft in drafts} == {int(Priority.HIGH)}
     assert {draft.order_index for draft in drafts} == set(range(7))
+
+
+def test_long_term_goal_with_supplement_keeps_substeps() -> None:
+    goal = GoalInput(
+        title="with supplement",
+        description="watch\npractice\nreview",
+        goal_type=GoalType.LONG_TERM,
+        start_date=MONDAY,
+        deadline=datetime.combine(MONDAY + timedelta(days=6), time.max),
+        daily_target_minutes=60,
+        subject="math",
+        priority=Priority.HIGH,
+    )
+
+    drafts = _drafts(_payload(goal))
+
+    assert all(draft.standards for draft in drafts)
 
 
 def test_one_off_goal_stays_a_single_task() -> None:
@@ -254,3 +271,8 @@ def _draft_for_scheduler(*, order_index: int, occurrence: date):
         series_index=0,
         is_flexible=False,
     )
+
+
+def test_goal_id_zero_is_treated_as_no_goal() -> None:
+    task = drafts_to_tasks([_draft_for_scheduler(order_index=0, occurrence=date.today())])[0]
+    assert task.goal_id is None

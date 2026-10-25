@@ -6,7 +6,8 @@ lives in exactly one place.
 
 from __future__ import annotations
 
-from datetime import date, time
+from datetime import date, datetime, time
+from zoneinfo import ZoneInfo
 
 from app.agent.context import PlanningContext, UserPreferences
 from app.agent.schemas import GeneratedTaskDraft
@@ -61,7 +62,13 @@ def drafts_to_tasks(
             Task(
                 id=draft.order_index + 1,
                 plan_id=plan_id,
-                goal_id=goal_id_map.get(draft.goal_id or 0, draft.goal_id),
+                # Draft goal ids are 1-based indices; a missing or zero index
+                # means "no goal", never a real row id.
+                goal_id=(
+                    goal_id_map.get(draft.goal_id, draft.goal_id)
+                    if draft.goal_id and draft.goal_id > 0
+                    else None
+                ),
                 title=draft.title,
                 description=draft.description,
                 estimated_duration=max(draft.estimated_duration, 1),
@@ -173,6 +180,15 @@ def build_rule_context(
         if draft.occurrence_date is not None:
             task_earliest_dates[task_id] = draft.occurrence_date
 
+    request = state.get("request")
+    tz_name = getattr(request, "timezone", None) if request is not None else None
+    try:
+        tz = ZoneInfo(tz_name) if tz_name else None
+    except Exception:  # noqa: BLE001 - invalid client timezone falls back to server local
+        tz = None
+    local_now = datetime.now(tz) if tz is not None else datetime.now()
+    local_today = local_now.date()
+
     context: PlanningContext | None = state.get("user_context")
     profile = (context.profile if context is not None else None) or {}
     raw_conflicts = profile.get("conflicting_subject_pairs") or DEFAULT_CONFLICTING_SUBJECTS
@@ -195,6 +211,12 @@ def build_rule_context(
         available_minutes_per_day=preferences.available_minutes_per_day,
         day_start=preferences.day_start,
         day_end=preferences.day_end,
+        # A plan confirmed at 15:10 must not put tasks at 08:00 today. Use the
+        # client's timezone so the server locale cannot shift "today".
+        not_before={
+            local_today: local_now.time().replace(second=0, microsecond=0, tzinfo=None)
+        },
+        today=local_today,
         task_subjects=task_subjects,
         task_deadlines=task_deadlines,
         task_earliest_dates=task_earliest_dates,

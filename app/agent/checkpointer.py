@@ -139,6 +139,11 @@ def build_checkpointer(settings: Settings | None = None) -> Any:
                 type(exc).__name__,
                 exc,
             )
+            if settings.environment.lower() in {"production", "prod"}:
+                raise RuntimeError(
+                    "Postgres checkpointer is required in production; "
+                    "refusing to start with in-memory preview state"
+                ) from exc
 
     from langgraph.checkpoint.memory import InMemorySaver
 

@@ -14,7 +14,7 @@ from app.schemas.user import UserRead
 router = APIRouter()
 
 #: Portrait fields handled by ProfileService on registration.
-PORTRAIT_FIELDS = frozenset({"mbti_type", "mbti_dims", "identity"})
+PORTRAIT_FIELDS = frozenset({"identity"})
 
 
 @router.post(
@@ -43,8 +43,6 @@ def register(
         profiles.upsert_profile(
             user.id,
             provided=provided,
-            mbti_type=payload.mbti_type,
-            mbti_dims=payload.mbti_dims,
             identity=payload.identity,
         )
         user = service.get_user(user.id)

@@ -1,13 +1,13 @@
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 
-import { DotsButton } from '@/components/task/dots-button';
 import { TaskKindBadge } from '@/components/task/task-kind-badge';
+import { SubstepsPanel, TaskRowActions } from '@/components/task-row';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Icon } from '@/components/ui/icon';
 import { useInteraction } from '@/components/ui/interaction';
 import { Surface } from '@/components/ui/surface';
 import { Fonts, Line, Radius, Space, Type } from '@/constants/tokens';
-import type { TaskKind } from '@/domain/task';
+import type { TaskKind, TaskStandard } from '@/domain/task';
 import { useTheme } from '@/state/theme';
 
 /** Minimal shape the timeline draws — real tasks and preview drafts both map to it. */
@@ -26,25 +26,45 @@ export type TimelineItem = {
   taskKind?: TaskKind;
   seriesIndex?: number | null;
   occurrenceDate?: string | null;
+  /** Checklist items, when the row belongs to a persisted task. */
+  standards?: TaskStandard[];
+  /** Local start timestamp; drives the quiet "进行中" status. */
+  startedAt?: string | null;
 };
 
 export function Timeline({
   items,
   interactive = true,
+  canEdit = true,
+  expandedIds,
   nowId = null,
   activeId = null,
   onToggleDone,
   onOpen,
+  onStartTask,
+  onToggleExpanded,
+  onUpdateStandard,
 }: {
   items: TimelineItem[];
   /** Read-only (preview) when false: no checkbox, no overflow, no open. */
   interactive?: boolean;
+  /** Whether the plan allows edits (start + substep checkboxes). */
+  canEdit?: boolean;
+  /** Ids whose substeps panel is open. */
+  expandedIds?: ReadonlySet<number>;
   /** The current node, drawn in the live scallion tone. */
   nowId?: number | null;
   activeId?: number | null;
   onToggleDone?: (id: number) => void;
   /** Open the task detail sheet. The visible overflow uses the same action. */
   onOpen?: (id: number) => void;
+  onStartTask?: (id: number) => void;
+  onToggleExpanded?: (id: number) => void;
+  onUpdateStandard?: (
+    taskId: number,
+    standardId: number,
+    completed: boolean,
+  ) => Promise<void>;
 }) {
   const ordered = [...items].sort((a, b) => {
     if (a.startTime && b.startTime) return a.startTime.localeCompare(b.startTime);
@@ -60,10 +80,15 @@ export function Timeline({
           key={item.id}
           item={item}
           interactive={interactive}
+          canEdit={canEdit}
+          expanded={expandedIds?.has(item.id) === true}
           isNow={item.id === nowId}
           active={item.id === activeId}
           onToggleDone={onToggleDone}
           onOpen={onOpen}
+          onStartTask={onStartTask}
+          onToggleExpanded={onToggleExpanded}
+          onUpdateStandard={onUpdateStandard}
         />
       ))}
     </View>
@@ -73,23 +98,42 @@ export function Timeline({
 function TimelineRow({
   item,
   interactive,
+  canEdit,
+  expanded,
   isNow,
   active,
   onToggleDone,
   onOpen,
+  onStartTask,
+  onToggleExpanded,
+  onUpdateStandard,
 }: {
   item: TimelineItem;
   interactive: boolean;
+  canEdit: boolean;
+  expanded: boolean;
   isNow: boolean;
   active: boolean;
   onToggleDone?: (id: number) => void;
   onOpen?: (id: number) => void;
+  onStartTask?: (id: number) => void;
+  onToggleExpanded?: (id: number) => void;
+  onUpdateStandard?: (
+    taskId: number,
+    standardId: number,
+    completed: boolean,
+  ) => Promise<void>;
 }) {
   const { colors } = useTheme();
   const { focused, onFocus, onBlur } = useInteraction();
   const done = item.done;
   const skipped = item.skipped === true;
+  const closed = done || skipped;
   const clickable = interactive && onOpen != null;
+  const standards = item.standards ?? [];
+  const hasStandards = standards.length > 0;
+  const expandedPanel = expanded && hasStandards;
+  const started = item.startedAt != null;
 
   return (
     <View style={styles.row}>
@@ -185,10 +229,36 @@ function TimelineRow({
             </View>
           </Pressable>
 
-          {clickable ? (
-            <DotsButton label={`任务详情：${item.title}`} onPress={() => onOpen?.(item.id)} />
-          ) : null}
+          <TaskRowActions
+            title={item.title}
+            startable={interactive && canEdit && !closed && !started && onStartTask != null}
+            started={interactive && !closed && started}
+            hasStandards={hasStandards}
+            expanded={expandedPanel}
+            onStart={onStartTask ? () => onStartTask(item.id) : undefined}
+            onToggleExpanded={
+              interactive && onToggleExpanded
+                ? () => onToggleExpanded(item.id)
+                : undefined
+            }
+            onOpen={clickable ? () => onOpen?.(item.id) : undefined}
+          />
         </View>
+
+        {expandedPanel ? (
+          <SubstepsPanel
+            standards={standards}
+            disabled={closed || !canEdit || onUpdateStandard == null}
+            onToggle={
+              onUpdateStandard
+                ? (standardId, completed) => {
+                    void onUpdateStandard(item.id, standardId, completed);
+                  }
+                : undefined
+            }
+            style={styles.substepsInset}
+          />
+        ) : null}
       </Surface>
     </View>
   );
@@ -282,5 +352,8 @@ const styles = StyleSheet.create({
   priorityText: {
     fontSize: Type.labelMedium,
     fontWeight: '600',
+  },
+  substepsInset: {
+    paddingLeft: Space.sm,
   },
 });

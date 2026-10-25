@@ -135,7 +135,27 @@ class PlanDrafterTool(BaseTool[PlanDrafterInput, PlanGenerationResult]):
             variables=self._prompt_variables(payload),
             fallback=fallback,
         )
-        return self._with_truthful_source(result.value, payload.prediction_source)
+        generated = self._with_truthful_source(result.value, payload.prediction_source)
+        return self._strip_unsupplemented_standards(generated, payload.goals)
+
+    @staticmethod
+    def _strip_unsupplemented_standards(
+        generated: PlanGenerationResult, goals: list[GoalInput]
+    ) -> PlanGenerationResult:
+        """A blank supplement field means no substeps, even if the model invented them."""
+        if not generated.tasks:
+            return generated
+        cleaned = []
+        for task in generated.tasks:
+            goal = (
+                goals[task.goal_id - 1]
+                if task.goal_id is not None and 0 < task.goal_id <= len(goals)
+                else None
+            )
+            if goal is None or not goal.description or not goal.description.strip():
+                task = task.model_copy(update={"standards": []})
+            cleaned.append(task)
+        return generated.model_copy(update={"tasks": cleaned})
 
     @staticmethod
     def _with_truthful_source(
@@ -270,7 +290,11 @@ class PlanDrafterTool(BaseTool[PlanDrafterInput, PlanGenerationResult]):
                             cognitive_load=item.get("cognitive_load") or "medium",
                             priority=goal.priority if goal else Priority.MEDIUM,
                             subject=goal.subject if goal else None,
-                            standards=list(item.get("subtasks") or []),
+                            standards=(
+                                list(item.get("subtasks") or [])
+                                if goal and goal.description and goal.description.strip()
+                                else []
+                            ),
                             deadline=datetime.combine(day, time.max),
                             prediction_source=payload.prediction_source,
                             order_index=len(drafts),
@@ -300,7 +324,11 @@ class PlanDrafterTool(BaseTool[PlanDrafterInput, PlanGenerationResult]):
                     cognitive_load=item.get("cognitive_load") or "medium",
                     priority=goal.priority if goal else Priority.MEDIUM,
                     subject=goal.subject if goal else None,
-                    standards=list(item.get("subtasks") or []),
+                    standards=(
+                        list(item.get("subtasks") or [])
+                        if goal and goal.description and goal.description.strip()
+                        else []
+                    ),
                     deadline=goal.deadline if goal else None,
                     prediction_source=payload.prediction_source,
                     order_index=len(drafts),

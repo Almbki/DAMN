@@ -14,6 +14,13 @@ from app.infrastructure.database.repositories.base import RepositoryBase
 
 class TaskRepository(RepositoryBase):
     def create_many(self, tasks: list[Task]) -> list[Task]:
+        # `goal_id=0` is never a legal FK value. Catch it before SQLAlchemy
+        # turns it into an opaque ForeignKeyViolation at flush time.
+        invalid = [task.title for task in tasks if task.goal_id is not None and task.goal_id <= 0]
+        if invalid:
+            raise ValueError(
+                f"tasks have invalid goal_id <= 0: {invalid[:5]}"
+            )
         orms = [
             TaskORM(
                 plan_id=t.plan_id,

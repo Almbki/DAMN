@@ -72,14 +72,13 @@ def test_profile_is_404_before_it_is_set(client: TestClient, auth_headers: dict)
 def test_patch_creates_the_soft_portrait(client: TestClient, auth_headers: dict) -> None:
     patched = client.patch(
         "/api/v1/users/me",
-        json={"mbti_type": "intp", "identity": "研究生"},
+        json={"identity": "研究生"},
         headers=auth_headers,
     )
     assert patched.status_code == 200, patched.text
-    assert patched.json()["mbti_type"] == "INTP"
+    assert patched.json()["identity"] == "研究生"
 
     body = _profile(client, auth_headers)
-    assert body["mbti_type"] == "INTP"
     assert body["identity"] == "研究生"
     # No Level 1/2 model yet: the legacy fields are neutral and nothing is claimed.
     assert body["trait"] is None
@@ -114,13 +113,6 @@ def test_portrait_is_not_created_by_unrelated_profile_edits(
 ) -> None:
     client.patch("/api/v1/users/me", json={"display_name": "Ann"}, headers=auth_headers)
     assert client.get("/api/v1/users/me/profile", headers=auth_headers).status_code == 404
-
-
-def test_unknown_dimension_key_is_rejected(client: TestClient, auth_headers: dict) -> None:
-    response = client.patch(
-        "/api/v1/users/me", json={"mbti_dims": {"xx": 0.5}}, headers=auth_headers
-    )
-    assert response.status_code == 422
 
 
 # ---------------------------------------------------------------------------
@@ -219,6 +211,46 @@ def test_partial_execution_fields_are_not_dropped(
     assert isinstance(execution, TaskExecution)
 
 
+def test_repeated_patches_for_one_task_do_not_break_the_profile(
+    client: TestClient, auth_headers: dict
+) -> None:
+    """Start → partial → complete appends three rows for the same task/day.
+
+    Level 2 accepts only one execution per task and day; the adapter must merge
+    the rows instead of raising ``task_executions must have unique task_id``.
+    """
+    plan_id = _make_plan(client, auth_headers)
+    detail = client.get(f"/api/v1/plans/{plan_id}", headers=auth_headers).json()
+    task = detail["tasks"][0]
+    url = f"/api/v1/plans/{plan_id}/tasks/{task['id']}"
+    start_at = f"{task['scheduled_date'] or '2026-09-20'}T09:00:00"
+
+    started = client.patch(url, json={"started_at": start_at}, headers=auth_headers)
+    assert started.status_code == 200, started.text
+
+    partial = client.patch(
+        url,
+        json={"completion_rate": 0.5, "actual_duration": 30},
+        headers=auth_headers,
+    )
+    assert partial.status_code == 200, partial.text
+
+    completed = client.patch(
+        url,
+        json={"completed": True, "actual_duration": 45},
+        headers=auth_headers,
+    )
+    assert completed.status_code == 200, completed.text
+
+    # Set Level 1 only after the rows exist so this read performs the first full
+    # Level 2 replay over all three rows (the old adapter raised here).
+    _set_trait(client, auth_headers)
+
+    body = _profile(client, auth_headers)
+    assert body["state"] is not None
+    assert body["state"]["model_version"] == "ddsr_v1"
+
+
 def test_changing_the_soft_portrait_does_not_reset_level2(
     client: TestClient, auth_headers: dict
 ) -> None:
@@ -231,10 +263,10 @@ def test_changing_the_soft_portrait_does_not_reset_level2(
     )
     before = _profile(client, auth_headers)
 
-    client.patch("/api/v1/users/me", json={"mbti_type": "ENFJ"}, headers=auth_headers)
+    client.patch("/api/v1/users/me", json={"identity": "开发者"}, headers=auth_headers)
     after = _profile(client, auth_headers)
 
-    assert after["mbti_type"] == "ENFJ"
+    assert after["identity"] == "开发者"
     assert after["update_count"] == before["update_count"]
     assert after["state"] is not None
 

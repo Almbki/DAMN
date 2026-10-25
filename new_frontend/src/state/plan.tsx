@@ -218,6 +218,7 @@ function MockPlanProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   const [mockPreview, setMockPreview] = useState<DraftTask[] | null>(null);
+  const dismissPreview = useCallback(() => setMockPreview(null), []);
 
   const previewMeta = useMemo(
     () => ({
@@ -376,6 +377,9 @@ function MockPlanProvider({ children }: { children: React.ReactNode }) {
       adjustPreview,
       confirmPreview,
       previewMeta,
+      previewTasks: mockPreview,
+      previewBusy: false,
+      dismissPreview,
       assessment,
       setAssessment,
       submitFeedback,
@@ -421,6 +425,8 @@ function MockPlanProvider({ children }: { children: React.ReactNode }) {
       adjustPreview,
       confirmPreview,
       previewMeta,
+      mockPreview,
+      dismissPreview,
       assessment,
       submitFeedback,
       addTask,

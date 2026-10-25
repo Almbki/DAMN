@@ -7,8 +7,6 @@ from typing import Any
 
 from pydantic import BaseModel, ConfigDict, EmailStr, Field, field_validator
 
-from app.schemas.profile import normalise_mbti_type, validate_mbti_dims
-
 __all__ = [
     "DataSufficiency",
     "SchedulingPreferences",
@@ -27,9 +25,7 @@ class UserRead(BaseModel):
     display_name: str | None = None
     execution_weight: float = 0.5
     profile: dict[str, Any] = Field(default_factory=dict)
-    #: Portrait fields (see app/schemas/profile.py). MBTI is soft, not a diagnosis.
-    mbti_type: str | None = None
-    mbti_dims: dict[str, float] | None = None
+    #: Portrait fields (see app/schemas/profile.py).
     identity: str | None = None
     #: Level 1 TraitProfileV1 JSON (authoritative stable traits).
     trait_profile: dict[str, Any] | None = None
@@ -41,15 +37,9 @@ class UserUpdate(BaseModel):
     execution_weight: float | None = Field(default=None, ge=0.0, le=1.0)
     profile: dict[str, Any] | None = None
     # --- user portrait (see app/schemas/profile.py) ---
-    #: MBTI is a soft self-report input, never a diagnosis.
-    mbti_type: str | None = Field(default=None, max_length=4)
-    mbti_dims: dict[str, float] | None = None
     identity: str | None = Field(default=None, max_length=200)
     #: Optional validated Level 1 trait profile (e.g. produced by the CAT).
     trait_profile: dict[str, Any] | None = None
-
-    _normalise_type = field_validator("mbti_type")(normalise_mbti_type)
-    _validate_dims = field_validator("mbti_dims")(validate_mbti_dims)
 
 
 class SchedulingPreferences(BaseModel):
