@@ -7,6 +7,7 @@ import {
   deleteGoal,
   deleteTask as deleteTaskApi,
   getInsights,
+  getLatestPreview,
   getPlan,
   getPlanChanges,
   getSituationTrends,
@@ -54,7 +55,7 @@ import type {
   UserRead,
 } from '@/api/types';
 import { addDays, todayISO } from '@/domain/date';
-import type { PendingTask } from '@/domain/decompose';
+import type { DraftTask, PendingTask } from '@/domain/decompose';
 import type { Goal } from '@/domain/goal';
 import type { PlanChange } from '@/domain/plan-change';
 import type { SchedulingPreferences } from '@/domain/preferences';
@@ -152,6 +153,77 @@ function feedbackReasons(
 ): string[] {
   if (reasons && reasons.length > 0) return reasons;
   return fallbackReason ? [fallbackReason] : [];
+}
+
+type StoredPreview = {
+  threadId: string;
+  meta: NonNullable<PlanContextValue['previewMeta']>;
+  tasks: DraftTask[];
+};
+
+function previewStorageKey(userId: number): string {
+  return `damn.preview.v1.${userId}`;
+}
+
+function readStoredPreview(userId: number): StoredPreview | null {
+  if (typeof globalThis.localStorage === 'undefined') return null;
+  try {
+    const raw = globalThis.localStorage.getItem(previewStorageKey(userId));
+    if (!raw) return null;
+    const parsed = JSON.parse(raw) as Partial<StoredPreview> | null;
+    if (
+      !parsed ||
+      typeof parsed.threadId !== 'string' ||
+      !parsed.meta ||
+      !Array.isArray(parsed.tasks)
+    ) {
+      return null;
+    }
+    return parsed as StoredPreview;
+  } catch {
+    return null;
+  }
+}
+
+function writeStoredPreview(userId: number, value: StoredPreview): void {
+  if (typeof globalThis.localStorage === 'undefined') return;
+  try {
+    globalThis.localStorage.setItem(previewStorageKey(userId), JSON.stringify(value));
+  } catch {
+    // Storage can be unavailable (private mode/quota); the in-memory preview still works.
+  }
+}
+
+function clearStoredPreview(userId: number): void {
+  if (typeof globalThis.localStorage === 'undefined') return;
+  try {
+    globalThis.localStorage.removeItem(previewStorageKey(userId));
+  } catch {
+    // ignore
+  }
+}
+
+function previewDismissedKey(userId: number): string {
+  return `damn.preview.dismissed.v1.${userId}`;
+}
+
+function readDismissedPreview(userId: number): string | null {
+  if (typeof globalThis.localStorage === 'undefined') return null;
+  try {
+    return globalThis.localStorage.getItem(previewDismissedKey(userId));
+  } catch {
+    return null;
+  }
+}
+
+function writeDismissedPreview(userId: number, threadId: string | null): void {
+  if (typeof globalThis.localStorage === 'undefined') return;
+  try {
+    if (threadId) globalThis.localStorage.setItem(previewDismissedKey(userId), threadId);
+    else globalThis.localStorage.removeItem(previewDismissedKey(userId));
+  } catch {
+    // ignore
+  }
 }
 
 function previewMetaFrom(
@@ -591,6 +663,11 @@ export function ApiPlanProvider({ children }: { children: React.ReactNode }) {
   const [previewThread, setPreviewThread] = useState<string | null>(null);
   const [previewMeta, setPreviewMeta] = useState<PlanContextValue['previewMeta']>(null);
   const [previewStage, setPreviewStage] = useState<string | null>(null);
+  // Provider-owned so an in-flight or completed preview survives route changes.
+  const [previewTasks, setPreviewTasks] = useState<DraftTask[] | null>(null);
+  const [previewBusy, setPreviewBusy] = useState(false);
+  const previewUserId = session.user?.id ?? null;
+  const previewHydratedFor = useRef<number | null>(null);
 
   // While a generation job is streaming, `previewStage` carries the current
   // stage label; fold it into `previewMeta` so consumers only read one field.
@@ -609,8 +686,64 @@ export function ApiPlanProvider({ children }: { children: React.ReactNode }) {
     };
   }, [previewMeta, previewStage]);
 
+  useEffect(() => {
+    if (previewUserId == null) return;
+    const stored = readStoredPreview(previewUserId);
+    if (stored) {
+      // Hydrating from persisted external state is the intended effect.
+      // eslint-disable-next-line react-hooks/set-state-in-effect
+      setPreviewTasks(stored.tasks);
+      setPreviewThread(stored.threadId);
+      setPreviewMeta(stored.meta);
+      previewHydratedFor.current = previewUserId;
+      return;
+    }
+
+    let cancelled = false;
+    void (async () => {
+      try {
+        const latest = await getLatestPreview();
+        if (cancelled || latest.thread_id === readDismissedPreview(previewUserId)) return;
+        setPreviewThread(latest.thread_id);
+        setPreviewMeta(
+          previewMetaFrom(
+            latest.preview,
+            latest.thread_id,
+            latest.warnings,
+            preferences.dailyLimitMinutes ?? null,
+          ),
+        );
+        setPreviewTasks(previewToDrafts(latest.preview.tasks));
+      } catch {
+        // 404 is the normal "no recoverable preview" case; keep the page usable.
+      } finally {
+        if (!cancelled) previewHydratedFor.current = previewUserId;
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [previewUserId, preferences.dailyLimitMinutes]);
+
+  useEffect(() => {
+    if (previewUserId == null || previewHydratedFor.current !== previewUserId) return;
+    if (!previewTasks || !previewMeta) {
+      clearStoredPreview(previewUserId);
+      return;
+    }
+    writeStoredPreview(previewUserId, {
+      threadId: previewMeta.threadId,
+      meta: previewMeta,
+      tasks: previewTasks,
+    });
+  }, [previewUserId, previewTasks, previewMeta]);
+
   const buildGenerateRequest = useCallback(
     (): PlanGenerateRequest => ({
+      timezone:
+        typeof Intl !== 'undefined'
+          ? Intl.DateTimeFormat().resolvedOptions().timeZone
+          : undefined,
       goals: pendingTasks.map((item) => ({
         title: item.title,
         description: item.notes || undefined,
@@ -641,17 +774,20 @@ export function ApiPlanProvider({ children }: { children: React.ReactNode }) {
 
   const decomposePreview = useCallback(async () => {
     // NOTE: do NOT toggle the global `loading` here. `_layout` renders a
-    // full-screen "正在连接后端…" while it is true, which unmounts the goal
-    // screen and looks like "点击就断开后端". The screen owns its own busy flag.
+    // full-screen loading state while it is true, which unmounts the goal screen.
     setActionError(null);
+    if (previewUserId != null) writeDismissedPreview(previewUserId, null);
+    setPreviewBusy(true);
+    setPreviewStage(null);
+    setPreviewTasks(null);
+    setPreviewThread(null);
+    setPreviewMeta(null);
     try {
       const job = await submitPreview(buildGenerateRequest());
       const status = await runJob(job, onPreviewStage);
       const response = status.result as unknown as PreviewResponse | null;
       if (status.status === 'failed' || !response?.preview) {
-        setActionError(status.error ?? '拆解没有返回结果，请重试。');
-        setPreviewThread(null);
-        setPreviewMeta(null);
+        setActionError(status.error ?? 'plan generation returned no preview');
         return [];
       }
       setPreviewThread(response.thread_id);
@@ -663,23 +799,36 @@ export function ApiPlanProvider({ children }: { children: React.ReactNode }) {
           preferences.dailyLimitMinutes ?? null,
         ),
       );
-      return previewToDrafts(response.preview.tasks);
+      const drafts = previewToDrafts(response.preview.tasks);
+      setPreviewTasks(drafts);
+      return drafts;
     } catch (caught) {
-      setActionError(errorMessage(caught, '拆解失败'));
-      setPreviewThread(null);
-      setPreviewMeta(null);
+      setActionError(errorMessage(caught, 'decompose failed'));
       return [];
     } finally {
+      setPreviewBusy(false);
       setPreviewStage(null);
     }
-  }, [buildGenerateRequest, onPreviewStage, preferences.dailyLimitMinutes]);
+  }, [buildGenerateRequest, onPreviewStage, preferences.dailyLimitMinutes, previewUserId]);
+
+  const dismissPreview = useCallback(() => {
+    if (previewUserId != null) {
+      clearStoredPreview(previewUserId);
+      writeDismissedPreview(previewUserId, previewThread);
+    }
+    setPreviewTasks(null);
+    setPreviewThread(null);
+    setPreviewMeta(null);
+    setPreviewStage(null);
+  }, [previewUserId, previewThread]);
 
   const adjustPreview = useCallback(
     async (feedback: string) => {
       if (!previewThread) {
-        return { drafts: null, applied: false, message: '预览已失效，请重新拆解。' };
+        return { drafts: null, applied: false, message: 'Preview expired; generate again.' };
       }
       setActionError(null);
+      setPreviewBusy(true);
       try {
         const job = await submitAdjustPreview(previewThread, feedback);
         const status = await runJob(job, onPreviewStage);
@@ -693,6 +842,7 @@ export function ApiPlanProvider({ children }: { children: React.ReactNode }) {
           await adoptPlan(response.final_plan.id);
           setLastConfirmedPlanId(response.final_plan.id);
           setPendingTasks([]);
+          setPreviewTasks(null);
           setPreviewThread(null);
           setPreviewMeta(null);
           return { drafts: null, applied: true, message: '调整次数已用完，已直接生成计划。' };
@@ -706,10 +856,12 @@ export function ApiPlanProvider({ children }: { children: React.ReactNode }) {
               preferences.dailyLimitMinutes ?? null,
             ),
           );
+          const drafts = previewToDrafts(response.preview.tasks);
+          setPreviewTasks(drafts);
           return {
-            drafts: previewToDrafts(response.preview.tasks),
+            drafts,
             applied: false,
-            message: response.budget_exhausted ? '调整次数已用完。' : null,
+            message: response.budget_exhausted ? '调整预算已用完。' : null,
           };
         }
         return { drafts: null, applied: false, message: '这次没有返回新的预览。' };
@@ -717,6 +869,7 @@ export function ApiPlanProvider({ children }: { children: React.ReactNode }) {
         setActionError(errorMessage(caught, '重新生成失败'));
         return { drafts: null, applied: false, message: errorMessage(caught, '重新生成失败。') };
       } finally {
+        setPreviewBusy(false);
         setPreviewStage(null);
       }
     },
@@ -733,6 +886,7 @@ export function ApiPlanProvider({ children }: { children: React.ReactNode }) {
   const confirmPreview = useCallback(async () => {
     if (!previewThread) return;
     setActionError(null);
+    setPreviewBusy(true);
     try {
       const response = await confirmPreviewApi(previewThread);
       discardDraftGoals(pendingTasks.map((item) => item.id));
@@ -741,12 +895,19 @@ export function ApiPlanProvider({ children }: { children: React.ReactNode }) {
       await adoptPlan(response.plan.id);
       setLastConfirmedPlanId(response.plan.id);
       setPendingTasks([]);
+      if (previewUserId != null) {
+        clearStoredPreview(previewUserId);
+        writeDismissedPreview(previewUserId, null);
+      }
+      setPreviewTasks(null);
       setPreviewThread(null);
       setPreviewMeta(null);
     } catch (caught) {
-      setActionError(errorMessage(caught, '确认失败'));
+      setActionError(errorMessage(caught, 'confirm failed'));
+    } finally {
+      setPreviewBusy(false);
     }
-  }, [previewThread, pendingTasks, discardDraftGoals, adoptPlan]);
+  }, [previewThread, pendingTasks, discardDraftGoals, adoptPlan, previewUserId]);
 
   /** 手动重排：先查冷却，可用则生成新版本并切过去。返回一句给用户看的结果。 */
   const replanNow = useCallback(async () => {
@@ -1187,6 +1348,9 @@ export function ApiPlanProvider({ children }: { children: React.ReactNode }) {
       adjustPreview,
       confirmPreview,
       previewMeta: effectivePreviewMeta,
+      previewTasks,
+      previewBusy,
+      dismissPreview,
       assessment,
       setAssessment,
       submitFeedback,
@@ -1244,6 +1408,9 @@ export function ApiPlanProvider({ children }: { children: React.ReactNode }) {
     adjustPreview,
     confirmPreview,
     effectivePreviewMeta,
+    previewTasks,
+    previewBusy,
+    dismissPreview,
     assessment,
     submitFeedback,
     updateWeight,

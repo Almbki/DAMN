@@ -57,6 +57,11 @@ class RuleContext(BaseModel):
     available_minutes_per_day: int = Field(default=480, ge=1)
     day_start: time = time(8, 0)
     day_end: time = time(22, 0)
+    #: Per-date lower bound for *new* placements. The planner sets today's
+    #: entry to "now" so a confirmed plan never starts in an already-past slot.
+    not_before: dict[date, time] = Field(default_factory=dict)
+    #: User-local date. None keeps the legacy server-date behaviour for tests.
+    today: date | None = None
     # task_id -> normalised subject tag (e.g. "math", "algorithm").
     task_subjects: dict[int, str] = Field(default_factory=dict)
     # task_id -> hard deadline (exclusive upper bound: cannot be scheduled after).

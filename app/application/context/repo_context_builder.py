@@ -149,10 +149,6 @@ class RepoContextBuilder:
         for row in stored:
             by_kind.setdefault(row.kind, []).append(row)
 
-        # Single source of truth for MBTI: the dedicated users column, falling
-        # back to the legacy free-form profile key.
-        mbti = (user.mbti_type if user else None) or profile.get("mbti")
-
         today = date.today()
         window_end = today + timedelta(days=FIXED_EVENT_WINDOW_DAYS)
         fixed_events = expand_fixed_events(
@@ -163,14 +159,13 @@ class RepoContextBuilder:
 
         return PlanningContext(
             user_id=user_id,
-            mbti=mbti,
             execution_weight=user.execution_weight if user else 0.5,
             profile=profile,
             preferences=self._preferences(
                 profile, user.scheduling_preferences if user else None
             ),
             semantic_memory=merge_memory(
-                build_semantic_memory(user, state, mbti=mbti),
+                build_semantic_memory(user, state),
                 by_kind.get(MemoryKind.SEMANTIC.value, []),
             ),
             episodic_memory=merge_memory(

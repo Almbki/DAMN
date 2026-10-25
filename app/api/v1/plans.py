@@ -21,7 +21,11 @@ from app.api.v1.mappers import (
     plan_read,
     preview_read,
 )
-from app.application.exceptions import ConflictError, ReplanNotEligibleError
+from app.application.exceptions import (
+    ConflictError,
+    NotFoundError,
+    ReplanNotEligibleError,
+)
 from app.application.services import GenerationService, PlanService, ReplanService
 from app.core.config import get_settings
 from app.domain.models import User
@@ -81,6 +85,7 @@ def _to_generation_request(user: User, payload: PlanGenerateRequest) -> Generati
     )
     return GenerationRequest(
         user_id=user.id or 0,
+        timezone=payload.timezone,
         goals=[
             GoalInput(
                 title=goal.title,
@@ -123,6 +128,7 @@ def _decompose_request(user: User, payload: DecomposeRequest) -> GenerationReque
     end = start + timedelta(days=DEFAULT_HORIZON_DAYS)
     return GenerationRequest(
         user_id=user.id or 0,
+        timezone=payload.timezone,
         goals=[
             GoalInput(
                 title=goal.title,
@@ -176,6 +182,19 @@ def preview_response_dict(result) -> dict:
         degraded=result.degraded,
         warnings=result.warnings,
     ).model_dump(mode="json")
+
+
+def decompose_job_result(result) -> dict:
+    """JSON-able decompose result, keeping the resumable preview alongside it.
+
+    The contract shape stays ``DecomposeResponse`` (``draft_id`` + ``days``);
+    ``thread_id``/``preview`` are additive so ``GET /plans/preview/latest`` can
+    recover a decomposition on another device with the usual preview payload.
+    """
+    payload = decompose_response(result.thread_id, result.preview).model_dump(mode="json")
+    payload["thread_id"] = result.thread_id
+    payload["preview"] = preview_read(result.preview).model_dump(mode="json")
+    return payload
 
 
 def adjust_response_dict(result, thread_id: str, final_plan: PlanRead | None = None) -> dict:
@@ -272,6 +291,31 @@ def preview_plan(
 
     job = generation_service.submit(user_id=user_id, kind="preview", runner=runner)
     return _job_accepted(job)
+
+
+@router.get(
+    "/preview/latest",
+    response_model=PreviewResponse,
+    summary="Recover the latest actionable preview (cross-device)",
+    description=(
+        "Returns the current user's newest completed preview-like job result "
+        "that still carries a `thread_id` and `preview` payload. This lets a "
+        "client on another device recover an unconfirmed preview after reload. "
+        "404 when there is none. A returned preview may since have been confirmed "
+        "or expired in the LangGraph checkpointer: in that case confirm still "
+        "answers idempotently with the existing plan or 404 - the stored preview "
+        "is a snapshot, not proof the draft is still resumable."
+    ),
+    responses={**_AUTH, **_NOT_FOUND},
+)
+def latest_preview(
+    current_user: User = Depends(get_current_user),
+    generation_service: GenerationService = Depends(get_generation_service),
+) -> PreviewResponse:
+    result = generation_service.latest_preview(current_user.id or 0)
+    if result is None:
+        raise NotFoundError("no actionable preview found")
+    return PreviewResponse.model_validate(result)
 
 
 @router.post(
@@ -379,7 +423,7 @@ def decompose_plan(
             result = service.adjust_preview(user_id, draft_id, feedback, emit=emit)
             if result.preview is None:  # budget hit on this very call
                 raise ConflictError("调整次数已用完，草稿已定稿为正式计划")
-            return decompose_response(result.thread_id, result.preview).model_dump(mode="json")
+            return decompose_job_result(result)
 
         job = generation_service.submit(user_id=user_id, kind="decompose", runner=runner)
         return _job_accepted(job)
@@ -388,7 +432,7 @@ def decompose_plan(
 
     def runner(service: PlanService, emit) -> dict:
         result = service.generate_preview(user_id, request, emit=emit)
-        return decompose_response(result.thread_id, result.preview).model_dump(mode="json")
+        return decompose_job_result(result)
 
     job = generation_service.submit(user_id=user_id, kind="decompose", runner=runner)
     return _job_accepted(job)
@@ -416,7 +460,8 @@ def confirm_draft(
     plan_service: PlanService = Depends(get_plan_service),
 ) -> PlanRead:
     user_id = current_user.id or 0
-    plan_service.pending_draft(user_id, payload.draft_id)  # 404 / 403 / 409
+    # confirm_plan is idempotent: a repeated confirm returns the same plan, and
+    # a retry after a successful graph run + failed persist reuses its final state.
     result = plan_service.confirm_plan(user_id, payload.draft_id)
     if result.pending_preview is not None:  # pragma: no cover - confirm finalises
         raise ConflictError("draft is still pending")

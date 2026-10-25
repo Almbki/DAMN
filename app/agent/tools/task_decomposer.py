@@ -13,26 +13,12 @@ from app.agent.schemas import AnalyzedGoal, GoalAnalysisResult
 from app.agent.state import GoalInput
 from app.agent.tools.base import BaseTool
 
-#: Generic stage templates used when a goal has no description to split.
-_GENERIC_STAGES: tuple[tuple[tuple[str, ...], list[str]], ...] = (
-    (
-        ("math", "数学", "算法", "algorithm", "408"),
-        ["概念理解", "例题精做", "专项训练", "总结复盘"],
-    ),
-    (("english", "language", "英语", "语言"), ["词汇积累", "练习巩固", "总结复盘"]),
-    (("reading", "writing", "阅读", "写作"), ["资料研读", "动笔输出", "修改复盘"]),
-    (("exercise", "music", "锻炼", "练琴", "运动"), ["热身准备", "主体练习", "放松整理"]),
-)
-
-_DEFAULT_STAGES: list[str] = ["理解内容", "练习巩固", "总结复盘"]
-
 PROMPT_NAME = "goal_analysis"
 
 
 class TaskDecomposerInput(BaseModel):
     goals: list[GoalInput] = Field(default_factory=list)
     user_profile: dict = Field(default_factory=dict)
-    mbti: str | None = None
     execution_weight: float = 0.5
 
 
@@ -58,16 +44,23 @@ class TaskDecomposerTool(BaseTool[TaskDecomposerInput, GoalAnalysisResult]):
             variables={
                 "goals": [goal.model_dump(mode="json") for goal in payload.goals],
                 "user_profile": payload.user_profile,
-                "mbti": payload.mbti or "",
                 "execution_weight": payload.execution_weight,
             },
             fallback=fallback,
         )
-        return result.value
+        value = result.value
+        goals_by_key = {idx: goal for idx, goal in enumerate(payload.goals, start=1)}
+        analyzed = [
+            item.model_copy(update={"subtasks": []})
+            if not goals_by_key.get(item.goal_id) or not goals_by_key[item.goal_id].description
+            else item
+            for item in value.goals
+        ]
+        return value.model_copy(update={"goals": analyzed})
 
     @staticmethod
     def _heuristic(payload: TaskDecomposerInput) -> GoalAnalysisResult:
-        """Deterministic fallback: split descriptions, else generic stages."""
+        """Deterministic fallback: split only user-provided supplement text."""
         analyzed: list[AnalyzedGoal] = []
         confidences: list[float] = []
         for idx, goal in enumerate(payload.goals, start=1):
@@ -92,18 +85,12 @@ class TaskDecomposerTool(BaseTool[TaskDecomposerInput, GoalAnalysisResult]):
 
     @staticmethod
     def _subtasks(goal: GoalInput) -> list[str]:
-        if goal.description:
-            raw = goal.description.replace("；", ";")
-            parts = [p.strip() for line in raw.split("\n") for p in line.split(";")]
-            cleaned = [p for p in parts if p]
-            if cleaned:
-                return cleaned
-
-        hint = " ".join(filter(None, (goal.subject or "", goal.task_type or ""))).lower()
-        for keywords, stages in _GENERIC_STAGES:
-            if any(keyword in hint for keyword in keywords):
-                return list(stages)
-        return list(_DEFAULT_STAGES)
+        """Substeps exist only when the user supplied supplement content."""
+        if not goal.description or not goal.description.strip():
+            return []
+        raw = goal.description.replace("；", ";")
+        parts = [p.strip() for line in raw.split("\n") for p in line.split(";")]
+        return [p for p in parts if p]
 
     def summarize(self, value: GoalAnalysisResult) -> str:
         return f"{len(value.goals)} goal(s) decomposed"

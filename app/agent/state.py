@@ -166,9 +166,9 @@ class PlannerRequest(BaseModel):
     plan_title: str | None = None
     start_date: date
     end_date: date
+    timezone: str | None = None
     preferences: PreferenceInput | None = None
-    # Basic profile fields (MBTI is a soft profile input, never a diagnosis).
-    mbti: str | None = None
+    # Basic profile fields.
     execution_weight: float = Field(default=0.5, ge=0.0, le=1.0)
     profile: dict = Field(default_factory=dict)
 

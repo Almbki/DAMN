@@ -38,7 +38,7 @@ router = APIRouter()
 _AUTH = {401: {"model": ErrorResponse, "description": "Not authenticated"}}
 
 #: Fields handled by ProfileService (dedicated columns + state reset).
-PORTRAIT_FIELDS = frozenset({"mbti_type", "mbti_dims", "identity"})
+PORTRAIT_FIELDS = frozenset({"identity"})
 
 
 @router.get(
@@ -99,8 +99,6 @@ def update_me(
         profiles.upsert_profile(
             user_id,
             provided=set(provided),
-            mbti_type=payload.mbti_type,
-            mbti_dims=payload.mbti_dims,
             identity=payload.identity,
             trait_profile=payload.trait_profile,
         )
@@ -111,11 +109,11 @@ def update_me(
 @router.get(
     "/me/profile",
     response_model=ProfileRead,
-    summary="Read the user portrait (static MBTI + adaptive state)",
+    summary="Read the user portrait (static profile + adaptive state)",
     description=(
         "404 when the user has not set a portrait yet. `degraded` is true while "
-        "`update_count < 3`: the numbers are then cold-start priors derived from "
-        "the MBTI template, not a psychological assessment."
+        "`update_count < 3`: the numbers are then cold-start priors, not a "
+        "psychological assessment."
     ),
     responses={**_AUTH, 404: {"model": ErrorResponse, "description": "Profile not set"}},
 )

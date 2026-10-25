@@ -1,6 +1,6 @@
 """Profile data contracts (persistence/display only).
 
-The old EWMA/MBTI engine was a second, competing source of dynamic state. It has
+The old EWMA engine was a second, competing source of dynamic state. It has
 been removed; traits come from ``app.user_models.level1`` and dynamic state from
 ``app.user_models.level2``. This package now only holds the dataclasses used by
 repositories and the compatibility API.
@@ -18,10 +18,8 @@ from typing import Any
 
 @dataclass(frozen=True, slots=True)
 class UserProfileData:
-    """Static soft profile (MBTI is a self-report hint, never a diagnosis)."""
+    """Static self-reported profile."""
 
-    mbti_type: str | None = None
-    mbti_dims: dict[str, float] | None = None
     identity: str | None = None
 
 

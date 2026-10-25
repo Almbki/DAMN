@@ -7,9 +7,6 @@ The old EWMA portrait engine is no longer a runtime source of truth:
   state, produced by replaying DDSR-V1 over real feedback/execution history.
 * The legacy ``user_states`` float columns remain as **display projections** and
   API compatibility fields only; no code derives a second state from them.
-
-MBTI stays a soft self-report hint (cold-start only), never a model input that
-overrides Level 1/2.
 """
 
 from __future__ import annotations
@@ -35,7 +32,7 @@ from app.user_models.runtime import UserModelRuntime
 
 WINDOW_7D = 7
 WINDOW_30D = 30
-PROFILE_FIELDS: tuple[str, ...] = ("mbti_type", "mbti_dims", "identity")
+PROFILE_FIELDS: tuple[str, ...] = ("identity",)
 
 
 class ProfileService:
@@ -50,7 +47,7 @@ class ProfileService:
         self._user_models = UserModelService(session, runtime=runtime)
 
     # ------------------------------------------------------------------
-    # static portrait (MBTI is soft self-report only)
+    # static portrait
     # ------------------------------------------------------------------
     def _require_user(self, user_id: int) -> User:
         user = self._users.get_by_id(user_id)
@@ -66,8 +63,7 @@ class ProfileService:
         user = self._require_user(user_id)
         profile = self._to_profile_data(user)
         return bool(user.trait_profile) or any(
-            getattr(profile, field) is not None
-            for field in ("mbti_type", "mbti_dims", "identity")
+            getattr(profile, field) is not None for field in PROFILE_FIELDS
         )
 
     def upsert_profile(
@@ -75,23 +71,19 @@ class ProfileService:
         user_id: int,
         *,
         provided: set[str],
-        mbti_type: str | None = None,
-        mbti_dims: dict[str, float] | None = None,
         identity: str | None = None,
         trait_profile: dict | None = None,
     ) -> UserStateData:
-        """Update the soft portrait and/or import a validated Level 1 profile.
+        """Update the static portrait and/or import a validated Level 1 profile.
 
-        Changing MBTI no longer re-initialises Level 2: dynamic state comes from
-        real observations, not from a personality template.
+        Changing the portrait does not re-initialise Level 2: dynamic state comes
+        from real observations, not from a personality template.
         """
         self._require_user(user_id)
-        incoming = {"mbti_type": mbti_type, "mbti_dims": mbti_dims, "identity": identity}
+        incoming = {"identity": identity}
         updates: dict[str, object] = {
             field: incoming[field] for field in PROFILE_FIELDS if field in provided
         }
-        if "mbti_type" in updates and updates["mbti_type"] is not None:
-            updates["mbti_type"] = str(updates["mbti_type"]).strip().upper() or None
         if updates:
             self._users.update_fields(user_id, **updates)
         if trait_profile is not None:
@@ -183,7 +175,6 @@ class ProfileService:
         return {
             "level1": context.trait.model_dump(mode="json") if context.trait else None,
             "level2": context.state.model_dump(mode="json") if context.state else None,
-            "legacy_mbti": self.get_profile(user_id).mbti_type,
             "has_trait_profile": trait_profile is not None,
             "has_level2_profile": state_profile is not None,
             "degraded": context.degraded,
@@ -199,11 +190,7 @@ class ProfileService:
     # ------------------------------------------------------------------
     @staticmethod
     def _to_profile_data(user: User) -> UserProfileData:
-        return UserProfileData(
-            mbti_type=user.mbti_type,
-            mbti_dims=dict(user.mbti_dims) if user.mbti_dims else None,
-            identity=user.identity,
-        )
+        return UserProfileData(identity=user.identity)
 
 
 def _project_level2(state: UserStateData) -> UserStateData:

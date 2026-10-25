@@ -1,5 +1,5 @@
 import { useRouter } from 'expo-router';
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
 import {
   ScrollView,
   StyleSheet,
@@ -18,7 +18,7 @@ import { EmptyState, InlineNotice } from '@/components/ui/states';
 import { Surface } from '@/components/ui/surface';
 import { Fonts, Layout, Line, Radius, Space, Type } from '@/constants/tokens';
 import { formatShort, parseISO } from '@/domain/date';
-import type { DraftTask, PendingTask } from '@/domain/decompose';
+import type { PendingTask } from '@/domain/decompose';
 import { TASK_KIND_LABEL } from '@/domain/task';
 import { usePlan } from '@/state/plan';
 import { useTheme } from '@/state/theme';
@@ -39,6 +39,9 @@ export default function GoalScreen() {
     adjustPreview,
     confirmPreview,
     previewMeta,
+    previewTasks,
+    previewBusy,
+    dismissPreview,
     lastConfirmedPlanId,
     clearLastConfirmed,
     actionError,
@@ -47,20 +50,9 @@ export default function GoalScreen() {
 
   const [addOpen, setAddOpen] = useState(false);
   const [editingId, setEditingId] = useState<number | null>(null);
-  const [preview, setPreview] = useState<DraftTask[] | null>(null);
-  const [previewBusy, setPreviewBusy] = useState(false);
   const [previewMessage, setPreviewMessage] = useState<string | null>(null);
 
   const editingItem = editingId == null ? undefined : pendingTasks.find((item) => item.id === editingId);
-
-  // Confirm (and the budget-exhausted adjust path) both land a plan id. Only
-  // then is it safe to drop the preview; a failed confirm keeps it open.
-  useEffect(() => {
-    if (lastConfirmedPlanId == null) return;
-    // eslint-disable-next-line react-hooks/set-state-in-effect -- close the preview once confirm succeeds
-    setPreview(null);
-    setPreviewMessage(null);
-  }, [lastConfirmedPlanId]);
 
   function submit(input: PendingTaskInput) {
     if (editingId != null) updatePendingTask(editingId, input);
@@ -76,35 +68,17 @@ export default function GoalScreen() {
 
   async function startDecompose() {
     clearLastConfirmed();
-    setPreviewBusy(true);
     setPreviewMessage(null);
-    try {
-      const drafts = await decomposePreview();
-      setPreview(drafts.length > 0 ? drafts : null);
-    } finally {
-      setPreviewBusy(false);
-    }
+    await decomposePreview();
   }
 
   async function regenerate(feedback: string) {
-    setPreviewBusy(true);
-    try {
-      const result = await adjustPreview(feedback);
-      setPreviewMessage(result.message);
-      if (result.applied) setPreview(null);
-      else if (result.drafts) setPreview(result.drafts);
-    } finally {
-      setPreviewBusy(false);
-    }
+    const result = await adjustPreview(feedback);
+    setPreviewMessage(result.message);
   }
 
   async function confirm() {
-    setPreviewBusy(true);
-    try {
-      await confirmPreview();
-    } finally {
-      setPreviewBusy(false);
-    }
+    await confirmPreview();
   }
 
   return (
@@ -129,7 +103,7 @@ export default function GoalScreen() {
           </Text>
         </View>
 
-        {actionError && !preview ? (
+        {actionError && !previewTasks ? (
           <InlineNotice message={actionError} onDismiss={clearActionError} />
         ) : null}
 
@@ -218,10 +192,10 @@ export default function GoalScreen() {
         />
       ) : null}
 
-      {preview ? (
+      {previewTasks ? (
         <DecomposePreviewDialog
           mode={mode}
-          tasks={preview}
+          tasks={previewTasks}
           canAdjust={previewMeta?.canAdjust ?? true}
           busy={previewBusy}
           message={previewMessage}
@@ -235,7 +209,7 @@ export default function GoalScreen() {
           onRegenerate={regenerate}
           onConfirm={confirm}
           onClose={() => {
-            setPreview(null);
+            dismissPreview();
             setPreviewMessage(null);
           }}
         />
@@ -328,6 +302,7 @@ const styles = StyleSheet.create({
   },
   scroll: {
     flex: 1,
+    minHeight: 0,
   },
   scrollContent: {
     gap: Space.xl,

@@ -36,6 +36,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
     <View
       style={[
         styles.content,
+        meta.selfScroll && styles.contentSelfScroll,
         {
           maxWidth: Layout.contentMax,
           paddingHorizontal: wide ? Layout.padWide : Layout.padNarrow,
@@ -334,6 +335,16 @@ const styles = StyleSheet.create({
     // Lets a page fill the viewport so its absolute bottom-right FABs pin to the
     // bottom instead of floating right after short content.
     flexGrow: 1,
+  },
+  contentSelfScroll: {
+    // The page owns scrolling here, so this wrapper must be a bounded flex box;
+    // `flexGrow` alone leaves the inner ScrollView without a definite height and
+    // desktop web clips it. Spell out the basis/shrink so it overrides the
+    // shared `flexGrow` wrapper deterministically.
+    flexGrow: 1,
+    flexShrink: 1,
+    flexBasis: 0,
+    minHeight: 0,
   },
   rail: {
     borderRightWidth: 1,

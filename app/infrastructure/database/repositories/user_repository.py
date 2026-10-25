@@ -19,8 +19,6 @@ class UserRepository(RepositoryBase):
             execution_weight=user.execution_weight,
             profile=user.profile,
             scheduling_preferences=user.scheduling_preferences or None,
-            mbti_type=user.mbti_type,
-            mbti_dims=user.mbti_dims,
             identity=user.identity,
             trait_profile=user.trait_profile,
             trait_model_version=user.trait_model_version,

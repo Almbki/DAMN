@@ -35,14 +35,10 @@ class User(Base):
         JSON, nullable=True, default=None
     )
     # --- user portrait (static part of the profile engine, P3) ------------
-    #: MBTI is a SOFT self-report input, never a diagnosis.
-    mbti_type: Mapped[str | None] = mapped_column(String(4), nullable=True)
-    #: Per-dimension weights {"ie","sn","tf","jp"} -> [0, 1]; NULL = not answered.
-    mbti_dims: Mapped[dict[str, Any] | None] = mapped_column(JSON, nullable=True, default=None)
     identity: Mapped[str | None] = mapped_column(String(200), nullable=True)
     # --- Level 1 real trait model (IPIP-NEO-120 CAT output) ---------------
     #: Validated TraitProfileV1 JSON. This is the authoritative stable-trait
-    #: record; the legacy MBTI columns above remain only as a soft self-report.
+    #: record.
     trait_profile: Mapped[dict[str, Any] | None] = mapped_column(
         JSON, nullable=True, default=None
     )

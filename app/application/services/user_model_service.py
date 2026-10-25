@@ -23,7 +23,7 @@ from typing import Any
 
 from sqlalchemy.orm import Session
 
-from app.domain.models import Task
+from app.domain.models import Task, TaskExecution
 from app.domain.profile.models import UserStateData
 from app.infrastructure.database.repositories import (
     FeedbackRepository,
@@ -213,10 +213,18 @@ class UserModelService:
             entry = buckets[day]
             plans = [self._level2_task_plan(task, day) for task in entry["tasks"]]
             known_ids = {plan.task_id for plan in plans}
+            # One task can have several execution rows on the same day: the
+            # frontend patches start, partial progress and completion
+            # separately, and each patch appends a row. Level 2 requires one
+            # execution per task/day, so collapse them chronologically first.
+            grouped: dict[int, list[TaskExecution]] = {}
+            for execution in entry["executions"]:
+                if str(execution.task_id) not in known_ids:
+                    continue
+                grouped.setdefault(execution.task_id, []).append(execution)
             day_executions = [
-                self._level2_execution(execution)
-                for execution in entry["executions"]
-                if str(execution.task_id) in known_ids
+                self._level2_execution(self._merge_executions(grouped[task_id]))
+                for task_id in sorted(grouped)
             ]
             feedback = feedback_by_day.get(day)
             reflection = None
@@ -241,6 +249,73 @@ class UserModelService:
                 )
             )
         return days
+
+    @staticmethod
+    def _merge_executions(rows: list[TaskExecution]) -> TaskExecution:
+        """Collapse one task/day's execution rows into a single observation.
+
+        ``PlanService.update_task`` appends a row per execution patch (start,
+        partial progress, completion). Level 2 models one execution per task and
+        day, so the rows are merged chronologically: earliest start, latest
+        finish, latest cumulative duration, maximum completion and the latest
+        observed interruption count (``None`` stays ``None``).
+        """
+        if not rows:
+            raise ValueError("cannot merge an empty list of executions")
+        ordered = sorted(rows, key=lambda row: (row.created_at, row.id or 0))
+        started_at: datetime | None = None
+        finished_at: datetime | None = None
+        actual_duration: int | None = None
+        completion_rate = 0.0
+        completed = False
+        interruption_count: int | None = None
+        metadata: dict[str, Any] = {}
+        for row in ordered:
+            if row.started_at is not None:
+                started_at = (
+                    row.started_at
+                    if started_at is None
+                    else min(started_at, row.started_at)
+                )
+            if row.finished_at is not None:
+                finished_at = (
+                    row.finished_at
+                    if finished_at is None
+                    else max(finished_at, row.finished_at)
+                )
+            if row.actual_duration is not None:
+                # The frontend sends cumulative actual minutes, not increments.
+                actual_duration = row.actual_duration
+            completion_rate = max(completion_rate, row.completion_rate)
+            completed = completed or row.completed
+            if row.interruption_count is not None:
+                interruption_count = row.interruption_count
+            for field in (
+                "difficulty_feedback",
+                "stress_before",
+                "stress_after",
+                "failure_reason",
+                "time_of_day",
+            ):
+                value = getattr(row, field)
+                if value is not None:
+                    metadata[field] = value
+        latest = ordered[-1]
+        return latest.model_copy(
+            update={
+                "started_at": started_at,
+                "finished_at": finished_at,
+                "actual_duration": actual_duration,
+                "completion_rate": completion_rate,
+                "completed": completed,
+                "interruption_count": interruption_count,
+                # Non-null in the domain model: keep the latest row's values.
+                "planned_duration": latest.planned_duration,
+                "data_origin": latest.data_origin,
+                "created_at": latest.created_at,
+                **metadata,
+            }
+        )
 
     @staticmethod
     def _level2_task_plan(task: Task, day: date) -> Level2TaskPlan:

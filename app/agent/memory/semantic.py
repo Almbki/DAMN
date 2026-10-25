@@ -19,8 +19,6 @@ def _confidence(update_count: int, *, base: float = 0.4, span: int = 20) -> floa
 def build_semantic_memory(
     user: User | None,
     state: UserStateData | None = None,
-    *,
-    mbti: str | None = None,
 ) -> list[MemoryItem]:
     """Derive long-lived facts about the user from their profile and state."""
     items: list[MemoryItem] = []
@@ -58,22 +56,6 @@ def build_semantic_memory(
                     source="users.identity",
                 )
             )
-
-    # MBTI is a soft profile input only - never a diagnosis.
-    if mbti:
-        items.append(
-            MemoryItem(
-                kind=MemoryKind.SEMANTIC,
-                key="mbti",
-                value={"value": mbti.upper()},
-                summary=(
-                    f"MBTI self-report {mbti.upper()} "
-                    "(soft cold-start prior, not a diagnosis; decays as feedback accumulates)"
-                ),
-                confidence=0.4,
-                source="users.mbti_type",
-            )
-        )
 
     if state is not None and state.level2_profile:
         items.append(

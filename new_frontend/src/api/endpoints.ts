@@ -16,6 +16,7 @@ import type {
   PlanGenerateRequest,
   PlanListItem,
   PlanRead,
+  PreviewResponse,
   ProfileRead,
   ProfileUpdateRequest,
   RegisterRequest,
@@ -184,6 +185,11 @@ export function getPlanChanges(planId: number) {
 /** 落库：草稿 → 正式计划（`POST /plans/preview/{thread_id}/confirm`）。 */
 export function confirmPreview(threadId: string) {
   return apiRequest<ConfirmPlanResponse>(`/plans/preview/${threadId}/confirm`, { method: 'POST' });
+}
+
+/** Cross-device recovery: current user's latest completed preview, if any. */
+export function getLatestPreview() {
+  return apiRequest<PreviewResponse>('/plans/preview/latest');
 }
 
 export function listFeedback(planId: number) {
