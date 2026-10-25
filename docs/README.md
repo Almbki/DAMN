@@ -1,42 +1,58 @@
-# 文档索引（Docs Index）
+# DAMN
 
-> 先读这页，再按需跳转。⭐ = 权威/最新；⚠️ = 部分过时（内容仍可参考，但部分代码符号已变更）。
+这个项目要做的事：接收一个目标，把目标拆成可以执行的任务，估计每个任务需要多久，安排每天做哪些任务，记录实际执行情况，再根据记录调整后面的估计和安排。
 
-## 权威文档（本次校准，2026-10）
+它想解决的不是“再做一个待办清单”，而是三件事：
 
-| 文档 | 内容 |
-| --- | --- |
-| ⭐ [`model-agent-integration-v1.md`](model-agent-integration-v1.md) | **本次三层模型 + Agent 重构交付**：真实 Level 1/2/3 运行时、Shadow Mode、PlannerRuntime/Workflow、迁移、验证、剩余风险 |
-| ⭐ [`frontend-model-integration-v1.md`](frontend-model-integration-v1.md) | **前端 ↔ 三层模型对齐**：契约审计、Level 1 CAT 测评、Profile 两层、执行数据采集、Developer 页面、验证与风险 |
-| ⭐ [`auth-demo-synthetic-v1.md`](auth-demo-synthetic-v1.md) | **V1.1 认证/引导/演示/合成数据**：Login/Register/Logout、Level 1 强制 Onboarding、重测冷却、IDOR、execution integrity、Synthetic Scenario Import/Reset |
-| ⭐ [`streaming-and-callchains.md`](streaming-and-callchains.md) | **流式手册**：真流式架构与契约、Prompt 全清单（精确行号）、全功能调用链、画像摘出清单、LangGraph 注册点/边/工具 |
-| ⭐ [`langgraph-state-machine.md`](langgraph-state-machine.md) | **LangGraph 权威文档**：两张图的节点/函数/文件行号、边与条件、Mermaid、状态键、工具、SSE 例外 |
-| ⭐ [`project-structure-audit.md`](project-structure-audit.md) | **重构盘点**：项目树（排除 `models_test`）、分层、全部接口、模块清单、真实/假数据对照、ML 模块专项、已知风险 |
-| ⭐ [`architecture-overview.md`](architecture-overview.md) | **架构总览**：分层、各层文件地图、数据模型、两条主链路、不变量、扩展接缝 |
-| ⭐ [`development-handbook.md`](development-handbook.md) | **开发手册**：核心 vs 旁路、清理记录、已知缺陷、架构 checklist、调试清单 |
-| ⭐ [`product-painpoints.md`](product-painpoints.md) | **痛点与需求建议**（信息不可信 / 拆解不可衡量 / backlog 等） |
-| ⭐ [`replan-trigger-design.md`](replan-trigger-design.md) | **重排触发设计**：现状诊断、仲裁架构、新增任务、未完成 backlog |
+1. 目标太大、太模糊时，知道今天先做什么。
+2. 每天的任务量不要忽高忽低，不要突然塞爆。
+3. 临时出现的事情要能接住，但不能让长期任务永远排不上。
 
-## 主题文档
+## 现在是什么状态
 
-| 文档 | 状态 | 内容 |
-| --- | --- | --- |
-| [`modules.md`](modules.md) | ⚠️ 引用已删符号 | 逐模块详解 + 调用链 + 调试清单（正文仍很有用） |
-| [`architecture.md`](architecture.md) | ⚠️ 过时 | 英文架构（仍提 `UserModelService` / 9 个 ORM / `app/ml/user_model.py`） |
-| [`langgraph.md`](langgraph.md) | ⚠️ 自标 SUPERSEDED | 初版 6 节点原型；见 `agent/state-machine.md` |
-| [`domain.md`](domain.md) | ⚠️ 含已删的 `UserModel` 章节 | 实体、枚举、7 条规则、排期、版本语义 |
-| [`user-portrait.md`](user-portrait.md) | ⚠️ EWMA 已删除 | 旧画像说明；现以 `model-agent-integration-v1.md` 与 `app/user_models` 为准 |
-| [`ml.md`](ml.md) | ⚠️ mock 已删除 | 旧预测器接口；生产已改为真实三层模型 + 确定性 estimate，Level 3 仅 shadow |
-| [`agent/`](agent/README.md) | ✅ | Agent 层：state-machine / data-flow / prompts / tools / memory / testing |
-| [`api.md`](api.md) · [`api-frontend-alignment.md`](api-frontend-alignment.md) | ✅ | 端点参考 + 前端契约对齐 |
-| [`development.md`](development.md) | ✅ | 环境/命令（入门用；深度见 `development-handbook.md`） |
-| [`research_direction.md`](research_direction.md) | ✅ | 论文检索方向（ML 变量 → Feature） |
-| [`database/agent-migration.md`](database/agent-migration.md) | ✅ | Schema 迁移历史 |
+**当前代码**是远端 `V1.1-test`（2026-10-24）：后端 229 个测试、前端 19 个测试。它已经实现了三层模型运行时（Level 3 只跑 shadow）、Agent/LangGraph 编排、`new_frontend/`、认证/合成数据，以及一套“优先级排序 + 最早可行日”的当前调度器。
 
-## 快速定位
+**这不是我们的目标设计**。目标设计里的平滑、防饿死、突发预留/周期配额、五段式时间分配、三天局部重排等，还没有在代码里实现。先读 [当前实现.md](当前实现.md) 知道现状，再读 [架构.md](架构.md) 和 [决策记录.md](决策记录.md) 知道目标，最后看 [实施指导.md](实施指导.md) 的差距和实施顺序。
 
-- **我是新接手的人** → `architecture-overview.md` → `development-handbook.md` §1（核心 vs 旁路）。
-- **我要改代码** → `development-handbook.md` §5 checklist + §6「改哪里」。
-- **我要做自适应/重排** → `replan-trigger-design.md`。
-- **我要做需求规划** → `product-painpoints.md`。
-- **我要调试** → `development-handbook.md` §7 + `modules.md` §10。
+`models_test/` 是冻结的测试/参考包，不是运行时；真实模型运行在 `app/user_models/`。
+
+## 人类怎么读
+
+按“先现状、后目标、再差距”的顺序：
+
+1. [当前实现](当前实现.md)：代码现在实际怎么工作、数据从哪来、怎么存、调度实际怎么排。
+2. [技术索引](技术索引.md) 里的 [开发手册](开发手册.md) 和 [项目结构盘点](项目结构盘点.md)：跑起来、看目录、知道核心与旁路。
+3. [目标架构](架构.md)：六层设计、数据流、三条不变规则。
+4. [决策记录](决策记录.md)：已经定了什么、为什么、还有什么没定。
+5. [三层用户模型](三层用户模型.md)：稳定特质、每日状态、单任务预测；以及它和当前实现的关系。
+6. [实施指导](实施指导.md)：从当前代码到目标设计，按什么顺序做、每阶段验收。
+7. [证据现状](证据现状.md)：哪些有研究支持、哪些只是工程默认、哪些还没验证。
+8. [研究证据](research/README.md)：文献卡片和台账。
+
+## 先跑起来
+
+```powershell
+uv sync --extra dev
+uv run pytest
+uv run uvicorn app.main:app --reload   # http://localhost:8000/docs
+cd new_frontend
+npm test
+npm run typecheck
+```
+
+命令和目录规则以根目录 [AGENTS.md](../AGENTS.md) 为准；这里只放入门命令。
+
+前端设计参考仍在 [design/前端设计系统.md](design/前端设计系统.md)。比赛规则是外部约束，保留在 [fin/比赛规则-AIC-AI+软件创新.md](fin/比赛规则-AIC-AI+软件创新.md)。
+
+## AI 怎么读
+
+AI 的入口是根目录 [AGENTS.md](../AGENTS.md)，不是这份 README。`AGENTS.md` 保留技术细节、命令和目录规则；这份 README 和上面的文档是给人读的，尽量不用缩写，不要求查表。
+
+代码级、实现级的技术文档在 [技术索引.md](技术索引.md)：架构总览、开发手册、模块详解、Agent 层、三层模型运行时、前端契约、认证/演示/合成数据、迁移历史。它们是给开发和调试用的，不是人读入口。
+
+## 文档规则
+
+- 只用 Markdown，不生成网页，不维护 MkDocs 或其它展示层。
+- 人读的文档用自然语言；减少抽象层，不用孤立的缩写指代。
+- 研究证据保留原始卡片；它是依据，不是当前设计说明。
+- 旧的后端说明如果已经被新文档覆盖，就删除，不再保留第二套说法。

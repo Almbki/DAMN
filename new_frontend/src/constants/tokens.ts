@@ -21,7 +21,7 @@ import { Platform } from 'react-native';
  *  3. Numbers are instruments: durations, counts and clocks use IBM Plex Mono.
  *
  * Light only for now; the dark roles are kept (unused) so the theme can be
- * switched on later without re-deriving. See docs/design/frontend-design-system.md.
+ * switched on later without re-deriving. See docs/design/前端设计系统.md.
  */
 
 /** The one colour the whole palette is derived from. */
