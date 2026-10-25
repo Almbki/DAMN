@@ -26,6 +26,7 @@ from sqlalchemy.orm import Session
 from app.core.config import get_settings
 from app.domain.models import (
     DailyState,
+    EvidenceItem,
     PredictionOutcome,
     PredictionSnapshot,
     Task,
@@ -34,6 +35,7 @@ from app.domain.models import (
 from app.domain.profile.models import UserStateData
 from app.infrastructure.database.repositories import (
     DailyStateRepository,
+    EvidenceItemRepository,
     FeedbackRepository,
     GoalRepository,
     PredictionOutcomeRepository,
@@ -52,6 +54,7 @@ from app.user_models.contracts import (
     TaskPredictionContext,
     UserModelContext,
 )
+from app.user_models.level2.ddsr.engine import DayEvidence
 from app.user_models.level2.ddsr.schemas import (
     DayInput,
     PassiveContext,
@@ -75,6 +78,16 @@ def _is_observed_execution(execution) -> bool:
         or (execution.completion_rate or 0.0) > 0.0
         or execution.actual_duration is not None
     )
+
+
+def _evidence_task_id(task_id: str | None) -> int | None:
+    """Map a Level 2 string task id back to the tasks primary key."""
+    if task_id is None:
+        return None
+    try:
+        return int(task_id)
+    except (TypeError, ValueError):
+        return None
 
 
 _LOCAL_TZ = datetime.now().astimezone().tzinfo
@@ -147,6 +160,7 @@ class UserModelService:
         self._feedbacks = FeedbackRepository(session)
         self._goals = GoalRepository(session)
         self._daily_states = DailyStateRepository(session)
+        self._evidence = EvidenceItemRepository(session)
         self._prediction_snapshots = PredictionSnapshotRepository(session)
         self._prediction_outcomes = PredictionOutcomeRepository(session)
         self._shadow = ShadowPredictionRepository(session)
@@ -200,11 +214,11 @@ class UserModelService:
         trait = self.get_trait_profile(user_id)
         if trait is None:
             return None
-        days, day_origins = self._build_days_with_origins(user_id)
+        days, day_origins, day_feedback_ids = self._build_days_with_origins(user_id)
         if not days:
             return None
         try:
-            profiles = self._runtime.level2.replay_all(days, trait)
+            profiles, extractions = self._runtime.level2.replay_with_evidence(days, trait)
             snapshots = [self._runtime.level2.snapshot(profile) for profile in profiles]
         except Exception as exc:  # noqa: BLE001 - Level 2 failure must degrade
             logger.warning("level2 refresh failed for user=%s: %s", user_id, exc)
@@ -256,6 +270,18 @@ class UserModelService:
                 "daily state persistence failed for user=%s: %s", user_id, exc
             )
 
+        try:
+            # Savepoint: evidence is an audit trail, never a reason to fail the
+            # caller's request or roll back the state snapshot.
+            with self._session.begin_nested():
+                self._persist_reflection_evidence(
+                    user_id, extractions, day_feedback_ids
+                )
+        except Exception as exc:  # noqa: BLE001 - evidence audit must degrade
+            logger.warning(
+                "evidence persistence failed for user=%s: %s", user_id, exc
+            )
+
         existing = self._states.get_by_user(user_id) or UserStateData()
         updated = replace(
             existing,
@@ -290,8 +316,8 @@ class UserModelService:
 
     def _build_days_with_origins(
         self, user_id: int
-    ) -> tuple[list[DayInput], dict[date, str]]:
-        """Build Level 2 day inputs plus the per-day provenance of their data."""
+    ) -> tuple[list[DayInput], dict[date, str], dict[date, int]]:
+        """Build Level 2 day inputs plus per-day provenance and feedback ids."""
         tasks = self._tasks.list_by_user(user_id)
         executions = self._executions.list_by_user(user_id, limit=2000)
         feedbacks = self._feedbacks.list_by_user(user_id, limit=500)
@@ -339,6 +365,11 @@ class UserModelService:
         for day in feedback_by_day:
             if day <= today:
                 bucket(day)
+        day_feedback_ids = {
+            day: feedback.id
+            for day, feedback in feedback_by_day.items()
+            if feedback.id is not None and day <= today
+        }
 
         origins: dict[date, str] = {}
 
@@ -412,7 +443,55 @@ class UserModelService:
                     passive_context=passive,
                 )
             )
-        return days, origins
+        return days, origins, day_feedback_ids
+
+    def _persist_reflection_evidence(
+        self,
+        user_id: int,
+        extractions: list[DayEvidence],
+        feedback_ids: dict[date, int],
+    ) -> None:
+        """Replace each day's accepted evidence with the latest extraction.
+
+        Refresh replays the whole history, so this must be idempotent: delete
+        the day's previous rows before inserting the new ones. A failed
+        extraction writes nothing (and keeps the previously accepted rows) so a
+        transient LLM error cannot destroy the audit trail.
+        """
+        for extraction in extractions:
+            if not extraction.ok:
+                continue
+            feedback_id = feedback_ids.get(extraction.date)
+            if feedback_id is None:
+                continue
+            self._evidence.delete_by_feedback(feedback_id)
+            if not extraction.items:
+                continue
+            self._evidence.create_many(
+                [
+                    EvidenceItem(
+                        user_id=user_id,
+                        feedback_id=feedback_id,
+                        task_id=_evidence_task_id(item.task_id),
+                        reflection_field=item.source_field.value,
+                        evidence_type=item.evidence_type.value,
+                        direction=item.direction.value,
+                        strength=item.strength.value,
+                        period=item.period.value,
+                        cause_category=(
+                            item.cause_category.value
+                            if item.cause_category is not None
+                            else None
+                        ),
+                        voluntary=item.voluntary,
+                        evidence_text=item.evidence_text,
+                        extractor=extraction.extractor,
+                        extractor_version=extraction.extractor_version,
+                        status="accepted",
+                    )
+                    for item in extraction.items
+                ]
+            )
 
     @staticmethod
     def _merge_executions(rows: list[TaskExecution]) -> TaskExecution:
@@ -527,9 +606,18 @@ class UserModelService:
             if _is_observed_execution(execution)
         ]
         completion = [bool(execution.completed) for execution in executions]
+        # A state failure (exhaustion, illness, a bad day) says little about how
+        # long the task actually takes; keep it out of the duration estimate so
+        # a bad day does not pollute the long-term duration ratio. Completion
+        # history keeps every observed execution on purpose.
+        duration_samples = [
+            execution
+            for execution in executions
+            if execution.failure_category != "state"
+        ]
         ratios = [
             round(execution.actual_duration / execution.planned_duration, 6)
-            for execution in executions
+            for execution in duration_samples
             if execution.actual_duration and execution.planned_duration
         ]
         feedbacks = list(reversed(self._feedbacks.list_by_user(user_id, limit=30)))

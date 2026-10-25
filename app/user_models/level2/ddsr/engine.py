@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 from collections.abc import Mapping
+from dataclasses import dataclass
+from datetime import date
 
 from .config import DDSRConfig
 from .evidence.base import (
@@ -14,6 +16,7 @@ from .evidence.rule_based import RuleBasedEvidenceExtractor
 from .schemas import (
     DayInput,
     DynamicStateProfile,
+    EvidenceItem,
     EvidenceMetadata,
     ExtractionResult,
     NextDayPrior,
@@ -45,6 +48,28 @@ def _posterior_uncertainty(profile: DynamicStateProfile) -> dict[str, float]:
         "stress": profile.stress.uncertainty,
         "self_efficacy": profile.self_efficacy.uncertainty,
     }
+
+
+@dataclass(frozen=True)
+class DayEvidence:
+    """Per-day extraction audit handed to the application layer.
+
+    It mirrors the profile's EvidenceMetadata without requiring the state
+    profile to be persisted, so the caller can write evidence_items rows with
+    the extractor identity that actually produced this day's items.
+    """
+
+    date: date
+    reflection_present: bool
+    status: str
+    items: list[EvidenceItem]
+    error: str | None
+    extractor: str
+    extractor_version: str
+
+    @property
+    def ok(self) -> bool:
+        return self.status == "ok"
 
 
 class DDSREngine:
@@ -134,16 +159,20 @@ class DDSREngine:
             )
         return result, "ok", None, True
 
-    def process_day(
+    def _process_day(
         self,
         day: DayInput,
         trait: TraitContext | Mapping,
-    ) -> DynamicStateProfile:
+    ) -> tuple[DynamicStateProfile, DayEvidence]:
         trait_context = self._ensure_trait(trait)
         prior, is_cold, gap_days = self._make_prior(day)
 
         result, extraction_status, extraction_error, reflection_present = self._extract(day)
         extraction_ok = extraction_status == "ok"
+        # Read the extractor identity after extraction: a fallback extractor
+        # reports the one that actually produced this day's items.
+        extractor_name = self.extractor.name
+        extractor_version = self.extractor.version
         indicators = derive_behavioral_indicators(
             day,
             self.config,
@@ -223,8 +252,8 @@ class DDSREngine:
             ),
             behavioral_indicators=indicators,
             evidence=EvidenceMetadata(
-                extractor=self.extractor.name,
-                extractor_version=self.extractor.version,
+                extractor=extractor_name,
+                extractor_version=extractor_version,
                 extraction_status=extraction_status,
                 reflection_fields_present=(
                     day.reflection.present_fields()
@@ -241,7 +270,23 @@ class DDSREngine:
             limitations=limitations,
         )
         self._previous = profile
-        return profile
+        return profile, DayEvidence(
+            date=day.date,
+            reflection_present=reflection_present,
+            status=extraction_status,
+            items=list(result.evidence),
+            error=extraction_error,
+            extractor=extractor_name,
+            extractor_version=extractor_version,
+        )
+
+    def process_day(
+        self,
+        day: DayInput,
+        trait: TraitContext | Mapping,
+    ) -> DynamicStateProfile:
+        """Process one day and return its state profile (backwards compatible)."""
+        return self._process_day(day, trait)[0]
 
     def replay(
         self,
@@ -250,3 +295,18 @@ class DDSREngine:
     ) -> list[DynamicStateProfile]:
         self.reset()
         return [self.process_day(day, trait) for day in days]
+
+    def replay_with_evidence(
+        self,
+        days: list[DayInput],
+        trait: TraitContext | Mapping,
+    ) -> tuple[list[DynamicStateProfile], list[DayEvidence]]:
+        """Replay days and return every profile plus each day's extraction audit."""
+        self.reset()
+        profiles: list[DynamicStateProfile] = []
+        extractions: list[DayEvidence] = []
+        for day in days:
+            profile, extraction = self._process_day(day, trait)
+            profiles.append(profile)
+            extractions.append(extraction)
+        return profiles, extractions

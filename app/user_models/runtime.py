@@ -30,6 +30,7 @@ from app.user_models.contracts import (
 )
 from app.user_models.errors import ModelUnavailableError
 from app.user_models.level1.runtime import Level1Runtime
+from app.user_models.level2.ddsr.evidence.base import EvidenceExtractor
 from app.user_models.level2.runtime import Level2Runtime
 from app.user_models.level3 import schemas as level3_schemas
 from app.user_models.level3.runtime import Level3Runtime
@@ -64,9 +65,10 @@ class UserModelRuntime:
         level2: Level2Runtime | None = None,
         level3: Level3Runtime | None = None,
         requested_mode: str | Level3Mode | None = None,
+        extractor: EvidenceExtractor | None = None,
     ) -> None:
         self.level1 = level1 or Level1Runtime()
-        self.level2 = level2 or Level2Runtime()
+        self.level2 = level2 or Level2Runtime(extractor=extractor)
         self.level3 = level3 or Level3Runtime()
         if isinstance(requested_mode, Level3Mode):
             raw_mode = requested_mode.value
@@ -83,11 +85,16 @@ class UserModelRuntime:
             self.mode = Level3Mode.SHADOW
 
     @classmethod
-    def from_settings(cls) -> UserModelRuntime:
+    def from_settings(
+        cls, extractor: EvidenceExtractor | None = None
+    ) -> UserModelRuntime:
         from app.core.config import get_settings
 
         settings = get_settings()
-        return cls(requested_mode=getattr(settings, "level3_mode", "shadow"))
+        return cls(
+            requested_mode=getattr(settings, "level3_mode", "shadow"),
+            extractor=extractor,
+        )
 
     # -- metadata ----------------------------------------------------------
     def metadata(self) -> tuple[ModelMetadata, ...]:

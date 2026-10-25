@@ -85,6 +85,12 @@ class Settings(BaseSettings):
     agent_feedback_energy_critical: float = Field(default=3.0, ge=0.0, le=10.0)
     agent_feedback_duration_bias_high: float = Field(default=0.50, ge=0.0, le=1.0)
 
+    # --- Reflection evidence extraction -----------------------------------
+    #: "auto" = LLM when a real provider is configured (rules take over on
+    #: failure); "llm" = prefer the LLM; "rule" = deterministic rules only.
+    #: A mock/dummy llm_provider always uses the deterministic rules.
+    evidence_extractor: str = "auto"
+
     # --- Three-layer user model -------------------------------------------
     #: off = do not run Level 3; shadow = run + log but never control the plan;
     #: active = reserved (v1 downgrades it to shadow, see user_models.runtime).
@@ -117,6 +123,14 @@ class Settings(BaseSettings):
         normalized = value.strip().lower()
         if normalized not in {"json_object", "json_schema"}:
             raise ValueError("llm_response_format must be 'json_object' or 'json_schema'")
+        return normalized
+
+    @field_validator("evidence_extractor")
+    @classmethod
+    def _valid_evidence_extractor(cls, value: str) -> str:
+        normalized = value.strip().lower()
+        if normalized not in {"auto", "llm", "rule"}:
+            raise ValueError("evidence_extractor must be 'auto', 'llm' or 'rule'")
         return normalized
 
     @property

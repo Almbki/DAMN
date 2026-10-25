@@ -21,7 +21,8 @@ from app.user_models.contracts import (
 )
 from app.user_models.errors import ModelInputError, ModelUnavailableError
 from app.user_models.level2.ddsr.config import DDSRConfig
-from app.user_models.level2.ddsr.engine import DDSREngine
+from app.user_models.level2.ddsr.engine import DayEvidence, DDSREngine
+from app.user_models.level2.ddsr.evidence.base import EvidenceExtractor
 from app.user_models.level2.ddsr.schemas import DayInput, DynamicStateProfile
 from app.user_models.level2.ddsr.trait_context import TraitContext
 
@@ -38,8 +39,14 @@ _ARTIFACT_FILES = [
 
 
 class Level2Runtime:
-    def __init__(self, root: Path | None = None) -> None:
+    def __init__(
+        self,
+        root: Path | None = None,
+        extractor: EvidenceExtractor | None = None,
+    ) -> None:
         self.root = root or Path(__file__).resolve().parent / "ddsr"
+        #: Reflection-evidence extractor; None -> the deterministic rules.
+        self._extractor = extractor
         self._config: DDSRConfig | None = None
         self._bundle: ArtifactBundle | None = None
         self._error: str | None = None
@@ -70,6 +77,10 @@ class Level2Runtime:
         return list(_ARTIFACT_FILES)
 
     @property
+    def extractor(self) -> EvidenceExtractor | None:
+        return self._extractor
+
+    @property
     def config(self) -> DDSRConfig:
         if not self.available:
             raise ModelUnavailableError(self._error or "level2 unavailable")
@@ -98,22 +109,34 @@ class Level2Runtime:
         )
 
     # -- replay ------------------------------------------------------------
+    def _trait_context(self, trait_profile: dict[str, Any]) -> TraitContext:
+        try:
+            return TraitContext.from_profile(trait_profile)
+        except Exception as exc:  # noqa: BLE001
+            raise ModelInputError(f"invalid trait context: {exc}") from exc
+
+    def replay_with_evidence(
+        self,
+        days: list[DayInput],
+        trait_profile: dict[str, Any],
+    ) -> tuple[list[DynamicStateProfile], list[DayEvidence]]:
+        """Replay days and return every profile plus each day's extraction audit."""
+        if not self.available:
+            raise ModelUnavailableError(self._error or "level2 unavailable")
+        if not days:
+            raise ModelInputError("level2 replay requires at least one day")
+        trait = self._trait_context(trait_profile)
+        engine = DDSREngine(self.config, extractor=self._extractor)
+        return engine.replay_with_evidence(days, trait)
+
     def replay_all(
         self,
         days: list[DayInput],
         trait_profile: dict[str, Any],
     ) -> list[DynamicStateProfile]:
         """Replay days (strictly increasing) and return every daily profile."""
-        if not self.available:
-            raise ModelUnavailableError(self._error or "level2 unavailable")
-        if not days:
-            raise ModelInputError("level2 replay requires at least one day")
-        try:
-            trait = TraitContext.from_profile(trait_profile)
-        except Exception as exc:  # noqa: BLE001
-            raise ModelInputError(f"invalid trait context: {exc}") from exc
-        engine = DDSREngine(self.config)
-        return engine.replay(days, trait)
+        profiles, _ = self.replay_with_evidence(days, trait_profile)
+        return profiles
 
     def replay(
         self,
