@@ -3,6 +3,7 @@
 from app.domain.models.agent_memory import AgentMemory
 from app.domain.models.agent_run import AgentRun
 from app.domain.models.base import DomainModel, utcnow
+from app.domain.models.daily_plan import DailyPlanRecord
 from app.domain.models.daily_state import DailyState
 from app.domain.models.enums import (
     CognitiveLoad,
@@ -33,12 +34,14 @@ from app.domain.models.task_dependency import TaskDependency
 from app.domain.models.task_event import TaskEvent
 from app.domain.models.task_standard import TaskStandard
 from app.domain.models.trait_assessment import TraitAssessment
+from app.domain.models.unscheduled_task import UnscheduledTaskRecord
 from app.domain.models.user import User
 
 __all__ = [
     "AgentMemory",
     "AgentRun",
     "CognitiveLoad",
+    "DailyPlanRecord",
     "DailyState",
     "DomainModel",
     "EvidenceItem",
@@ -66,6 +69,7 @@ __all__ = [
     "TaskStatus",
     "TimeOfDay",
     "TraitAssessment",
+    "UnscheduledTaskRecord",
     "User",
     "ViolationSeverity",
     "utcnow",

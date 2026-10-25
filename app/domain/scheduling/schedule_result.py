@@ -12,6 +12,7 @@ from datetime import date, time, timedelta
 from pydantic import BaseModel, Field
 
 from app.domain.models.enums import CognitiveLoad, Priority
+from app.domain.scheduling.daily_plan import DailyPlan, UnscheduledTask
 
 SCHEMA_VERSION = "1.0"
 
@@ -51,6 +52,12 @@ class CandidateSchedule(BaseModel):
     tasks: list[ScheduledTask] = Field(default_factory=list)
     # Tasks the scheduler could not place within the horizon.
     unscheduled_task_ids: list[int] = Field(default_factory=list)
+    # task_id -> machine-readable reason (capacity/deadline/long_term_wait/no_slot).
+    unscheduled_reasons: dict[int, str] = Field(default_factory=dict)
+    # One record per day in the horizon: capacity, usage and rationale.
+    daily_plans: list[DailyPlan] = Field(default_factory=list)
+    # Same information as unscheduled_reasons, but with the day considered.
+    unscheduled_tasks: list[UnscheduledTask] = Field(default_factory=list)
 
     def tasks_on(self, day: date) -> list[ScheduledTask]:
         return [t for t in self.tasks if t.scheduled_date == day]
@@ -66,4 +73,11 @@ class CandidateSchedule(BaseModel):
         return [self.start_date + timedelta(days=i) for i in range(max(span + 1, 1))]
 
 
-__all__ = ["CandidateSchedule", "FixedEvent", "SCHEMA_VERSION", "ScheduledTask"]
+__all__ = [
+    "CandidateSchedule",
+    "DailyPlan",
+    "FixedEvent",
+    "SCHEMA_VERSION",
+    "ScheduledTask",
+    "UnscheduledTask",
+]

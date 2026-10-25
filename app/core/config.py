@@ -61,6 +61,15 @@ class Settings(BaseSettings):
     scheduler_buffer_minutes: int = Field(default=15, ge=0)
     scheduler_high_cognitive_max_per_day: int = Field(default=2, ge=1)
     scheduler_min_replan_interval_hours: int = Field(default=24, ge=0)
+    # --- Phase 4 daily-packing knobs --------------------------------------
+    #: Minutes kept free every day for unexpected work before flexible tasks.
+    scheduler_burst_reserve_minutes: int = Field(default=60, ge=0)
+    #: Daily minutes protected for long-term work when such tasks exist.
+    scheduler_long_term_daily_floor_minutes: int = Field(default=30, ge=0)
+    #: A deadline inside this many days enters the accelerated packing group.
+    scheduler_deadline_acceleration_days: int = Field(default=3, ge=0)
+    #: Long-term tasks waiting at least this many days move to the front.
+    scheduler_long_term_max_wait_days: int = Field(default=7, ge=0)
 
     # --- Generation jobs / SSE --------------------------------------------
     generation_job_ttl_seconds: int = Field(default=1800, ge=60)
