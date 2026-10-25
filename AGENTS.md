@@ -29,7 +29,7 @@ technical.
 ## Commands (verified)
 
 - Install: `uv sync --extra dev` (creates `.venv`; requires Python 3.12)
-- All tests (opt-in): `uv run pytest` → 229 pre-Phase-1 tests + Phase 1 additions; the default loop is targeted runs, see Testing quirks.
+- All tests (opt-in): `uv run pytest` → 229 pre-Phase-1 tests + Phase 1–6 additions; the default loop is targeted runs, see Testing quirks.
 - Frontend: `cd new_frontend && npm test` → 19 logic tests · `npm run typecheck` · `npm run lint`
 - Web export: `cd new_frontend && npx expo export --platform web`
 - One file / one test: `uv run pytest tests/unit/test_rules.py -q` · `uv run pytest -k scheduler -v`
@@ -147,8 +147,9 @@ synchronously (events are stored then replayed over SSE).
 - **Auth/Demo/Synthetic: `docs/认证与合成数据-v1.md`** — Login/Register/
   Logout, Level 1 onboarding guard, reassessment cooldown, IDOR tests, execution
   provenance, and guarded synthetic scenario import/reset.
-- **User portrait (画像): `docs/用户画像.md`** — MBTI cold-start priors,
-  the EWMA state, how it reaches the agent, and the minority-weight fix.
+- **User portrait (画像): `docs/用户画像.md`** — historical portrait reference;
+  MBTI columns were removed on 2026-10-25 (`remove_legacy_mbti_20261025`), the
+  live portrait is Level 1 CAT traits + Level 2 daily state (`docs/三层用户模型.md`).
 - **Agent layer (P0+P1): `docs/agent/`** — state-machine, data-flow, prompts,
   tools, ml-interface, memory, testing, development.
 - Human docs: `docs/README.md`, `docs/架构.md`, `docs/需求.md`,
@@ -160,6 +161,9 @@ synchronously (events are stored then replayed over SSE).
 - Schema history: `docs/database/数据库迁移.md` (`7f9ae3f96ba3` added
   `agent_runs`/`prediction_logs`/`agent_memories`; `d696086158be` added
   `users.scheduling_preferences`; `4d1dc7a359da` added the portrait columns +
-  `user_states` and dropped `user_models`).
+  `user_states` and dropped `user_models`; `remove_legacy_mbti_20261025`/
+  `persist_generation_jobs_20261025` came with the upstream merge; phase 1 added
+  the six record-layer tables/columns; `49623649564a` added `daily_plans` +
+  `unscheduled_tasks`). Current head: `49623649564a`.
 - `ideas and structures/` holds the original Chinese design notes/prompts — reference
   material, not code.
