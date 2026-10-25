@@ -143,7 +143,14 @@ function assessmentScore(value: number | null | undefined, fallback = 5): number
 }
 
 function normalizeReplanRoute(value: string | null | undefined): FeedbackRoute | null {
-  if (value === 'none' || value === 'micro_adjust' || value === 'full_replan') return value;
+  if (
+    value === 'none' ||
+    value === 'postpone' ||
+    value === 'micro_adjust' ||
+    value === 'full_replan'
+  ) {
+    return value;
+  }
   return null;
 }
 
@@ -1221,12 +1228,22 @@ export function ApiPlanProvider({ children }: { children: React.ReactNode }) {
             stress_level: assessmentScore(assessment.stress),
             energy_level: assessmentScore(assessment.energy),
             free_text: input.freeText ?? null,
+            day_review: input.dayReview ?? null,
             delay_reason: input.delayReason ?? null,
             task_reasons: input.taskReasons?.map((reason) => ({
               task_id: reason.taskId,
               reason: reason.reason,
               note: reason.note ?? null,
             })),
+            task_estimates: input.taskEstimates?.map((estimate) => ({
+              task_id: estimate.taskId,
+              accuracy: estimate.accuracy,
+              actual_minutes:
+                estimate.actualMinutes != null
+                  ? Math.max(0, Math.round(estimate.actualMinutes))
+                  : null,
+            })),
+            close_day: input.closeDay === true,
           },
           { streamReplan: true },
         );

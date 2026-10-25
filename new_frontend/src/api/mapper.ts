@@ -1,5 +1,8 @@
 import { hhmm } from '@/api/format';
 import type {
+  EstimateAccuracyDay,
+  EstimateAccuracyResponse,
+  EstimateAccuracySummary,
   GoalDetailRead,
   GoalRead,
   PlanChangeRead,
@@ -260,6 +263,67 @@ export function planChangeFromApi(raw: PlanChangeRead): PlanChange {
  * headline numbers; `drivers` become the "why" lines. Mock mode still derives
  * its value with `buildSituation` from local feedback.
  */
+/** Coerce a per-day estimate row; `null` when it has no usable date. */
+function estimateDayFromApi(raw: Partial<EstimateAccuracyDay>): EstimateAccuracyDay | null {
+  const date = typeof raw.date === 'string' ? raw.date.slice(0, 10) : '';
+  if (!date) return null;
+  const plannedRaw = typeof raw.planned_minutes === 'number' ? raw.planned_minutes : 0;
+  const actualRaw = typeof raw.actual_minutes === 'number' ? raw.actual_minutes : 0;
+  const planned = Math.max(0, Math.round(plannedRaw));
+  const actual = Math.max(0, Math.round(actualRaw));
+  const ratio =
+    typeof raw.ratio === 'number' && Number.isFinite(raw.ratio)
+      ? raw.ratio
+      : planned > 0
+        ? Math.round((actual / planned) * 100) / 100
+        : null;
+  return { date, planned_minutes: planned, actual_minutes: actual, ratio };
+}
+
+/**
+ * Normalise GET /users/me/estimate-accuracy. Accepts the bare per-day list and
+ * the wrapped object (`points`/`daily`/`days` + totals) so either backend
+ * envelope renders. Returns `null` when there is nothing to show.
+ */
+export function estimateAccuracyFromApi(
+  raw: EstimateAccuracyResponse | EstimateAccuracyDay[] | null | undefined,
+): EstimateAccuracySummary | null {
+  if (raw == null) return null;
+
+  const entries: Partial<EstimateAccuracyDay>[] = Array.isArray(raw)
+    ? raw
+    : (raw.points ?? raw.daily ?? (Array.isArray(raw.days) ? raw.days : []));
+  const points = entries
+    .map(estimateDayFromApi)
+    .filter((point): point is EstimateAccuracyDay => point != null)
+    .sort((a, b) => a.date.localeCompare(b.date));
+
+  const explicitPlanned = Array.isArray(raw)
+    ? null
+    : (raw.planned_minutes ?? raw.total_planned_minutes);
+  const explicitActual = Array.isArray(raw)
+    ? null
+    : (raw.actual_minutes ?? raw.total_actual_minutes);
+  const planned =
+    typeof explicitPlanned === 'number'
+      ? explicitPlanned
+      : points.reduce((sum, point) => sum + point.planned_minutes, 0);
+  const actual =
+    typeof explicitActual === 'number'
+      ? explicitActual
+      : points.reduce((sum, point) => sum + point.actual_minutes, 0);
+  const rawRatio = Array.isArray(raw) ? null : raw.ratio;
+  const ratio =
+    typeof rawRatio === 'number' && Number.isFinite(rawRatio)
+      ? rawRatio
+      : planned > 0
+        ? Math.round((actual / planned) * 100) / 100
+        : null;
+
+  if (points.length === 0 && planned === 0 && actual === 0) return null;
+  return { points, planned_minutes: planned, actual_minutes: actual, ratio };
+}
+
 export function situationFromTrends(raw: SituationTrendRead): Situation {
   const points: SituationPoint[] = raw.points.map((point) => ({
     date: point.date,

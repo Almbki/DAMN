@@ -37,7 +37,7 @@ function fromApi(raw: ApiPreferences): SchedulingPreferences {
     highCognitiveMaxPerDay: raw.high_cognitive_max_per_day,
     sleepStart: raw.sleep_start ?? DEFAULT_PREFERENCES.sleepStart,
     sleepEnd: raw.sleep_end ?? DEFAULT_PREFERENCES.sleepEnd,
-    feedbackTime: raw.feedback_time ?? null,
+    feedbackTime: raw.feedback_time ?? DEFAULT_PREFERENCES.feedbackTime,
     feedbackEnabled: raw.feedback_enabled ?? DEFAULT_PREFERENCES.feedbackEnabled,
   });
 }

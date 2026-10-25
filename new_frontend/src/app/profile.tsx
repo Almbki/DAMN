@@ -1,6 +1,7 @@
 import { useRouter } from 'expo-router';
 import { StyleSheet, Text, View } from 'react-native';
 
+import { EstimateAccuracySection } from '@/components/feedback/estimate-accuracy';
 import { DynamicStateSection } from '@/components/profile/dynamic-state';
 import { TraitOverviewSection } from '@/components/profile/trait-overview';
 import { TrendChart } from '@/components/trend-chart';
@@ -14,7 +15,7 @@ import { useTheme } from '@/state/theme';
 export default function ProfileScreen() {
   const { colors } = useTheme();
   const router = useRouter();
-  const { situation, stats, refresh, loading, mode } = usePlan();
+  const { situation, stats, refresh, loading, mode, insight } = usePlan();
 
   return (
     <View style={styles.page}>
@@ -38,6 +39,9 @@ export default function ProfileScreen() {
 
       <DynamicStateSection />
 
+      <EstimateAccuracySection
+        key={`${insight.plan_id}:${insight.total_planned_minutes}:${insight.total_actual_minutes}`}
+      />
 
       <View style={styles.section}>
         <Text style={[styles.sectionTitle, { color: colors.ink }]}>近期反馈趋势</Text>

@@ -63,9 +63,17 @@ def submit_feedback(
     # silently dropped here.
     data = payload.model_dump()
     data["task_reasons"] = [item.model_dump() for item in payload.task_reasons]
+    # These are actions on the check-in, not columns of the feedback row.
+    close_day = bool(data.pop("close_day", False))
+    task_estimates = data.pop("task_estimates", [])
     feedback = Feedback(user_id=user_id, plan_id=plan_id, **data)
     result = service.submit_feedback(
-        user_id, plan_id, feedback, defer_replan=stream_replan
+        user_id,
+        plan_id,
+        feedback,
+        defer_replan=stream_replan,
+        close_day=close_day,
+        task_estimates=task_estimates,
     )
 
     replan_job_id: str | None = None
@@ -74,13 +82,16 @@ def submit_feedback(
 
         def runner(plan_service: PlanService, emit) -> dict:
             # The service policy already decided whether the cycle should run.
-            if result.replan_decision == "none":
+            if result.replan_decision in {"none", "postpone"}:
+                # "postpone" already applied its (cheap) task move inside the
+                # service; there is no agent cycle to run for it.
                 return {
                     "replan_triggered": False,
                     "replan_plan_id": None,
-                    "replan_decision": "none",
+                    "replan_decision": result.replan_decision,
                     "replan_reason": result.replan_reason,
                     "adjustment": None,
+                    "postponed_task_ids": result.postponed_task_ids,
                 }
             outcome = plan_service.process_feedback_cycle(
                 user_id, plan_id, note=note, emit=emit
@@ -93,6 +104,7 @@ def submit_feedback(
                 "replan_decision": result.replan_decision,
                 "replan_reason": outcome.reasons[0] if outcome.reasons else None,
                 "adjustment": _adjustment_payload(outcome),
+                "postponed_task_ids": result.postponed_task_ids,
             }
 
         job = generation_service.submit(
@@ -113,6 +125,7 @@ def submit_feedback(
         adjustment=_adjustment_payload(result.adjustment),
         replan_decision=result.replan_decision,
         replan_reason=result.replan_reason,
+        postponed_task_ids=result.postponed_task_ids,
     )
 
 

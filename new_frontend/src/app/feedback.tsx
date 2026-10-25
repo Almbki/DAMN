@@ -9,6 +9,8 @@ import {
   View,
 } from 'react-native';
 
+import type { EstimateAccuracy } from '@/api/types';
+import { TodayEstimateCard } from '@/components/feedback/estimate-accuracy';
 import { FeedbackHistory } from '@/components/feedback/feedback-history';
 import {
   FeedbackResultBanner,
@@ -18,6 +20,7 @@ import { getLastFeedbackDate, markFeedbackSubmitted } from '@/components/feedbac
 import { TaskReasonCard } from '@/components/feedback/task-reason-card';
 import { ScaleSlider } from '@/components/task/scale-slider';
 import { Banner } from '@/components/task/banner';
+import { FilterChip } from '@/components/ui/chip';
 import { Button } from '@/components/ui/button';
 import { Icon } from '@/components/ui/icon';
 import { Progress } from '@/components/ui/progress';
@@ -35,7 +38,12 @@ import { useTheme } from '@/state/theme';
 
 const WEEKDAY = ['周日', '周一', '周二', '周三', '周四', '周五', '周六'];
 
+/** 三档预估准确性；顺序与按钮一致。 */
+const ESTIMATE_OPTIONS = ['估高了', '差不多', '估低了'] as const;
+const ESTIMATE_VALUES: readonly EstimateAccuracy[] = ['over', 'ok', 'under'];
+
 type ReasonState = { reason: string; note: string };
+type EstimateState = { accuracy: EstimateAccuracy | null; actualMinutes: string };
 
 function taskMeta(task: Task): string {
   const planned = task.estimatedMinutes ?? task.predictedDuration;
@@ -74,9 +82,20 @@ export default function FeedbackScreen() {
     () => todayTasks.filter((task) => task.skipped).length,
     [todayTasks],
   );
+  // 只问「直接点完成、从没点开始」且没有实际分钟的任务：有计时的任务实际用时
+  // 已由后端按 started_at → finished_at 自动算好，不必再问。
+  const estimateCandidates = useMemo(
+    () => doneTasks.filter((task) => !task.startedAt && task.actualMinutes == null),
+    [doneTasks],
+  );
+  const allClosed = useMemo(
+    () => todayTasks.length > 0 && todayTasks.every((task) => task.done || task.skipped),
+    [todayTasks],
+  );
 
   const [reasonByTask, setReasonByTask] = useState<Record<number, ReasonState>>({});
-  const [freeText, setFreeText] = useState('');
+  const [estimateByTask, setEstimateByTask] = useState<Record<number, EstimateState>>({});
+  const [dayReview, setDayReview] = useState('');
   const [submitting, setSubmitting] = useState(false);
   const [result, setResult] = useState<FeedbackResult | null>(null);
   const [submitError, setSubmitError] = useState<string | null>(null);
@@ -114,6 +133,27 @@ export default function FeedbackScreen() {
     });
   }
 
+  function estimateFor(task: Task): EstimateState {
+    return estimateByTask[task.id] ?? { accuracy: null, actualMinutes: '' };
+  }
+
+  function setEstimate(task: Task, accuracy: EstimateAccuracy) {
+    setEstimateByTask((prev) => {
+      const current = prev[task.id] ?? { accuracy: null, actualMinutes: '' };
+      return { ...prev, [task.id]: { ...current, accuracy } };
+    });
+  }
+
+  function setEstimateMinutes(task: Task, value: string) {
+    // Backend accepts 0..1440 minutes; clamp while typing so a typo cannot 422.
+    const digits = value.replace(/[^0-9]/g, '').slice(0, 4);
+    const capped = digits ? String(Math.min(1440, Number(digits))) : '';
+    setEstimateByTask((prev) => {
+      const current = prev[task.id] ?? { accuracy: null, actualMinutes: '' };
+      return { ...prev, [task.id]: { ...current, actualMinutes: capped } };
+    });
+  }
+
   function revealResult() {
     setTimeout(
       () => scrollRef.current?.scrollTo({ y: 0, animated: !reducedMotion }),
@@ -129,6 +169,19 @@ export default function FeedbackScreen() {
     clearActionError();
 
     try {
+      // 只提交用户真正选了三档的任务；分钟留空表示「没量过」。
+      const taskEstimates = estimateCandidates.flatMap((task) => {
+        const estimate = estimateFor(task);
+        if (!estimate.accuracy) return [];
+        const minutes = Number.parseInt(estimate.actualMinutes, 10);
+        return [
+          {
+            taskId: task.id,
+            accuracy: estimate.accuracy,
+            actualMinutes: Number.isFinite(minutes) && minutes > 0 ? minutes : null,
+          },
+        ];
+      });
       const response = await submitFeedback({
         // Today's rate is automatic: done / (done + open). Skipped work is not
         // counted, matching the plan stats.
@@ -141,7 +194,9 @@ export default function FeedbackScreen() {
             note: state.note.trim() || null,
           };
         }),
-        freeText: freeText.trim() || undefined,
+        dayReview: dayReview.trim().slice(0, 5000) || undefined,
+        taskEstimates: taskEstimates.length > 0 ? taskEstimates : undefined,
+        closeDay: allClosed,
       });
       setResult(response);
       revealResult();
@@ -198,11 +253,14 @@ export default function FeedbackScreen() {
         </View>
 
         {result ? (
-          <FeedbackResultBanner
-            result={result}
-            onDismiss={() => setResult(null)}
-            onGoTodo={() => router.push('/')}
-          />
+          <View style={styles.resultBlock}>
+            <FeedbackResultBanner
+              result={result}
+              onDismiss={() => setResult(null)}
+              onGoTodo={() => router.push('/')}
+            />
+            {feedbackSaved(result) ? <TodayEstimateCard /> : null}
+          </View>
         ) : submitError ? (
           <Banner
             tone="error"
@@ -332,6 +390,61 @@ export default function FeedbackScreen() {
           </View>
         ) : null}
 
+        {estimateCandidates.length > 0 ? (
+          <Surface level="level0" radius="lg" bordered>
+            <View style={styles.card}>
+              <View style={styles.cardHead}>
+                <Text style={[styles.cardTitle, { color: colors.ink }]}>今天估得准吗？</Text>
+                <Text style={[styles.helper, { color: colors.inkFaint }]}>这些任务没有计时</Text>
+              </View>
+              <Text style={[styles.helper, { color: colors.inkMuted }]}>
+                它们是直接点完成、没有点开始的。选一下和计划比估得怎么样，帮系统校准以后的估时；实际分钟可选填。
+              </Text>
+              {estimateCandidates.map((task) => {
+                const estimate = estimateFor(task);
+                const meta = taskMeta(task);
+                return (
+                  <View
+                    key={task.id}
+                    style={[styles.estimateRow, { borderTopColor: colors.outlineVariant }]}>
+                    <Text style={[styles.taskTitle, { color: colors.ink }]}>{task.title}</Text>
+                    {meta ? (
+                      <Text style={[styles.taskMeta, { color: colors.inkMuted }]}>{meta}</Text>
+                    ) : null}
+                    <View style={styles.estimateChips}>
+                      {ESTIMATE_OPTIONS.map((option, index) => (
+                        <FilterChip
+                          key={option}
+                          label={option}
+                          selected={estimate.accuracy === ESTIMATE_VALUES[index]}
+                          onPress={() => setEstimate(task, ESTIMATE_VALUES[index])}
+                        />
+                      ))}
+                    </View>
+                    {estimate.accuracy ? (
+                      <TextField
+                        label="实际用了多少分钟（可选）"
+                        value={estimate.actualMinutes}
+                        onChangeText={(value) => setEstimateMinutes(task, value)}
+                        placeholder="例如 40"
+                        keyboardType="number-pad"
+                        background={colors.surfaceContainerLowest}
+                      />
+                    ) : null}
+                  </View>
+                );
+              })}
+            </View>
+          </Surface>
+        ) : null}
+
+        {allClosed ? (
+          <InlineNotice
+            tone="success"
+            message="今天的任务都处理完了。提交后今天到此结束，应用内不会再提醒你写反馈。"
+          />
+        ) : null}
+
         {hasTasksToday ? (
           <View style={styles.section}>
             <View style={styles.sectionHead}>
@@ -368,12 +481,18 @@ export default function FeedbackScreen() {
 
         <Surface level="level0" radius="lg" bordered>
           <View style={styles.card}>
-            <Text style={[styles.cardTitle, { color: colors.ink }]}>想补充的</Text>
+            <View style={styles.cardHead}>
+              <Text style={[styles.cardTitle, { color: colors.ink }]}>今天的四段反思</Text>
+              <Text style={[styles.helper, { color: colors.inkFaint }]}>可选</Text>
+            </View>
+            <Text style={[styles.helper, { color: colors.inkMuted }]}>
+              按四段写：今天做得怎么样 · 哪里卡住 · 今天状态 · 明天怎么看。写成一段也可以，会保存为今天的反思。
+            </Text>
             <TextField
-              label="今天还有什么想说的（可选）"
-              value={freeText}
-              onChangeText={setFreeText}
-              placeholder="比如：下午状态突然变差、任务拆分得太粗…"
+              label="写给自己看（可选）"
+              value={dayReview}
+              onChangeText={setDayReview}
+              placeholder={'今天做得怎么样？\n哪里卡住了？\n今天状态如何？\n明天打算怎么安排？'}
               multiline
               background={colors.surfaceContainerLowest}
             />
@@ -399,7 +518,9 @@ export default function FeedbackScreen() {
               ? `还有 ${missingCount} 个未完成任务没选原因`
               : unfinished.length > 0
                 ? '原因都选好了，可以提交。'
-                : '只记录状态也可以提交。'}
+                : allClosed
+                  ? '今天到此结束，提交即可。'
+                  : '只记录状态也可以提交。'}
           </Text>
           <Text style={[styles.footerMeta, { color: colors.inkFaint }]}>
             自动完成率 {Math.round(stats.todayRate * 100)}%
@@ -433,6 +554,9 @@ const styles = StyleSheet.create({
   content: {
     gap: Space.xl,
     paddingBottom: Space.xl,
+  },
+  resultBlock: {
+    gap: Space.md,
   },
   intro: {
     gap: Space.xs,
@@ -550,6 +674,16 @@ const styles = StyleSheet.create({
     fontSize: Type.bodyMedium,
     lineHeight: Type.bodyMedium * Line.relaxed,
     paddingVertical: Space.sm,
+  },
+  estimateRow: {
+    gap: Space.sm,
+    borderTopWidth: 1,
+    paddingTop: Space.md,
+  },
+  estimateChips: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: Space.sm,
   },
   completedRow: {
     flexDirection: 'row',

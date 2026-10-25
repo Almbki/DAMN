@@ -139,20 +139,23 @@ def test_feedback_includes_agent_adjustment_payload(
     assert adjustment["reasons"]
 
 
-def test_completion_only_low_does_not_replan_but_is_persisted(
+def test_completion_only_low_postpones_without_replan(
     client: TestClient, auth_headers: dict, preview_payload: dict
 ) -> None:
+    """Low completion without pressure is a scheduling problem: postpone only."""
     override_plan_service(client, route=AdjustmentRoute.FULL_REPLAN)
     plan_id = _create_plan(client, auth_headers, preview_payload)
 
     body = _submit_feedback(client, auth_headers, plan_id, 0.1)
 
-    assert body["replan_decision"] == "none"
+    assert body["replan_decision"] == "postpone"
     assert body["replan_triggered"] is False
     assert body["replan_plan_id"] is None
     assert body["adjustment"] is None
+    assert isinstance(body["postponed_task_ids"], list)
 
     plan = client.get(f"/api/v1/plans/{plan_id}", headers=auth_headers).json()
+    # Postpone keeps the plan content/version; it only moves unfinished tasks.
     assert plan["version"] == 1
 
     history = client.get(

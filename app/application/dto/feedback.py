@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 from app.application.dto.agent import FeedbackCycleOutcome
 from app.application.dto.replan import ReplanEligibility
@@ -16,7 +16,10 @@ class FeedbackSubmitResult(BaseModel):
     replan_eligibility: ReplanEligibility | None = None
     #: Agent decision from the feedback loop (route / severity / reasons).
     adjustment: FeedbackCycleOutcome | None = None
-    #: Service-level policy route: "none" / "micro_adjust" / "full_replan".
+    #: Service-level policy route: "none" / "postpone" / "micro_adjust" /
+    #: "full_replan".
     replan_decision: str = "none"
     #: Why the policy chose that route (or the graph's reason when it ran).
     replan_reason: str | None = None
+    #: Tasks moved to tomorrow by the postpone route (no new plan version).
+    postponed_task_ids: list[int] = Field(default_factory=list)

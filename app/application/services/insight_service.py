@@ -3,13 +3,18 @@
 from __future__ import annotations
 
 from collections import defaultdict
+from datetime import date, timedelta
 from statistics import mean
 
 from sqlalchemy.orm import Session
 
-from app.application.dto.insight import DailyCompletion, InsightReport
+from app.application.dto.insight import (
+    DailyCompletion,
+    DailyEstimateAccuracy,
+    InsightReport,
+)
 from app.application.exceptions import NotFoundError, PermissionDeniedError
-from app.domain.models.enums import CognitiveLoad, TaskStatus
+from app.domain.models.enums import CognitiveLoad, PlanStatus, TaskStatus
 from app.infrastructure.database.repositories import (
     FeedbackRepository,
     PlanRepository,
@@ -47,6 +52,7 @@ class InsightService:
         breakdown: dict[str, int] = defaultdict(int)
         high_cognitive_minutes = 0
         daily: dict[str, DailyCompletion] = {}
+        task_by_id = {task.id: task for task in tasks if task.id is not None}
         for task in tasks:
             breakdown[task.cognitive_load.value] += 1
             if task.cognitive_load == CognitiveLoad.HIGH:
@@ -62,9 +68,23 @@ class InsightService:
                 if task.status == TaskStatus.COMPLETED:
                     entry.completed_tasks += 1
 
+        # Observed minutes per scheduled day (the "estimate vs actual" card).
+        for execution in executions:
+            task = task_by_id.get(execution.task_id)
+            if task is None or task.scheduled_date is None:
+                continue
+            entry = daily.get(task.scheduled_date.isoformat())
+            if entry is not None:
+                entry.actual_minutes += execution.actual_duration or 0
+
         for entry in daily.values():
             entry.completion_rate = (
                 round(entry.completed_tasks / entry.total_tasks, 3) if entry.total_tasks else 0.0
+            )
+            entry.estimate_accuracy_ratio = (
+                round(entry.actual_minutes / entry.planned_minutes, 3)
+                if entry.planned_minutes
+                else None
             )
 
         stress_values = [f.stress_level for f in feedback if f.stress_level is not None]
@@ -85,6 +105,11 @@ class InsightService:
             avg_energy=round(mean(energy_values), 2) if energy_values else None,
             high_cognitive_minutes=high_cognitive_minutes,
             predicted_vs_actual_ratio=ratio,
+            estimate_accuracy_ratio=(
+                round(actual_minutes / planned_minutes, 3)
+                if planned_minutes
+                else None
+            ),
             cognitive_load_breakdown=dict(breakdown),
             daily=sorted(daily.values(), key=lambda d: d.date),
             recommendations=self._recommendations(
@@ -102,6 +127,71 @@ class InsightService:
                 high_cognitive_minutes=high_cognitive_minutes,
             ),
         )
+
+    def estimate_accuracy(
+        self, user_id: int, days: int = 7
+    ) -> list[DailyEstimateAccuracy]:
+        """Per-day planned vs actual minutes over the last ``days`` days.
+
+        Planned minutes come from every task scheduled that day; actual minutes
+        come from the recorded executions (a task with several executions sums
+        all of them). ``ratio`` is ``actual / planned`` and is ``None`` when
+        nothing was planned that day.
+        """
+        window = max(1, int(days))
+        today = date.today()
+        start = today - timedelta(days=window - 1)
+        tasks = self._tasks.list_by_user(user_id)
+        task_by_id = {task.id: task for task in tasks if task.id is not None}
+        superseded_plan_ids = {
+            plan.id
+            for plan in self._plans.list_by_user(user_id)
+            if plan.id is not None
+            and plan.status == PlanStatus.SUPERSEDED
+        }
+        planned: dict[date, int] = defaultdict(int)
+        actual: dict[date, int] = defaultdict(int)
+        window_executions = [
+            execution
+            for execution in self._executions.list_by_user(user_id, limit=5000)
+            if execution.task_id in task_by_id
+        ]
+        executed_task_ids = {execution.task_id for execution in window_executions}
+        # One conceptual task can exist as one row per plan version. Count its
+        # planned minutes only when the row belongs to the current plan or was
+        # actually executed - never twice for a replanned day.
+        for task in tasks:
+            if task.scheduled_date is None:
+                continue
+            if not (start <= task.scheduled_date <= today):
+                continue
+            if task.plan_id in superseded_plan_ids and task.id not in executed_task_ids:
+                continue
+            planned[task.scheduled_date] += task.estimated_duration
+        for execution in window_executions:
+            task = task_by_id[execution.task_id]
+            day = task.scheduled_date or execution.created_at.date()
+            if day < start or day > today:
+                continue
+            actual[day] += execution.actual_duration or 0
+
+        points: list[DailyEstimateAccuracy] = []
+        for day in sorted(set(planned) | set(actual)):
+            planned_minutes = planned[day]
+            actual_minutes = actual[day]
+            points.append(
+                DailyEstimateAccuracy(
+                    date=day.isoformat(),
+                    planned_minutes=planned_minutes,
+                    actual_minutes=actual_minutes,
+                    ratio=(
+                        round(actual_minutes / planned_minutes, 3)
+                        if planned_minutes
+                        else None
+                    ),
+                )
+            )
+        return points
 
     @staticmethod
     def _data_sufficiency(feedback_count: int, execution_count: int) -> dict:

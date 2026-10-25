@@ -16,6 +16,9 @@ replans bypass this policy and still force ``FULL_REPLAN``.
 
 from __future__ import annotations
 
+import logging
+from datetime import UTC, datetime
+
 from sqlalchemy.orm import Session
 
 from app.application.dto.feedback import FeedbackSubmitResult
@@ -29,8 +32,11 @@ from app.domain.models import Feedback
 from app.infrastructure.database.repositories import (
     FeedbackRepository,
     PlanRepository,
+    TaskExecutionRepository,
     TaskRepository,
 )
+
+logger = logging.getLogger(__name__)
 
 
 class FeedbackService:
@@ -45,6 +51,7 @@ class FeedbackService:
         self._feedback = FeedbackRepository(session)
         self._plans = PlanRepository(session)
         self._tasks = TaskRepository(session)
+        self._executions = TaskExecutionRepository(session)
         self._replan_service = replan_service
         self._plan_service = plan_service
 
@@ -55,12 +62,15 @@ class FeedbackService:
         feedback: Feedback,
         *,
         defer_replan: bool = False,
+        close_day: bool = False,
+        task_estimates: list[dict] | None = None,
     ) -> FeedbackSubmitResult:
         """Persist the check-in and (optionally) run the feedback cycle.
 
         ``defer_replan`` is used by the streaming API: the expensive agent cycle
         runs in a background job after this call returns, so only the check-in
-        side effects happen here.
+        side effects happen here. ``close_day`` stamps ``day_closed_at`` and
+        ``task_estimates`` patches the latest execution rows (best effort).
         """
         plan = self._plans.get_by_id(plan_id)
         if plan is None:
@@ -74,10 +84,18 @@ class FeedbackService:
                 "plan_id": plan_id,
                 # A check-in on a synthetic demo plan is synthetic provenance too.
                 "data_origin": plan.data_origin,
+                # Closing the day is a user action: stamp the moment it happened.
+                "day_closed_at": (
+                    datetime.now(UTC) if close_day else feedback.day_closed_at
+                ),
             }
         )
         saved = self._feedback.create(payload)
         self._session.commit()
+
+        # Estimate corrections are best-effort: a missing execution row must
+        # never block the check-in, which is the record of truth.
+        self._apply_task_estimates(plan_id, task_estimates)
 
         # Consolidate what we just learned into persisted memory (semantic /
         # episodic / procedural), so the next planning run reads it back.
@@ -90,27 +108,59 @@ class FeedbackService:
             eligibility = self._replan_service.check_eligibility(user_id, plan_id)
 
         decision = self._decide_replan(user_id, saved)
-
-        adjustment = None
-        if (
-            not defer_replan
-            and self._plan_service is not None
-            and decision.route != "none"
-        ):
-            # Free text is context for the prompt only: it no longer sets
-            # `user_adjustment`, so it cannot force a FULL_REPLAN by itself.
-            outcome = self._plan_service.process_feedback_cycle(
-                user_id, plan_id, note=saved.free_text, route=decision.route
-            )
-            if not outcome.reasons:
-                outcome.reasons = [decision.reason]
-            adjustment = outcome
-            if outcome.new_plan_id is not None and self._replan_service is not None:
-                eligibility = self._replan_service.check_eligibility(
-                    user_id, outcome.new_plan_id
-                )
-
+        route = decision.route
         replan_reason = decision.reason
+        adjustment = None
+        postponed_task_ids: list[int] = []
+
+        if self._plan_service is not None:
+            if route == "postpone":
+                # Cheap, deterministic and content-preserving: move today's
+                # unfinished tasks to tomorrow; only escalate when that day is
+                # already full.
+                postponement = self._plan_service.postpone_unfinished(
+                    user_id, plan_id, day=saved.date
+                )
+                postponed_task_ids = list(postponement.postponed_task_ids)
+                if postponement.over_capacity:
+                    route = "micro_adjust"
+                    replan_reason = (
+                        "postpone skipped: tomorrow would need "
+                        f"{postponement.tomorrow_load_minutes} of "
+                        f"{postponement.tomorrow_capacity_minutes} minutes; "
+                        f"{decision.reason}"
+                    )
+                    if not defer_replan:
+                        outcome = self._plan_service.process_feedback_cycle(
+                            user_id,
+                            plan_id,
+                            note=saved.free_text,
+                            route="micro_adjust",
+                        )
+                        if not outcome.reasons:
+                            outcome.reasons = [replan_reason]
+                        adjustment = outcome
+                        if (
+                            outcome.new_plan_id is not None
+                            and self._replan_service is not None
+                        ):
+                            eligibility = self._replan_service.check_eligibility(
+                                user_id, outcome.new_plan_id
+                            )
+            elif route != "none" and not defer_replan:
+                # Free text is context for the prompt only: it no longer sets
+                # `user_adjustment`, so it cannot force a FULL_REPLAN by itself.
+                outcome = self._plan_service.process_feedback_cycle(
+                    user_id, plan_id, note=saved.free_text, route=route
+                )
+                if not outcome.reasons:
+                    outcome.reasons = [decision.reason]
+                adjustment = outcome
+                if outcome.new_plan_id is not None and self._replan_service is not None:
+                    eligibility = self._replan_service.check_eligibility(
+                        user_id, outcome.new_plan_id
+                    )
+
         if adjustment is not None and adjustment.reasons:
             replan_reason = adjustment.reasons[0]
 
@@ -120,8 +170,9 @@ class FeedbackService:
             replan_plan_id=adjustment.new_plan_id if adjustment else None,
             replan_eligibility=eligibility,
             adjustment=adjustment,
-            replan_decision=decision.route,
+            replan_decision=route,
             replan_reason=replan_reason,
+            postponed_task_ids=postponed_task_ids,
         )
 
     def list_feedback(self, user_id: int, plan_id: int) -> list[Feedback]:
@@ -131,6 +182,44 @@ class FeedbackService:
         if plan.user_id != user_id:
             raise PermissionDeniedError("plan belongs to another user")
         return self._feedback.list_by_plan(plan_id)
+
+    def _apply_task_estimates(
+        self, plan_id: int, estimates: list[dict] | None
+    ) -> None:
+        """Patch the latest execution row with the user's estimate feedback.
+
+        Best effort by design: unknown tasks, tasks from another plan and tasks
+        without an execution row are skipped, and any failure is rolled back so
+        the already-saved check-in is never lost.
+        """
+        if not estimates:
+            return
+        try:
+            for item in estimates:
+                task_id = int(item.get("task_id") or 0)
+                task = self._tasks.get_by_id(task_id)
+                if task is None or task.plan_id != plan_id:
+                    continue
+                executions = self._executions.list_by_task(task_id)
+                if not executions:
+                    continue
+                fields: dict[str, object] = {}
+                accuracy = item.get("accuracy")
+                if accuracy in {"over", "under", "ok"}:
+                    fields["estimate_feedback"] = accuracy
+                actual_minutes = item.get("actual_minutes")
+                if actual_minutes is not None:
+                    fields["actual_duration"] = int(actual_minutes)
+                if fields:
+                    self._executions.update_fields(
+                        executions[-1].id or 0, **fields
+                    )
+            self._session.commit()
+        except Exception:  # noqa: BLE001 - the check-in is the record of truth
+            logger.warning(
+                "task estimate feedback failed for plan=%s", plan_id, exc_info=True
+            )
+            self._session.rollback()
 
     def _decide_replan(
         self, user_id: int, feedback: Feedback

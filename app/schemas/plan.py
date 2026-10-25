@@ -353,6 +353,8 @@ class DailyCompletionRead(BaseModel):
     completed_tasks: int = 0
     completion_rate: float = 0.0
     planned_minutes: int = 0
+    actual_minutes: int = 0
+    estimate_accuracy_ratio: float | None = None
 
 
 class InsightRead(BaseModel):
@@ -366,6 +368,8 @@ class InsightRead(BaseModel):
     avg_energy: float | None = None
     high_cognitive_minutes: int = 0
     predicted_vs_actual_ratio: float | None = None
+    #: total_actual_minutes / total_planned_minutes (plan-level estimate bias).
+    estimate_accuracy_ratio: float | None = None
     cognitive_load_breakdown: dict[str, int] = Field(default_factory=dict)
     daily: list[DailyCompletionRead] = Field(default_factory=list)
     recommendations: list[str] = Field(default_factory=list)

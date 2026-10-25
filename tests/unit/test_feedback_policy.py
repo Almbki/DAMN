@@ -5,7 +5,7 @@ from __future__ import annotations
 from app.domain.feedback.policy import decide_feedback_replan
 
 
-def test_completion_rate_alone_never_replans() -> None:
+def test_low_completion_without_pressure_postpones() -> None:
     decision = decide_feedback_replan(
         stress=None,
         energy=None,
@@ -13,12 +13,25 @@ def test_completion_rate_alone_never_replans() -> None:
         duration_bias=0.0,
         portrait_decision="none",
     )
-    assert decision.route == "none"
+    assert decision.route == "postpone"
     assert decision.pressure == "none"
     assert decision.signals["pressure_high"] is False
+    assert decision.signals["postpone_candidate"] is True
+    assert "postpone" in decision.reason
 
 
-def test_completion_only_does_not_even_wake_the_portrait() -> None:
+def test_completion_at_the_threshold_does_not_postpone() -> None:
+    decision = decide_feedback_replan(
+        stress=None,
+        energy=None,
+        completion_rate=0.5,
+        duration_bias=0.0,
+        portrait_decision="none",
+    )
+    assert decision.route == "none"
+
+
+def test_completion_only_does_not_wake_the_portrait() -> None:
     decision = decide_feedback_replan(
         stress=None,
         energy=None,
@@ -26,7 +39,9 @@ def test_completion_only_does_not_even_wake_the_portrait() -> None:
         duration_bias=0.0,
         portrait_decision="full_replan",
     )
-    assert decision.route == "none"
+    # Portrait history alone is still not a replan; the low completion only
+    # moves the remaining work to tomorrow.
+    assert decision.route == "postpone"
 
 
 def test_high_stress_pressure_is_enough_for_a_micro_adjustment() -> None:
@@ -130,6 +145,42 @@ def test_thresholds_are_configurable() -> None:
         stress_high=5.0,
     )
     assert decision.route == "micro_adjust"
+
+
+def test_low_completion_with_pressure_does_not_postpone() -> None:
+    decision = decide_feedback_replan(
+        stress=7.0,
+        energy=6.0,
+        completion_rate=0.2,
+        duration_bias=0.0,
+        portrait_decision="none",
+    )
+    assert decision.route == "micro_adjust"
+    assert decision.signals["postpone_candidate"] is False
+
+
+def test_high_duration_bias_beats_postpone() -> None:
+    decision = decide_feedback_replan(
+        stress=3.0,
+        energy=8.0,
+        completion_rate=0.1,
+        duration_bias=0.9,
+        portrait_decision="none",
+    )
+    assert decision.route == "micro_adjust"
+    assert decision.signals["postpone_candidate"] is False
+
+
+def test_postpone_threshold_is_configurable() -> None:
+    decision = decide_feedback_replan(
+        stress=None,
+        energy=None,
+        completion_rate=0.7,
+        duration_bias=0.0,
+        portrait_decision="none",
+        completion_low=0.8,
+    )
+    assert decision.route == "postpone"
 
 
 def test_decision_keeps_the_signals_it_used() -> None:

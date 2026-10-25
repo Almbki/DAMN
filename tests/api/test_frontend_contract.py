@@ -34,8 +34,9 @@ def test_preferences_defaults_then_roundtrip(client: TestClient, auth_headers: d
         "high_cognitive_max_per_day": 2,
         "sleep_start": None,
         "sleep_end": None,
-        "feedback_time": None,
-        "feedback_enabled": False,
+        # End-of-day reminder defaults (2026-10: on, 22:00).
+        "feedback_time": "22:00",
+        "feedback_enabled": True,
     }
 
     updated = client.put(
