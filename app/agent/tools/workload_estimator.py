@@ -155,11 +155,10 @@ class WorkloadEstimatorTool(BaseTool[WorkloadEstimatorInput, TheoreticalAnalysis
     def _subtasks(
         idx: int, goal: GoalInput, analysis: GoalAnalysisResult | None
     ) -> list[str]:
+        """Never invent steps when the user did not add supplement content."""
         if analysis is not None and idx < len(analysis.goals):
-            subtasks = analysis.goals[idx].subtasks
-            if subtasks:
-                return list(subtasks)
-        return ["理解内容", "练习巩固", "总结复盘"]
+            return list(analysis.goals[idx].subtasks)
+        return []
 
     @staticmethod
     def _aggregate_load(items: list[TheoreticalItem]) -> CognitiveLoad:

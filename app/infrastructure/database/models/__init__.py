@@ -11,6 +11,7 @@ from app.infrastructure.database.models.daily_state import DailyState
 from app.infrastructure.database.models.evidence_item import EvidenceItem
 from app.infrastructure.database.models.execution import TaskExecution
 from app.infrastructure.database.models.feedback import Feedback
+from app.infrastructure.database.models.generation_job import GenerationJobModel
 from app.infrastructure.database.models.goal import Goal
 from app.infrastructure.database.models.plan import Plan
 from app.infrastructure.database.models.prediction_log import PredictionLog
@@ -33,6 +34,7 @@ __all__ = [
     "DailyState",
     "EvidenceItem",
     "Feedback",
+    "GenerationJobModel",
     "Goal",
     "Plan",
     "PredictionLog",

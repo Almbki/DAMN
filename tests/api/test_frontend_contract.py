@@ -95,7 +95,7 @@ def test_profile_patch_does_not_wipe_preferences(
     )
     patched = client.patch(
         "/api/v1/users/me",
-        json={"profile": {"mbti": "INTJ"}},  # wholesale profile overwrite
+        json={"profile": {"chronotype": "morning"}},  # wholesale profile overwrite
         headers=auth_headers,
     )
     assert patched.status_code == 200, patched.text
@@ -204,11 +204,12 @@ def test_decompose_returns_days_and_confirm_persists(
     assert plan["version"] == 1
     assert plan["tasks"]
 
-    # Confirming twice is a conflict, not a second plan.
+    # Confirm is idempotent: a retry returns the same plan, never a second one.
     again = client.post(
         "/api/v1/plans/confirm", json={"draft_id": body["draft_id"]}, headers=auth_headers
     )
-    assert again.status_code == 409
+    assert again.status_code == 200, again.text
+    assert again.json()["id"] == plan["id"]
 
 
 def test_confirm_unknown_draft_is_404(client: TestClient, auth_headers: dict) -> None:

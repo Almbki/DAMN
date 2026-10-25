@@ -75,6 +75,7 @@ export function TaskAddDialog({
   );
   const [targetUnit, setTargetUnit] = useState(initial?.targetUnit ?? '');
   const [seriesError, setSeriesError] = useState<string | null>(null);
+  const [dateError, setDateError] = useState<string | null>(null);
 
   const kind = KINDS[kindIndex];
   const isSeries = kind !== 'one_off';
@@ -100,6 +101,21 @@ export function TaskAddDialog({
   function submit() {
     const minutes = parseEstimatedMinutes(dailyTarget);
     const amount = parseTargetAmount(targetAmount);
+    const today = todayISO();
+
+    if (startDate && startDate < today) {
+      setDateError('开始日期不能早于今天。');
+      return;
+    }
+    if (dueDate && dueDate < today) {
+      setDateError('结束日期不能早于今天。');
+      return;
+    }
+    if (isSeries && startDate && dueDate && dueDate < startDate) {
+      setDateError('结束日期不能早于开始日期。');
+      return;
+    }
+    setDateError(null);
 
     if (isSeries) {
       if (minutes === 'invalid') {
@@ -183,8 +199,10 @@ export function TaskAddDialog({
                 date={startDate ?? ''}
                 time=""
                 withTime={false}
+                minDate={todayISO()}
                 onChangeDate={(value) => {
                   setStartDate(value);
+                  setDateError(null);
                   if (seriesError) setSeriesError(null);
                 }}
                 onChangeTime={() => undefined}
@@ -196,8 +214,10 @@ export function TaskAddDialog({
                 date={dueDate ?? ''}
                 time=""
                 withTime={false}
+                minDate={startDate ?? todayISO()}
                 onChangeDate={(value) => {
                   setDueDate(value);
+                  setDateError(null);
                   if (seriesError) setSeriesError(null);
                 }}
                 onChangeTime={() => undefined}
@@ -275,14 +295,22 @@ export function TaskAddDialog({
         />
       )}
 
-      <TextField
-        label="补充（选填）"
-        value={notes}
-        onChangeText={setNotes}
-        placeholder="拆解线索，比如：看课 / 做例题 / 做练习"
-        multiline
-        background={colors.surfaceContainerLowest}
-      />
+      <View style={styles.notesField}>
+        <TextField
+          label="补充（选填）"
+          value={notes}
+          onChangeText={setNotes}
+          placeholder="可写步骤或细节，比如：看课 / 做例题 / 做练习"
+          multiline
+          background={colors.surfaceContainerLowest}
+        />
+        <Text style={[styles.hint, { color: colors.inkMuted }]}>
+          填写后系统会据此生成子步骤；留空则不生成子步骤。
+        </Text>
+      </View>
+      {dateError ? (
+        <Text style={[styles.error, { color: colors.error }]}>{dateError}</Text>
+      ) : null}
       <View style={styles.spacer} />
     </Dialog>
   );
@@ -313,6 +341,9 @@ const styles = StyleSheet.create({
   targetUnit: {
     flexGrow: 1,
     flexBasis: 110,
+  },
+  notesField: {
+    gap: Space.xs,
   },
   hint: {
     fontSize: Type.labelMedium,

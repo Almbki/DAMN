@@ -29,17 +29,12 @@ function MockProfileProvider({ children }: { children: React.ReactNode }) {
       // A short delay so the "保存中…" state is actually observable.
       await new Promise((resolve) => setTimeout(resolve, 220));
       const identity = patch.identity?.trim() ? patch.identity.trim() : null;
-      const mbtiType = patch.mbti_type ?? null;
-      if (!mbtiType && !identity) {
-        // Mirrors the backend's 404: clearing both fields leaves no profile.
+      if (!identity) {
+        // Mirrors the backend's 404: clearing the portrait leaves no profile.
         setProfile(null);
         setState(null);
       } else {
-        setProfile({
-          mbti_type: mbtiType,
-          mbti_dims: mbtiType ? (patch.mbti_dims ?? null) : null,
-          identity,
-        });
+        setProfile({ identity });
         setState(mockResetState());
       }
       setError(null);
@@ -85,8 +80,6 @@ function ApiProfileProvider({ children }: { children: React.ReactNode }) {
       const flat = await getMyProfile();
       return {
         profile: {
-          mbti_type: flat.mbti_type,
-          mbti_dims: flat.mbti_dims,
           identity: flat.identity,
         },
         state: {

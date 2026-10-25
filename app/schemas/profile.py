@@ -1,45 +1,19 @@
 """User-portrait API schemas.
 
-MBTI is a SOFT self-report input. The numeric fields are cold-start priors
-derived from it and are overridden by observed feedback as ``update_count``
-grows - they must never be presented as a psychological diagnosis.
+The static portrait and the adaptive state it seeds. The numeric compatibility
+fields are cold-start projections, overridden by observed feedback as
+``update_count`` grows - they must never be presented as a psychological
+diagnosis.
 """
 
 from __future__ import annotations
 
 from pydantic import BaseModel, Field
 
-#: The four MBTI dimension keys accepted in ``mbti_dims``.
-MBTI_DIMENSION_KEYS: frozenset[str] = frozenset({"ie", "sn", "tf", "jp"})
-
-
-def normalise_mbti_type(value: str | None) -> str | None:
-    """Uppercase/validate a 4-letter MBTI code (``None`` stays ``None``)."""
-    if value is None:
-        return None
-    cleaned = value.strip().upper()
-    if not cleaned:
-        return None
-    if len(cleaned) != 4 or not cleaned.isalpha():
-        raise ValueError("mbti_type must be 4 letters, e.g. INTP")
-    return cleaned
-
-
-def validate_mbti_dims(value: dict[str, float] | None) -> dict[str, float] | None:
-    """Reject unknown dimension keys and clamp each weight to [0, 1]."""
-    if value is None:
-        return None
-    unknown = set(value) - MBTI_DIMENSION_KEYS
-    if unknown:
-        raise ValueError(f"unknown mbti_dims keys: {sorted(unknown)}")
-    return {key: max(0.0, min(1.0, float(weight))) for key, weight in value.items()}
-
 
 class ProfileRead(BaseModel):
     """Static portrait plus the adaptive state it seeds."""
 
-    mbti_type: str | None = None
-    mbti_dims: dict[str, float] | None = None
     identity: str | None = None
     # --- adaptive state (EWMA-updated by feedback) ---
     duration_factor: float
@@ -72,8 +46,6 @@ class ProfileRead(BaseModel):
         model_metadata: list[dict] | None = None,
     ) -> ProfileRead:
         return cls(
-            mbti_type=profile.mbti_type,
-            mbti_dims=dict(profile.mbti_dims) if profile.mbti_dims else None,
             identity=profile.identity,
             duration_factor=state.duration_factor,
             completion_prob=state.completion_prob,
@@ -96,11 +68,8 @@ class ProfileRead(BaseModel):
 
 
 __all__ = [
-    "MBTI_DIMENSION_KEYS",
     "ModelRuntimeRead",
     "ProfileRead",
-    "normalise_mbti_type",
-    "validate_mbti_dims",
 ]
 
 

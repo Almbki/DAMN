@@ -139,6 +139,9 @@ export type PlanContextValue = {
   ) => Promise<{ drafts: DraftTask[] | null; applied: boolean; message: string | null }>;
   /** 「就先这样」：把当前草稿落库（mock 模式本地写入）。 */
   confirmPreview: () => Promise<void>;
+  previewTasks: DraftTask[] | null;
+  previewBusy: boolean;
+  dismissPreview: () => void;
   /** 预览可调整性 / 后端警告，用于禁用「重新生成」并提示。 */
   previewMeta: {
     canAdjust: boolean;

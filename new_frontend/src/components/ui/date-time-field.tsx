@@ -35,6 +35,7 @@ export function DateTimeField({
   onChangeDate,
   onChangeTime,
   withTime = true,
+  minDate = null,
 }: {
   label: string;
   date: string;
@@ -42,6 +43,8 @@ export function DateTimeField({
   onChangeDate: (date: string | null) => void;
   onChangeTime: (time: string | null) => void;
   withTime?: boolean;
+  /** Earliest selectable ISO date (inclusive). */
+  minDate?: string | null;
 }) {
   const { colors } = useTheme();
   const [open, setOpen] = useState(false);
@@ -60,9 +63,11 @@ export function DateTimeField({
   }
 
   function pickDay(value: string) {
+    if (minDate && value < minDate) return;
     setCursor(value);
     onChangeDate(value);
   }
+
 
   function shiftTime(hours: number, minutes: number) {
     const [h, m] = cursorTime.split(':').map(Number);
@@ -141,18 +146,21 @@ export function DateTimeField({
                 if (!cell) return <View key={`e-${weekIndex}-${cellIndex}`} style={styles.dayEmpty} />;
                 const selected = cell === date;
                 const isToday = cell === today;
+                const disabled = minDate != null && cell < minDate;
                 return (
                   <Pressable
                     key={cell}
                     accessibilityRole="button"
                     accessibilityLabel={cell}
-                    accessibilityState={{ selected }}
+                    accessibilityState={{ selected, disabled }}
+                    disabled={disabled}
                     onPress={() => pickDay(cell)}
                     style={[
                       styles.dayCell,
                       {
                         borderColor: selected ? colors.ink : isToday ? colors.inkMuted : 'transparent',
                         backgroundColor: selected ? colors.ink : 'transparent',
+                        opacity: disabled ? 0.35 : 1,
                       },
                     ]}>
                     <Text style={[styles.dayText, { color: selected ? colors.onInk : colors.ink }]}>

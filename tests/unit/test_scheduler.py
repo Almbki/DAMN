@@ -81,3 +81,12 @@ def test_scheduler_output_validates_against_rules() -> None:
     schedule = Scheduler().schedule(tasks, context)
     violations = RuleEngine().hard_violations(schedule, context)
     assert violations == []
+
+
+def test_today_never_uses_past_slots() -> None:
+    today = date.today()
+    context = _context(not_before={today: time(15, 7)})
+    schedule = Scheduler().schedule([_task(1, "A", 60)], context)
+    assert len(schedule.tasks) == 1
+    assert schedule.tasks[0].scheduled_date == today
+    assert schedule.tasks[0].start_time >= time(15, 15)

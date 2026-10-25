@@ -102,30 +102,14 @@ export interface UserRead {
   execution_weight: number;
   profile: Record<string, unknown>;
   /** Portrait fields (see `ProfileRead`); absent/`null` when unset. */
-  mbti_type?: string | null;
-  mbti_dims?: MbtiDims | null;
   identity?: string | null;
   /** Validated Level 1 trait profile (authoritative stable traits). */
   trait_profile?: Record<string, unknown> | null;
   created_at: string;
 }
 
-/**
- * MBTI dimension weights. Each is `0..1`, weighted toward the FIRST letter of
- * its pair (I / S / T / J): `ie: 0.65` means 65% I, 35% E. Omitted keys mean the
- * backend keeps its default for that axis.
- */
-export interface MbtiDims {
-  ie?: number;
-  sn?: number;
-  tf?: number;
-  jp?: number;
-}
-
 /** Static 基础画像 fields (`GET /users/me/profile`). */
 export interface UserProfileRead {
-  mbti_type: string | null;
-  mbti_dims: MbtiDims | null;
   identity: string | null;
 }
 
@@ -159,8 +143,6 @@ export interface UserStateRead {
  * merged with the adaptive state, the backend does NOT nest `{ profile, state }`.
  */
 export interface ProfileRead {
-  mbti_type: string | null;
-  mbti_dims: MbtiDims | null;
   identity: string | null;
   // --- compatibility projections (do not use as the product state) ---
   duration_factor: number;
@@ -356,8 +338,6 @@ export interface SyntheticStatus {
 
 /** Body for `PATCH /users/me`; sending any field re-initialises the state. */
 export interface ProfileUpdateRequest {
-  mbti_type?: string | null;
-  mbti_dims?: MbtiDims | null;
   identity?: string | null;
   trait_profile?: Record<string, unknown> | null;
 }
@@ -437,8 +417,6 @@ export interface RegisterRequest {
   execution_weight?: number;
   profile?: Record<string, unknown>;
   /** Optional 基础画像 fields accepted at registration. */
-  mbti_type?: string | null;
-  mbti_dims?: MbtiDims | null;
   identity?: string | null;
 }
 
@@ -521,6 +499,7 @@ export interface PlanGenerateRequest {
   high_cognitive_max_per_day?: number;
   user_profile?: Record<string, unknown>;
   execution_weight?: number | null;
+  timezone?: string | null;
 }
 
 /** Per-task reason attached to a daily feedback submission. */

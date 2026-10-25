@@ -15,6 +15,7 @@ import { InlineNotice, LoadingState } from '@/components/ui/states';
 import { Surface } from '@/components/ui/surface';
 import { Fonts, Line, Radius, Space, Type } from '@/constants/tokens';
 import { startOfWeek, todayISO } from '@/domain/date';
+import type { Task } from '@/domain/task';
 import { useSchedule } from '@/state/schedule';
 import { useTheme } from '@/state/theme';
 
@@ -67,8 +68,13 @@ async function buildUploadFile(asset: DocumentPickerAsset): Promise<ScheduleUplo
 }
 
 export function ScheduleSection({
+  tasks,
+  onSelectTask,
   onOverlayChange,
 }: {
+  /** Planned tasks, merged into the timetable while it is expanded. */
+  tasks: Task[];
+  onSelectTask: (task: Task) => void;
   /** Lets the todo screen pause its keyboard shortcuts while a dialog is open. */
   onOverlayChange?: (open: boolean) => void;
 }) {
@@ -207,43 +213,47 @@ export function ScheduleSection({
           </View>
         </View>
 
-        <View
-          style={[
-            styles.weekRow,
-            {
-              borderTopColor: colors.outlineVariant,
-              borderBottomColor: colors.outlineVariant,
-            },
-          ]}>
-          <IconButton name="arrowLeft" label="上一周" onPress={prevWeek} />
-          <View style={styles.weekCenter}>
-            <Text numberOfLines={1} style={[styles.weekRange, { color: colors.ink }]}>
-              {formatWeekRange(weekStart)}
-            </Text>
-            <View style={styles.weekMeta}>
-              {isCurrentWeek ? (
-                <Text style={[styles.weekTag, { color: colors.primary }]}>本周</Text>
-              ) : (
-                <Pressable
-                  accessibilityRole="button"
-                  accessibilityLabel="回到本周"
-                  onPress={goToThisWeek}
-                  hitSlop={8}
-                  style={styles.weekLink}>
-                  <Text style={[styles.weekLinkText, { color: colors.primary }]}>回到本周</Text>
-                </Pressable>
-              )}
-              {loading ? (
-                <Text style={[styles.updating, { color: colors.inkMuted }]}>更新中…</Text>
-              ) : null}
+        {showSchedule ? (
+          <>
+            <View
+              style={[
+                styles.weekRow,
+                {
+                  borderTopColor: colors.outlineVariant,
+                  borderBottomColor: colors.outlineVariant,
+                },
+              ]}>
+              <IconButton name="arrowLeft" label="上一周" onPress={prevWeek} />
+              <View style={styles.weekCenter}>
+                <Text numberOfLines={1} style={[styles.weekRange, { color: colors.ink }]}>
+                  {formatWeekRange(weekStart)}
+                </Text>
+                <View style={styles.weekMeta}>
+                  {isCurrentWeek ? (
+                    <Text style={[styles.weekTag, { color: colors.primary }]}>本周</Text>
+                  ) : (
+                    <Pressable
+                      accessibilityRole="button"
+                      accessibilityLabel="回到本周"
+                      onPress={goToThisWeek}
+                      hitSlop={8}
+                      style={styles.weekLink}>
+                      <Text style={[styles.weekLinkText, { color: colors.primary }]}>回到本周</Text>
+                    </Pressable>
+                  )}
+                  {loading ? (
+                    <Text style={[styles.updating, { color: colors.inkMuted }]}>更新中…</Text>
+                  ) : null}
+                </View>
+              </View>
+              <IconButton name="arrowRight" label="下一周" onPress={nextWeek} />
             </View>
-          </View>
-          <IconButton name="arrowRight" label="下一周" onPress={nextWeek} />
-        </View>
 
-        <Text style={[styles.help, { color: colors.inkMuted }]}>
-          支持 .csv / .xlsx（不支持 .xls），单文件 ≤ 2MB / 1000 行。无法识别的行会跳过，并在导入结果里列出。
-        </Text>
+            <Text style={[styles.help, { color: colors.inkMuted }]}>
+              支持 .csv / .xlsx（不支持 .xls），单文件 ≤ 2MB / 1000 行。无法识别的行会跳过，并在导入结果里列出。
+            </Text>
+          </>
+        ) : null}
 
         {error ? (
           <InlineNotice
@@ -275,8 +285,10 @@ export function ScheduleSection({
           ) : (
             <CourseTimetable
               events={events}
+              tasks={tasks}
               weekStart={weekStart}
               onSelect={openDetail}
+              onSelectTask={onSelectTask}
               onImport={() => {
                 void pickAndImport();
               }}
