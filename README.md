@@ -1,5 +1,7 @@
 # DAMN — AI Adaptive Task Planner (Backend)
 
+> **状态（2026-10-25）**：当前代码是远端 `V1.1-test`，已实现三层模型运行时（Level 3 只 shadow）、Agent/Workflow、`new_frontend/` 和当前调度器。下面的 mock/旧链接说明早于 V1.1；现状以 [docs/当前实现.md](docs/当前实现.md) 为准，目标设计以 [docs/架构.md](docs/架构.md) 为准。
+
 A **feedback-driven adaptive task planning system** — not a todo list. It turns
 goals into a plan, watches how the user actually executes it, learns a per-user
 model, and replans.
@@ -46,7 +48,7 @@ Design rules enforced throughout:
 5. Predictors are Protocols — swap in LightGBM/XGBoost/sklearn/PyTorch without
    touching services or API.
 
-See [`docs/architecture.md`](docs/architecture.md) for the full module map.
+See [`docs/架构.md`](docs/架构.md) for the full module map.
 
 ---
 
@@ -117,7 +119,7 @@ Base path: `/api/v1`
 | GET | `/plans/{plan_id}/replan/eligibility` | Cooldown / eligibility |
 | GET | `/plans/{plan_id}/insights` | Data insights |
 
-Full reference: [`docs/api.md`](docs/api.md).
+Full reference: run the API and use `/openapi.json`; frontend contract: [`docs/前后端接口对齐.md`](docs/前后端接口对齐.md).
 
 ---
 
@@ -187,4 +189,4 @@ Honest labelling — these are **not** trained ML:
 - **Scheduler** — replace `Scheduler.schedule`; rules stay authoritative.
 - **Database** — repository interfaces isolate SQLAlchemy.
 
-See [`docs/development.md`](docs/development.md) and [`docs/ml.md`](docs/ml.md).
+See [`docs/开发手册.md`](docs/开发手册.md) and [`docs/当前实现.md`](docs/当前实现.md).

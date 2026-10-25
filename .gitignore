@@ -25,3 +25,14 @@ build/
 .vscode/
 .DS_Store
 Thumbs.db
+
+# Docs staging cache (working notes, not tracked)
+docs/_cache/
+
+# Research raw retrieval data (regenerable, not source of truth)
+docs/research/*/api/**/*.json
+docs/research/*/api/**/*.txt
+docs/research/*/api/**/*.csv
+
+
+.opencode/
