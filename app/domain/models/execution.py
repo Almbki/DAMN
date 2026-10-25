@@ -33,6 +33,12 @@ class TaskExecution(DomainModel):
     failure_reason: str | None = None
     #: Observed interruption count; None means "not observed", not zero.
     interruption_count: int | None = Field(default=None, ge=0)
+    #: completed / partial / not_done / skipped; None = not observed.
+    execution_status: str | None = None
+    #: state / scheduling / unknown / external; failure_reason stays free text.
+    failure_category: str | None = None
+    #: over / under / ok - estimate too high / too low / about right.
+    estimate_feedback: str | None = None
     time_of_day: TimeOfDay | None = None
     completed: bool = False
     #: real | synthetic - provenance for training/evaluation isolation.

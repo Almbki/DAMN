@@ -15,6 +15,7 @@ from sqlalchemy import (
     Index,
     Integer,
     String,
+    Text,
 )
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -46,6 +47,17 @@ class Feedback(Base):
         JSON, nullable=True, default=None
     )
     free_text: Mapped[str | None] = mapped_column(String(2000), nullable=True)
+    # --- Phase 1 four-section reflection (all optional; free_text kept) ---
+    # A. How did today go?
+    day_review: Mapped[str | None] = mapped_column(Text, nullable=True)
+    # B. Where did you get stuck?
+    stuck_points: Mapped[str | None] = mapped_column(Text, nullable=True)
+    # C. How was your state today?
+    state_review: Mapped[str | None] = mapped_column(Text, nullable=True)
+    # D. How does tomorrow look?
+    tomorrow_outlook: Mapped[str | None] = mapped_column(Text, nullable=True)
+    # Set once the end-of-day prompt was answered; used for "no more pings".
+    day_closed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     sleep_hours: Mapped[float | None] = mapped_column(Float, nullable=True)
     dominant_time_of_day: Mapped[TimeOfDay | None] = mapped_column(
         Enum(TimeOfDay, values_callable=enum_values, native_enum=False, length=32),

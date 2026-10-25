@@ -84,6 +84,19 @@ class Task(Base):
     occurrence_date: Mapped[date | None] = mapped_column(Date, nullable=True)
     target_amount: Mapped[int | None] = mapped_column(Integer, nullable=True)
     target_unit: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    # --- Phase 1 record-layer fields (all nullable; old rows fall back) ---
+    # Task-level deadline; NULL falls back to the goal deadline.
+    deadline: Mapped[date | None] = mapped_column(Date, nullable=True)
+    # Earliest schedulable date; NULL falls back to occurrence_date.
+    earliest_start_date: Mapped[date | None] = mapped_column(Date, nullable=True)
+    # 1..5 self/AI difficulty; distinct from cognitive_load (load != difficulty).
+    difficulty: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    # Task type (reading/practice/writing...); distinct from task_kind (recurrence).
+    task_type: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    # 1..5 value of doing the task; distinct from priority (value != sort order).
+    value_score: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    # Plain-language completion criterion; task_standards stay the sub-steps.
+    completion_criterion: Mapped[str | None] = mapped_column(String(500), nullable=True)
     order_index: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     # Soft delete: rows stay so TaskExecution / TaskStandard (ML data) survive.
     deleted_at: Mapped[datetime | None] = mapped_column(

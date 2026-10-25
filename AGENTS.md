@@ -29,7 +29,7 @@ technical.
 ## Commands (verified)
 
 - Install: `uv sync --extra dev` (creates `.venv`; requires Python 3.12)
-- All tests: `uv run pytest` → 229 tests
+- All tests (opt-in): `uv run pytest` → 229 pre-Phase-1 tests + Phase 1 additions; the default loop is targeted runs, see Testing quirks.
 - Frontend: `cd new_frontend && npm test` → 19 logic tests · `npm run typecheck` · `npm run lint`
 - Web export: `cd new_frontend && npx expo export --platform web`
 - One file / one test: `uv run pytest tests/unit/test_rules.py -q` · `uv run pytest -k scheduler -v`
@@ -109,8 +109,14 @@ Dependencies flow API → Application → Domain/Core → Infrastructure.
 
 ## Testing quirks
 
+- **Incremental-first (2026-10-25):** do NOT run the whole suite on every change.
+  Run only the affected test files; a full run is opt-in. When a full run is
+  needed, first delete/merge tests whose coverage is already provided elsewhere
+  or whose asserted behaviour is gone — keep the suite meaningful, not big.
 - `tests/conftest.py` sets `DATABASE_URL` / `JWT_SECRET_KEY` **before** importing
   `app`, then clears the settings cache. Preserve that import order in new tests.
+  Its `setdefault` means a per-run `DATABASE_URL` env var gives each run its own
+  SQLite file (useful when tests run concurrently).
 - Fixtures: `client` (TestClient, runs lifespan), `registered_user`, `auth_headers`
   (Bearer JWT). Schema is created/dropped per session against a file DB
   (`test_damn.db`).

@@ -11,8 +11,10 @@ state, the scheduler, or the rule engine.
 
 from __future__ import annotations
 
+import json
 import logging
 import time
+from dataclasses import asdict
 from datetime import UTC, datetime
 from typing import Any
 
@@ -47,6 +49,8 @@ class ShadowPredictionRecord(BaseModel):
     artifact_version: str = ""
     feature_version: str = ""
     input_hash: str = ""
+    #: Frozen Level 3 model input (JSON-safe) for prediction_snapshots.
+    feature_snapshot: dict[str, Any] = Field(default_factory=dict)
     input_summary: dict[str, Any] = Field(default_factory=dict)
     production_decision: dict[str, Any] = Field(default_factory=dict)
     shadow_prediction: dict[str, Any] = Field(default_factory=dict)
@@ -107,6 +111,9 @@ class Level3ShadowRunner:
                 prediction_timestamp=inferred_at,
             )
             record.input_hash = sha256_json(inp)
+            # Level3PredictionInput is a dataclass; round-trip through JSON so
+            # the audit row stores JSON primitives only.
+            record.feature_snapshot = json.loads(json.dumps(asdict(inp), default=str))
             record.input_summary = {
                 "task_id": task.task_id,
                 "estimated_duration_minutes": task.estimated_duration_minutes,

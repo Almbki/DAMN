@@ -9,12 +9,22 @@ from app.infrastructure.database.repositories.agent_memory_repository import (
 )
 from app.infrastructure.database.repositories.agent_run_repository import AgentRunRepository
 from app.infrastructure.database.repositories.base import RepositoryBase
+from app.infrastructure.database.repositories.daily_state_repository import DailyStateRepository
+from app.infrastructure.database.repositories.evidence_item_repository import (
+    EvidenceItemRepository,
+)
 from app.infrastructure.database.repositories.execution_repository import TaskExecutionRepository
 from app.infrastructure.database.repositories.feedback_repository import FeedbackRepository
 from app.infrastructure.database.repositories.goal_repository import GoalRepository
 from app.infrastructure.database.repositories.plan_repository import PlanRepository
 from app.infrastructure.database.repositories.prediction_log_repository import (
     PredictionLogRepository,
+)
+from app.infrastructure.database.repositories.prediction_outcome_repository import (
+    PredictionOutcomeRepository,
+)
+from app.infrastructure.database.repositories.prediction_snapshot_repository import (
+    PredictionSnapshotRepository,
 )
 from app.infrastructure.database.repositories.replan_event_repository import ReplanEventRepository
 from app.infrastructure.database.repositories.schedule_event_repository import (
@@ -26,6 +36,10 @@ from app.infrastructure.database.repositories.shadow_prediction_repository impor
 from app.infrastructure.database.repositories.synthetic_repository import (
     SyntheticDataRepository,
 )
+from app.infrastructure.database.repositories.task_dependency_repository import (
+    TaskDependencyRepository,
+)
+from app.infrastructure.database.repositories.task_event_repository import TaskEventRepository
 from app.infrastructure.database.repositories.task_repository import TaskRepository
 from app.infrastructure.database.repositories.task_standard_repository import TaskStandardRepository
 from app.infrastructure.database.repositories.trait_assessment_repository import (
@@ -37,15 +51,21 @@ from app.infrastructure.database.repositories.user_state_repository import UserS
 __all__ = [
     "AgentMemoryRepository",
     "AgentRunRepository",
+    "DailyStateRepository",
+    "EvidenceItemRepository",
     "FeedbackRepository",
     "GoalRepository",
     "PlanRepository",
     "PredictionLogRepository",
+    "PredictionOutcomeRepository",
+    "PredictionSnapshotRepository",
     "ReplanEventRepository",
     "RepositoryBase",
     "ScheduleEventRepository",
     "ShadowPredictionRepository",
     "SyntheticDataRepository",
+    "TaskDependencyRepository",
+    "TaskEventRepository",
     "TaskExecutionRepository",
     "TaskRepository",
     "TaskStandardRepository",

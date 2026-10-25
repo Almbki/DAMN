@@ -25,6 +25,13 @@ class Feedback(DomainModel):
     #: Stored for analysis only; never used to route the replan policy.
     task_reasons: list[dict] | None = None
     free_text: str | None = None
+    # --- Four-section optional reflection (A/B/C/D; free_text kept) ---
+    day_review: str | None = None
+    stuck_points: str | None = None
+    state_review: str | None = None
+    tomorrow_outlook: str | None = None
+    #: Set once the end-of-day prompt was answered ("no more pings today").
+    day_closed_at: datetime | None = None
     # Optional context used as ML features later.
     sleep_hours: float | None = Field(default=None, ge=0, le=24)
     dominant_time_of_day: TimeOfDay | None = None

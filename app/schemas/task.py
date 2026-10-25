@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from datetime import date, datetime, time
+from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -54,6 +55,13 @@ class TaskRead(BaseModel):
     occurrence_date: date | None = None
     target_amount: int | None = None
     target_unit: str | None = None
+    # --- Phase 1 record-layer fields (nothing is backfilled; None = unknown) ---
+    deadline: date | None = None
+    earliest_start_date: date | None = None
+    difficulty: int | None = None
+    task_type: str | None = None
+    value_score: int | None = None
+    completion_criterion: str | None = None
     order_index: int = 0
     standards: list[TaskStandardRead] = Field(default_factory=list)
 
@@ -74,6 +82,10 @@ class TaskUpdateRequest(BaseModel):
     finished_at: datetime | None = None
     #: Optional observed interruption count; null means not observed.
     interruption_count: int | None = Field(default=None, ge=0)
+    #: Outcome / failure / estimate labels; null means the user did not say.
+    execution_status: Literal["completed", "partial", "not_done", "skipped"] | None = None
+    failure_category: Literal["state", "scheduling", "unknown", "external"] | None = None
+    estimate_feedback: Literal["over", "under", "ok"] | None = None
     # Editable / reschedulable fields (explicit user overrides).
     title: str | None = Field(default=None, min_length=1, max_length=200)
     description: str | None = Field(default=None, max_length=2000)
@@ -83,4 +95,11 @@ class TaskUpdateRequest(BaseModel):
     scheduled_date: date | None = None
     start_time: time | None = None
     end_time: time | None = None
+    # --- Phase 1 task record fields (all optional and editable) ---
+    deadline: date | None = None
+    earliest_start_date: date | None = None
+    difficulty: int | None = Field(default=None, ge=1, le=5)
+    task_type: str | None = Field(default=None, max_length=64)
+    value_score: int | None = Field(default=None, ge=1, le=5)
+    completion_criterion: str | None = Field(default=None, max_length=500)
     standard_updates: list[TaskStandardUpdate] | None = None

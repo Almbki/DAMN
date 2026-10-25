@@ -98,12 +98,12 @@ class Level2Runtime:
         )
 
     # -- replay ------------------------------------------------------------
-    def replay(
+    def replay_all(
         self,
         days: list[DayInput],
         trait_profile: dict[str, Any],
-    ) -> DynamicStateProfile:
-        """Replay days (strictly increasing) and return the latest profile."""
+    ) -> list[DynamicStateProfile]:
+        """Replay days (strictly increasing) and return every daily profile."""
         if not self.available:
             raise ModelUnavailableError(self._error or "level2 unavailable")
         if not days:
@@ -113,8 +113,15 @@ class Level2Runtime:
         except Exception as exc:  # noqa: BLE001
             raise ModelInputError(f"invalid trait context: {exc}") from exc
         engine = DDSREngine(self.config)
-        profiles = engine.replay(days, trait)
-        return profiles[-1]
+        return engine.replay(days, trait)
+
+    def replay(
+        self,
+        days: list[DayInput],
+        trait_profile: dict[str, Any],
+    ) -> DynamicStateProfile:
+        """Replay days (strictly increasing) and return the latest profile."""
+        return self.replay_all(days, trait_profile)[-1]
 
     def snapshot(self, profile: DynamicStateProfile | dict[str, Any]) -> DynamicStateSnapshot:
         if not self.available:

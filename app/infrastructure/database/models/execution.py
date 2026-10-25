@@ -34,6 +34,13 @@ class TaskExecution(Base):
     failure_reason: Mapped[str | None] = mapped_column(String(500), nullable=True)
     #: Observed interruption count; NULL means not observed (never forced to 0).
     interruption_count: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    # --- Phase 1 outcome semantics (all nullable; NULL = not observed) ---
+    # completed / partial / not_done / skipped
+    execution_status: Mapped[str | None] = mapped_column(String(16), nullable=True)
+    # state / scheduling / unknown / external; failure_reason stays free text.
+    failure_category: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    # over / under / ok - was the estimate too high / too low / about right.
+    estimate_feedback: Mapped[str | None] = mapped_column(String(16), nullable=True)
     time_of_day: Mapped[TimeOfDay | None] = mapped_column(
         Enum(TimeOfDay, values_callable=enum_values, native_enum=False, length=32),
         nullable=True,
