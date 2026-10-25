@@ -59,19 +59,11 @@ def submit_feedback(
     generation_service: GenerationService = Depends(get_generation_service),
 ) -> FeedbackSubmitResponse:
     user_id = current_user.id or 0
-    feedback = Feedback(
-        user_id=user_id,
-        plan_id=plan_id,
-        date=payload.date,
-        completion_rate=payload.completion_rate,
-        stress_level=payload.stress_level,
-        energy_level=payload.energy_level,
-        delay_reason=payload.delay_reason,
-        task_reasons=[item.model_dump() for item in payload.task_reasons],
-        free_text=payload.free_text,
-        sleep_hours=payload.sleep_hours,
-        dominant_time_of_day=payload.dominant_time_of_day,
-    )
+    # Full dump (not a hand-picked field list) so new check-in fields cannot be
+    # silently dropped here.
+    data = payload.model_dump()
+    data["task_reasons"] = [item.model_dump() for item in payload.task_reasons]
+    feedback = Feedback(user_id=user_id, plan_id=plan_id, **data)
     result = service.submit_feedback(
         user_id, plan_id, feedback, defer_replan=stream_replan
     )

@@ -91,6 +91,8 @@ class Settings(BaseSettings):
     level3_mode: str = "shadow"
     #: Minimum days between completed Level 1 reassessments. 0 disables it.
     trait_reassessment_cooldown_days: int = Field(default=30, ge=0)
+    #: Daily Level-2 state history retention (old `daily_states` rows are pruned).
+    daily_state_retention_days: int = Field(default=180, ge=1)
 
     # --- Developer/demo tools ---------------------------------------------
     #: Synthetic scenario import is a demo/test tool; disabled by default.

@@ -6,15 +6,21 @@ user. Real observations and other users are never touched.
 
 from __future__ import annotations
 
-from sqlalchemy import delete, func, select
+from sqlalchemy import delete, func, or_, select
 
+from app.infrastructure.database.models.daily_state import DailyState
+from app.infrastructure.database.models.evidence_item import EvidenceItem
 from app.infrastructure.database.models.execution import TaskExecution
 from app.infrastructure.database.models.feedback import Feedback
 from app.infrastructure.database.models.plan import Plan
 from app.infrastructure.database.models.prediction_log import PredictionLog
+from app.infrastructure.database.models.prediction_outcome import PredictionOutcome
+from app.infrastructure.database.models.prediction_snapshot import PredictionSnapshot
 from app.infrastructure.database.models.replan_event import ReplanEvent
 from app.infrastructure.database.models.shadow_prediction import ShadowPrediction
 from app.infrastructure.database.models.task import Task
+from app.infrastructure.database.models.task_dependency import TaskDependency
+from app.infrastructure.database.models.task_event import TaskEvent
 from app.infrastructure.database.models.task_standard import TaskStandard
 from app.infrastructure.database.models.trait_assessment import TraitAssessmentModel
 from app.infrastructure.database.repositories.base import RepositoryBase
@@ -37,6 +43,9 @@ class SyntheticDataRepository(RepositoryBase):
     def counts(self, user_id: int) -> dict[str, int]:
         plan_ids = self._plan_ids(user_id)
         task_ids = self._task_ids(user_id)
+        feedback_ids = select(Feedback.id).where(
+            Feedback.user_id == user_id, Feedback.data_origin == SYNTHETIC
+        )
         return {
             "plans": self._count(
                 select(func.count()).select_from(Plan).where(
@@ -80,6 +89,45 @@ class SyntheticDataRepository(RepositoryBase):
                     ReplanEvent.plan_id.in_(plan_ids)
                 )
             ),
+            # --- Phase 1 record layer (so /dev/scenarios/status sees leftovers) ---
+            "task_events": self._count(
+                select(func.count()).select_from(TaskEvent).where(
+                    TaskEvent.task_id.in_(task_ids)
+                )
+            ),
+            "task_dependencies": self._count(
+                select(func.count()).select_from(TaskDependency).where(
+                    or_(
+                        TaskDependency.task_id.in_(task_ids),
+                        TaskDependency.depends_on_task_id.in_(task_ids),
+                    )
+                )
+            ),
+            "evidence_items": self._count(
+                select(func.count()).select_from(EvidenceItem).where(
+                    or_(
+                        EvidenceItem.feedback_id.in_(feedback_ids),
+                        EvidenceItem.task_id.in_(task_ids),
+                    )
+                )
+            ),
+            "daily_states": self._count(
+                select(func.count()).select_from(DailyState).where(
+                    DailyState.user_id == user_id,
+                    DailyState.data_origin == SYNTHETIC,
+                )
+            ),
+            "prediction_snapshots": self._count(
+                select(func.count()).select_from(PredictionSnapshot).where(
+                    PredictionSnapshot.user_id == user_id,
+                    PredictionSnapshot.data_origin == SYNTHETIC,
+                )
+            ),
+            "prediction_outcomes": self._count(
+                select(func.count()).select_from(PredictionOutcome).where(
+                    PredictionOutcome.task_id.in_(task_ids)
+                )
+            ),
         }
 
     def has_synthetic(self, user_id: int) -> bool:
@@ -120,8 +168,63 @@ class SyntheticDataRepository(RepositoryBase):
     def delete_for_user(self, user_id: int) -> dict[str, int]:
         plan_ids = self._plan_ids(user_id)
         task_ids = self._task_ids(user_id)
+        feedback_ids = select(Feedback.id).where(
+            Feedback.user_id == user_id, Feedback.data_origin == SYNTHETIC
+        )
         deleted: dict[str, int] = {}
 
+        deleted["prediction_outcomes"] = (
+            self._session.execute(
+                delete(PredictionOutcome).where(PredictionOutcome.task_id.in_(task_ids))
+            ).rowcount
+            or 0
+        )
+        deleted["prediction_snapshots"] = (
+            self._session.execute(
+                delete(PredictionSnapshot).where(
+                    PredictionSnapshot.user_id == user_id,
+                    PredictionSnapshot.data_origin == SYNTHETIC,
+                )
+            ).rowcount
+            or 0
+        )
+        deleted["task_events"] = (
+            self._session.execute(
+                delete(TaskEvent).where(TaskEvent.task_id.in_(task_ids))
+            ).rowcount
+            or 0
+        )
+        deleted["task_dependencies"] = (
+            self._session.execute(
+                delete(TaskDependency).where(
+                    or_(
+                        TaskDependency.task_id.in_(task_ids),
+                        TaskDependency.depends_on_task_id.in_(task_ids),
+                    )
+                )
+            ).rowcount
+            or 0
+        )
+        deleted["evidence_items"] = (
+            self._session.execute(
+                delete(EvidenceItem).where(
+                    or_(
+                        EvidenceItem.feedback_id.in_(feedback_ids),
+                        EvidenceItem.task_id.in_(task_ids),
+                    )
+                )
+            ).rowcount
+            or 0
+        )
+        deleted["daily_states"] = (
+            self._session.execute(
+                delete(DailyState).where(
+                    DailyState.user_id == user_id,
+                    DailyState.data_origin == SYNTHETIC,
+                )
+            ).rowcount
+            or 0
+        )
         deleted["task_standards"] = (
             self._session.execute(
                 delete(TaskStandard).where(TaskStandard.task_id.in_(task_ids))

@@ -10,7 +10,9 @@ from fastapi.testclient import TestClient
 from app.core.config import get_settings
 from app.infrastructure.database import SessionLocal
 from app.infrastructure.database.repositories import (
+    DailyStateRepository,
     FeedbackRepository,
+    PredictionSnapshotRepository,
     ShadowPredictionRepository,
     TaskExecutionRepository,
 )
@@ -294,3 +296,35 @@ def test_reset_does_not_affect_another_user(
     assert client.post("/api/v1/dev/scenarios/reset", headers=auth_headers).status_code == 200
     other_status = client.get("/api/v1/dev/scenarios/status", headers=other_headers)
     assert other_status.json()["synthetic_present"] is True
+
+def test_import_then_reset_cleans_phase1_record_tables(
+    client: TestClient, auth_headers: dict, synthetic_enabled
+) -> None:
+    assert _import(client, auth_headers).status_code == 200
+    user_id = client.get("/api/v1/users/me", headers=auth_headers).json()["id"]
+
+    session = SessionLocal()
+    try:
+        daily = DailyStateRepository(session).list_by_user(user_id)
+        snapshots = PredictionSnapshotRepository(session).list_by_user(user_id)
+    finally:
+        session.close()
+    assert daily and all(row.data_origin == "synthetic" for row in daily)
+    assert snapshots and all(row.data_origin == "synthetic" for row in snapshots)
+
+    status = client.get("/api/v1/dev/scenarios/status", headers=auth_headers).json()
+    assert status["counts"].get("daily_states", 0) > 0
+    assert status["counts"].get("prediction_snapshots", 0) > 0
+
+    reset = client.post("/api/v1/dev/scenarios/reset", headers=auth_headers)
+    assert reset.status_code == 200, reset.text
+    after = client.get("/api/v1/dev/scenarios/status", headers=auth_headers).json()
+    for key in (
+        "task_events",
+        "task_dependencies",
+        "evidence_items",
+        "daily_states",
+        "prediction_snapshots",
+        "prediction_outcomes",
+    ):
+        assert after["counts"].get(key, 0) == 0, (key, after["counts"])

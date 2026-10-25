@@ -26,6 +26,12 @@ class FeedbackCreate(BaseModel):
     delay_reason: str | None = Field(default=None, max_length=500)
     task_reasons: list[TaskReason] = Field(default_factory=list)
     free_text: str | None = Field(default=None, max_length=2000)
+    # --- Optional four-section reflection (all sections may be skipped) ---
+    day_review: str | None = Field(default=None, max_length=5000)
+    stuck_points: str | None = Field(default=None, max_length=5000)
+    state_review: str | None = Field(default=None, max_length=5000)
+    tomorrow_outlook: str | None = Field(default=None, max_length=5000)
+    day_closed_at: datetime | None = None
     sleep_hours: float | None = Field(default=None, ge=0, le=24)
     dominant_time_of_day: TimeOfDay | None = None
 
@@ -43,6 +49,11 @@ class FeedbackRead(BaseModel):
     delay_reason: str | None = None
     task_reasons: list[TaskReason] = Field(default_factory=list)
     free_text: str | None = None
+    day_review: str | None = None
+    stuck_points: str | None = None
+    state_review: str | None = None
+    tomorrow_outlook: str | None = None
+    day_closed_at: datetime | None = None
     sleep_hours: float | None = None
     dominant_time_of_day: TimeOfDay | None = None
     created_at: datetime

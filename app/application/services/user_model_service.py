@@ -17,16 +17,21 @@ from __future__ import annotations
 
 import logging
 from dataclasses import replace
-from datetime import UTC, date, datetime, time
+from datetime import UTC, date, datetime, time, timedelta
 from statistics import mean
 from typing import Any
 
 from sqlalchemy.orm import Session
 
-from app.domain.models import Task
+from app.core.config import get_settings
+from app.domain.models import DailyState, PredictionOutcome, PredictionSnapshot, Task
 from app.domain.profile.models import UserStateData
 from app.infrastructure.database.repositories import (
+    DailyStateRepository,
     FeedbackRepository,
+    GoalRepository,
+    PredictionOutcomeRepository,
+    PredictionSnapshotRepository,
     ShadowPredictionRepository,
     SyntheticDataRepository,
     TaskExecutionRepository,
@@ -66,6 +71,66 @@ def _is_observed_execution(execution) -> bool:
     )
 
 
+_LOCAL_TZ = datetime.now().astimezone().tzinfo
+
+
+def _as_deadline_naive(value: date | datetime | None) -> datetime | None:
+    """Level 2 contract: naive local wall-clock (paired with planned_start)."""
+    if value is None:
+        return None
+    if isinstance(value, datetime):
+        if value.tzinfo is not None:
+            value = value.astimezone(_LOCAL_TZ)
+        return value.replace(tzinfo=None)
+    return datetime.combine(value, time(23, 59))
+
+
+def _as_deadline_utc(value: date | datetime | None) -> datetime | None:
+    """Level 3 contract: aware UTC (compared with prediction_timestamp)."""
+    if value is None:
+        return None
+    if isinstance(value, datetime):
+        if value.tzinfo is None:
+            # Legacy/SQLite rows carry a naive wall clock; keep it truthful by
+            # treating it as UTC wall time rather than silently shifting it.
+            return value.replace(tzinfo=UTC)
+        return value.astimezone(UTC)
+    return datetime.combine(value, time(23, 59), tzinfo=_LOCAL_TZ).astimezone(UTC)
+
+
+def _to_utc_aware(value: datetime | None) -> datetime | None:
+    if value is None:
+        return None
+    return value.replace(tzinfo=UTC) if value.tzinfo is None else value.astimezone(UTC)
+
+
+def _level3_config_version(runtime: Any) -> str:
+    """Recallable Level 3 configuration identity ("" when unavailable)."""
+    try:
+        return str(runtime.level3.config.config_version)
+    except Exception:  # noqa: BLE001 - audit metadata must never break the write
+        return ""
+
+
+def _evidence_summary(snapshot: DynamicStateSnapshot) -> tuple[str, int, bool]:
+    """Aggregate the three state estimates into the per-day audit columns."""
+    estimates = (snapshot.fatigue, snapshot.stress, snapshot.self_efficacy)
+    kinds = {estimate.evidence_availability for estimate in estimates}
+    if "reflection_and_task_log" in kinds or {"reflection_only", "task_log_only"} <= kinds:
+        availability = "reflection_and_task_log"
+    elif "reflection_only" in kinds:
+        availability = "reflection_only"
+    elif "task_log_only" in kinds:
+        availability = "task_log_only"
+    else:
+        availability = "none"
+    return (
+        availability,
+        sum(estimate.evidence_count for estimate in estimates),
+        any(estimate.conflict for estimate in estimates),
+    )
+
+
 class UserModelService:
     def __init__(self, session: Session, *, runtime: UserModelRuntime | None = None) -> None:
         self._session = session
@@ -74,6 +139,10 @@ class UserModelService:
         self._executions = TaskExecutionRepository(session)
         self._tasks = TaskRepository(session)
         self._feedbacks = FeedbackRepository(session)
+        self._goals = GoalRepository(session)
+        self._daily_states = DailyStateRepository(session)
+        self._prediction_snapshots = PredictionSnapshotRepository(session)
+        self._prediction_outcomes = PredictionOutcomeRepository(session)
         self._shadow = ShadowPredictionRepository(session)
         self._synthetic = SyntheticDataRepository(session)
         if runtime is None:
@@ -125,15 +194,61 @@ class UserModelService:
         trait = self.get_trait_profile(user_id)
         if trait is None:
             return None
-        days = self._build_days(user_id)
+        days, day_origins = self._build_days_with_origins(user_id)
         if not days:
             return None
         try:
-            profile = self._runtime.level2.replay(days, trait)
-            snapshot = self._runtime.level2.snapshot(profile)
+            profiles = self._runtime.level2.replay_all(days, trait)
+            snapshots = [self._runtime.level2.snapshot(profile) for profile in profiles]
         except Exception as exc:  # noqa: BLE001 - Level 2 failure must degrade
             logger.warning("level2 refresh failed for user=%s: %s", user_id, exc)
             return None
+
+        snapshot = snapshots[-1]
+        cutoff = date.today() - timedelta(days=get_settings().daily_state_retention_days)
+        try:
+            # Savepoint: a failed audit write must not poison the caller's unit
+            # of work (this runs inside planning / profile requests).
+            with self._session.begin_nested():
+                for daily_snapshot in snapshots:
+                    if daily_snapshot.date < cutoff:
+                        # Still replayed (state depends on the full history) but
+                        # not worth persisting just to be pruned right after.
+                        continue
+                    availability, evidence_count, conflict = _evidence_summary(daily_snapshot)
+                    self._daily_states.upsert(
+                        DailyState(
+                            user_id=user_id,
+                            date=daily_snapshot.date,
+                            fatigue=round(daily_snapshot.fatigue.value, 6),
+                            stress=round(daily_snapshot.stress.value, 6),
+                            self_efficacy=round(daily_snapshot.self_efficacy.value, 6),
+                            fatigue_uncertainty=round(daily_snapshot.fatigue.uncertainty, 6),
+                            stress_uncertainty=round(daily_snapshot.stress.uncertainty, 6),
+                            self_efficacy_uncertainty=round(
+                                daily_snapshot.self_efficacy.uncertainty, 6
+                            ),
+                            evidence_availability=availability,
+                            evidence_count=evidence_count,
+                            conflict=conflict,
+                            next_day_prior=daily_snapshot.next_day_prior or None,
+                            next_day_uncertainty=daily_snapshot.next_day_uncertainty or None,
+                            cold_start=daily_snapshot.cold_start,
+                            gap_days=daily_snapshot.gap_days,
+                            profile_json=daily_snapshot.profile_json,
+                            model_version=daily_snapshot.model_version,
+                            config_version=daily_snapshot.config_version,
+                            artifact_hash=daily_snapshot.metadata.artifact_hash,
+                            # Provenance of the observations behind that day, not
+                            # a user-global flag: a real day stays 'real'.
+                            data_origin=day_origins.get(daily_snapshot.date, "real"),
+                        )
+                    )
+                self._daily_states.prune_before(user_id, cutoff)
+        except Exception as exc:  # noqa: BLE001 - audit history must degrade
+            logger.warning(
+                "daily state persistence failed for user=%s: %s", user_id, exc
+            )
 
         existing = self._states.get_by_user(user_id) or UserStateData()
         updated = replace(
@@ -165,10 +280,21 @@ class UserModelService:
         return self._build_days(user_id)
 
     def _build_days(self, user_id: int) -> list[DayInput]:
+        return self._build_days_with_origins(user_id)[0]
+
+    def _build_days_with_origins(
+        self, user_id: int
+    ) -> tuple[list[DayInput], dict[date, str]]:
+        """Build Level 2 day inputs plus the per-day provenance of their data."""
         tasks = self._tasks.list_by_user(user_id)
         executions = self._executions.list_by_user(user_id, limit=2000)
         feedbacks = self._feedbacks.list_by_user(user_id, limit=500)
         task_by_id = {task.id: task for task in tasks if task.id is not None}
+        goal_deadlines = {
+            goal.id: _as_deadline_naive(goal.deadline)
+            for goal in self._goals.list_by_user(user_id)
+            if goal.id is not None and goal.deadline is not None
+        }
         today = date.today()
 
         buckets: dict[date, dict[str, list]] = {}
@@ -208,10 +334,36 @@ class UserModelService:
             if day <= today:
                 bucket(day)
 
+        origins: dict[date, str] = {}
+
+        def mark_origin(day: date, origin: str) -> None:
+            # A day is synthetic if any observation behind it is synthetic;
+            # an empty cold-start day is real.
+            if origins.get(day) == "synthetic" or origin == "synthetic":
+                origins[day] = "synthetic"
+            else:
+                origins.setdefault(day, "real")
+
+        for day, entry in buckets.items():
+            for task in entry["tasks"]:
+                mark_origin(day, task.data_origin)
+            for execution in entry["executions"]:
+                mark_origin(day, execution.data_origin)
+            feedback = feedback_by_day.get(day)
+            if feedback is not None:
+                mark_origin(day, feedback.data_origin)
+
         days: list[DayInput] = []
         for day in sorted(buckets):
             entry = buckets[day]
-            plans = [self._level2_task_plan(task, day) for task in entry["tasks"]]
+            plans = [
+                self._level2_task_plan(
+                    task,
+                    day,
+                    goal_deadlines.get(task.goal_id) if task.goal_id is not None else None,
+                )
+                for task in entry["tasks"]
+            ]
             known_ids = {plan.task_id for plan in plans}
             day_executions = [
                 self._level2_execution(execution)
@@ -222,9 +374,15 @@ class UserModelService:
             reflection = None
             passive = None
             if feedback is not None:
-                text = (feedback.free_text or feedback.delay_reason or "").strip()
-                if text:
-                    reflection = ReflectionInput(day_review=text)
+                fallback = (feedback.free_text or feedback.delay_reason or "").strip() or None
+                candidate = ReflectionInput(
+                    day_review=feedback.day_review or fallback,
+                    stuck_points=feedback.stuck_points,
+                    state_review=feedback.state_review,
+                    tomorrow_outlook=feedback.tomorrow_outlook,
+                )
+                if not candidate.is_empty():
+                    reflection = candidate
                 if feedback.sleep_hours is not None:
                     passive = PassiveContext(
                         sleep_duration_minutes=float(feedback.sleep_hours) * 60.0
@@ -240,18 +398,27 @@ class UserModelService:
                     passive_context=passive,
                 )
             )
-        return days
+        return days, origins
 
     @staticmethod
-    def _level2_task_plan(task: Task, day: date) -> Level2TaskPlan:
+    def _level2_task_plan(
+        task: Task,
+        day: date,
+        goal_deadline: datetime | None = None,
+    ) -> Level2TaskPlan:
         start = datetime.combine(day, task.start_time or DEFAULT_DAY_START)
+        deadline = _as_deadline_naive(task.deadline) or goal_deadline
+        # TaskPlan rejects a deadline before the planned start; omit it instead
+        # of failing the whole replay for one inconsistent historical row.
+        if deadline is not None and deadline < start:
+            deadline = None
         return Level2TaskPlan(
             task_id=str(task.id),
             title=task.title,
             planned_start=start,
             estimated_duration_minutes=max(int(task.estimated_duration), 1),
-            deadline=None,
-            difficulty=None,
+            deadline=deadline,
+            difficulty=task.difficulty,
         )
 
     @staticmethod
@@ -326,14 +493,19 @@ class UserModelService:
         start = None
         if task.scheduled_date is not None:
             start = datetime.combine(task.scheduled_date, task.start_time or DEFAULT_DAY_START)
+        deadline = _as_deadline_utc(task.deadline)
+        if deadline is None and task.goal_id is not None:
+            goal = self._goals.get_by_id(task.goal_id)
+            if goal is not None:
+                deadline = _as_deadline_utc(goal.deadline)
         return TaskPredictionContext(
             task_id=str(task.id or 0),
             title=task.title,
             estimated_duration_minutes=float(task.predicted_duration or task.estimated_duration),
-            difficulty=None,
-            deadline=None,
+            difficulty=task.difficulty,
+            deadline=deadline,
             planned_start=start,
-            task_type=task_type,
+            task_type=task_type if task_type is not None else task.task_type,
             available_time_minutes=available_minutes,
             time_of_day=start.hour if start else datetime.now().hour,
         )
@@ -403,11 +575,128 @@ class UserModelService:
             try:
                 from app.domain.models.shadow_prediction import ShadowPrediction
 
-                self._shadow.create(ShadowPrediction(**record.model_dump()))
+                # Savepoint: one failed audit row must not poison the session.
+                with self._session.begin_nested():
+                    self._shadow.create(
+                        ShadowPrediction(**record.model_dump(exclude={"feature_snapshot"}))
+                    )
                 written += 1
             except Exception as exc:  # noqa: BLE001 - audit failure is not a plan failure
                 logger.warning("failed to persist shadow prediction: %s", exc)
+            if record.success and record.feature_snapshot:
+                self._persist_prediction_snapshot(
+                    user_id=user_id,
+                    plan_id=plan_id,
+                    task=task,
+                    record=record,
+                    ctx=ctx,
+                    production=production,
+                    data_origin=data_origin,
+                )
         return written
+
+    def _persist_prediction_snapshot(
+        self,
+        *,
+        user_id: int,
+        plan_id: int | None,
+        task: Task,
+        record: ShadowPredictionRecord,
+        ctx: UserModelContext,
+        production: dict[str, Any],
+        data_origin: str,
+    ) -> None:
+        """Freeze the Level 3 inputs at prediction time (audit only, never raises)."""
+        if task.id is None or ctx.trait is None or ctx.state is None or ctx.history is None:
+            return
+        meta = self._runtime.level3.metadata
+        try:
+            with self._session.begin_nested():
+                self._prediction_snapshots.create(
+                    PredictionSnapshot(
+                    user_id=user_id,
+                    task_id=task.id,
+                    plan_id=plan_id,
+                    prediction_timestamp=record.inference_timestamp,
+                    trait=ctx.trait.model_dump(mode="json"),
+                    state=ctx.state.model_dump(mode="json"),
+                    history=ctx.history.model_dump(mode="json"),
+                    task=self.task_context(task).model_dump(mode="json"),
+                    context=dict(production),
+                    feature_snapshot=record.feature_snapshot,
+                    input_hash=record.input_hash,
+                    model_version=record.model_version or meta.model_version,
+                    # Recallable model configuration (falls back to the artifact
+                    # version if the runtime is unavailable).
+                    config_version=_level3_config_version(self._runtime),
+                    artifact_hash=meta.artifact_hash,
+                    mode=record.mode,
+                    data_origin=data_origin,
+                )
+                )
+        except Exception as exc:  # noqa: BLE001 - audit failure is not a plan failure
+            logger.warning(
+                "failed to persist prediction snapshot for task=%s: %s",
+                task.id,
+                exc,
+            )
+
+    def record_prediction_outcome(
+        self, user_id: int, task_id: int
+    ) -> PredictionOutcome | None:
+        """Attach the latest observed execution to the newest unlabelled snapshot.
+
+        Best effort: this feeds evaluation later and must never break task
+        execution, so every failure is contained.
+        """
+        try:
+            execution = None
+            for candidate in self._executions.list_by_task(task_id):
+                if _is_observed_execution(candidate):
+                    execution = candidate
+            if execution is None:
+                return None
+            execution_time = _to_utc_aware(execution.finished_at or execution.created_at)
+
+            snapshot = None
+            for candidate in self._prediction_snapshots.list_by_task(task_id):
+                if candidate.user_id != user_id or candidate.id is None:
+                    continue
+                if self._prediction_outcomes.get_by_snapshot(candidate.id) is not None:
+                    continue
+                predicted_at = _to_utc_aware(candidate.prediction_timestamp)
+                if execution_time is not None and predicted_at is not None:
+                    if predicted_at > execution_time:
+                        # Never label an earlier prediction with a later run.
+                        continue
+                snapshot = candidate
+                break
+            if snapshot is None or snapshot.id is None:
+                return None
+            return self._prediction_outcomes.create(
+                PredictionOutcome(
+                    snapshot_id=snapshot.id,
+                    task_id=task_id,
+                    completed=bool(execution.completed),
+                    completion_ratio=execution.completion_rate,
+                    actual_duration_minutes=(
+                        float(execution.actual_duration)
+                        if execution.actual_duration is not None
+                        else None
+                    ),
+                    outcome_timestamp=execution.finished_at or execution.created_at,
+                    notes=execution.failure_reason,
+                    source="execution",
+                )
+            )
+        except Exception as exc:  # noqa: BLE001 - callers treat this as best effort
+            logger.warning(
+                "failed to record prediction outcome for user=%s task=%s: %s",
+                user_id,
+                task_id,
+                exc,
+            )
+            return None
 
     def _failed_record(
         self,

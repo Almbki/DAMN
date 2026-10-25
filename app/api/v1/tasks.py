@@ -14,6 +14,20 @@ from app.schemas.task import TaskRead, TaskUpdateRequest
 
 router = APIRouter()
 
+#: Phase-1 nullable record fields: an explicit `null` clears them (the old
+#: `exclude_none` guard silently dropped nulls). Non-nullable task columns keep
+#: the historical "null = not provided" behaviour.
+_CLEARABLE_TASK_FIELDS: frozenset[str] = frozenset(
+    {
+        "deadline",
+        "earliest_start_date",
+        "difficulty",
+        "task_type",
+        "value_score",
+        "completion_criterion",
+    }
+)
+
 _AUTH = {401: {"model": ErrorResponse, "description": "Not authenticated"}}
 _NOT_FOUND = {404: {"model": ErrorResponse, "description": "Task not found"}}
 
@@ -37,9 +51,11 @@ def update_task(
     current_user: User = Depends(get_current_user),
     plan_service: PlanService = Depends(get_plan_service),
 ) -> TaskRead:
-    changes = payload.model_dump(
-        exclude_none=True, exclude={"standard_updates"}
-    )
+    raw = payload.model_dump(exclude={"standard_updates"})
+    changes = {key: value for key, value in raw.items() if value is not None}
+    for field in _CLEARABLE_TASK_FIELDS:
+        if field in payload.model_fields_set and raw.get(field) is None:
+            changes[field] = None
     standard_updates = (
         [item.model_dump() for item in payload.standard_updates]
         if payload.standard_updates

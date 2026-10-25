@@ -9,7 +9,8 @@ from __future__ import annotations
 
 import hashlib
 import logging
-from datetime import UTC, date, datetime, timedelta
+from datetime import UTC, date, datetime, time, timedelta
+from enum import Enum
 from typing import Any
 from uuid import uuid4
 
@@ -53,6 +54,7 @@ from app.domain.models import (
     PredictionLog,
     ReplanEvent,
     Task,
+    TaskEvent,
     TaskExecution,
     TaskStandard,
 )
@@ -72,6 +74,7 @@ from app.infrastructure.database.repositories import (
     PlanRepository,
     PredictionLogRepository,
     ReplanEventRepository,
+    TaskEventRepository,
     TaskExecutionRepository,
     TaskRepository,
     TaskStandardRepository,
@@ -97,9 +100,15 @@ _EXECUTION_FIELDS: tuple[str, ...] = (
     "stress_after",
     "failure_reason",
     "interruption_count",
+    "execution_status",
+    "failure_category",
+    "estimate_feedback",
     "started_at",
     "finished_at",
 )
+
+#: Task PATCH fields that only move a task in time (-> ``rescheduled`` events).
+_RESCHEDULE_FIELDS: frozenset[str] = frozenset({"scheduled_date", "start_time", "end_time"})
 
 
 class PlanService:
@@ -118,6 +127,7 @@ class PlanService:
         self._session = session
         self._plans = PlanRepository(session)
         self._tasks = TaskRepository(session)
+        self._task_events = TaskEventRepository(session)
         self._standards = TaskStandardRepository(session)
         self._goals = GoalRepository(session)
         self._executions = TaskExecutionRepository(session)
@@ -625,6 +635,8 @@ class PlanService:
         task = self._tasks.get_by_id(task_id)
         if task is None or task.plan_id != plan_id:
             raise NotFoundError("task not found in plan")
+        # Snapshot before the in-place update: the event log is append-only.
+        before_snapshot = task.model_dump(mode="json")
 
         completed = changes.pop("completed", None)
         # Execution-only fields are not Task columns. They used to be silently
@@ -657,7 +669,10 @@ class PlanService:
                 continue
             self._standards.update_fields(standard_id, completed=bool(update.get("completed")))
 
-        if completed is True or execution_payload or completion_rate is not None:
+        recorded_execution = (
+            completed is True or bool(execution_payload) or completion_rate is not None
+        )
+        if recorded_execution:
             rate = (
                 1.0
                 if completed is True
@@ -670,11 +685,38 @@ class PlanService:
                 completed=bool(completed),
                 completion_rate=rate,
             )
+        if changes:
+            # The task row is updated in place; history lives in task_events.
+            self._task_events.create(
+                TaskEvent(
+                    user_id=user_id,
+                    task_id=task_id,
+                    event_type=_task_event_type(changes),
+                    before={
+                        key: before_snapshot[key]
+                        for key in changes
+                        if key in before_snapshot
+                    } or None,
+                    after={key: _jsonable(value) for key, value in changes.items()} or None,
+                )
+            )
         self._session.commit()
-        if completed is True or execution_payload or completion_rate is not None:
+        if recorded_execution:
             # After the task commit, so a model failure can never roll back the
             # user's own execution record.
             self._refresh_user_model(user_id)
+            try:
+                self._user_models.record_prediction_outcome(user_id, task.id)
+                # The outcome repository only flushes; the service owns the commit.
+                self._session.commit()
+            except Exception:  # noqa: BLE001 - best effort; the execution row is the record
+                logger.warning(
+                    "prediction outcome recording failed for user=%s task=%s",
+                    user_id,
+                    task.id,
+                    exc_info=True,
+                )
+                self._session.rollback()
         refreshed = self._tasks.get_by_id(task_id)
         if refreshed is None:  # pragma: no cover - defensive
             raise NotFoundError("task not found in plan")
@@ -697,8 +739,19 @@ class PlanService:
         task = self._tasks.get_by_id(task_id, include_deleted=True)
         if task is None or task.plan_id != plan_id:
             raise NotFoundError("task not found in plan")
+        already_deleted = task.deleted_at is not None
         if not self._tasks.soft_delete(task_id, reason):
             raise NotFoundError("task not found in plan")
+        if not already_deleted:
+            # Idempotent repeat deletes change nothing, so they add no event.
+            self._task_events.create(
+                TaskEvent(
+                    user_id=user_id,
+                    task_id=task_id,
+                    event_type="deleted",
+                    reason=reason,
+                )
+            )
         self._session.commit()
 
     # ------------------------------------------------------------------
@@ -897,6 +950,9 @@ class PlanService:
                     goal_id=goal_id_map.get(draft.goal_id or 0, draft.goal_id),
                     title=self._clip(draft.title, _TITLE_MAX_LEN),
                     description=self._clip(draft.description, _DESCRIPTION_MAX_LEN),
+                    # The planner already resolved a goal-level deadline; keep it
+                    # on the task row so Level 2/3 and the UI can use it.
+                    deadline=draft.deadline.date() if draft.deadline is not None else None,
                     estimated_duration=max(draft.estimated_duration, 1),
                     predicted_duration=draft.predicted_duration,
                     cognitive_load=draft.cognitive_load,
@@ -1158,11 +1214,9 @@ class PlanService:
                 plan_id=detail.plan.id,
                 tasks=[item.task for item in detail.tasks],
                 context=user_model,
-                data_origin=(
-                    "synthetic"
-                    if self._user_models.has_synthetic_observations(user_id)
-                    else detail.plan.data_origin
-                ),
+                # Provenance of this plan, not a user-global flag: a real plan
+                # stays 'real' even when the user once imported synthetic data.
+                data_origin=detail.plan.data_origin or "real",
             )
             if written:
                 self._session.commit()
@@ -1185,6 +1239,9 @@ class PlanService:
         completion_rate: float = 1.0,
     ) -> None:
         """Persist real execution data (the Level 2/3 data asset)."""
+        execution_status = changes.get("execution_status")
+        if execution_status is None:
+            execution_status = _derive_execution_status(completed, completion_rate, changes)
         execution = TaskExecution(
             task_id=task.id,
             user_id=user_id,
@@ -1198,10 +1255,53 @@ class PlanService:
             stress_after=changes.get("stress_after"),
             failure_reason=changes.get("failure_reason"),
             interruption_count=changes.get("interruption_count"),
+            execution_status=execution_status,
+            failure_category=changes.get("failure_category"),
+            estimate_feedback=changes.get("estimate_feedback"),
             completed=completed,
             data_origin=task.data_origin or "real",
         )
         self._executions.create(execution)
+
+
+def _jsonable(value: Any) -> Any:
+    """Normalise a patch value into a JSON-serialisable form."""
+    if isinstance(value, Enum):
+        return value.value
+    if isinstance(value, (datetime, date, time)):
+        return value.isoformat()
+    if isinstance(value, dict):
+        return {str(key): _jsonable(item) for key, item in value.items()}
+    if isinstance(value, (list, tuple)):
+        return [_jsonable(item) for item in value]
+    return value
+
+
+def _task_event_type(changes: dict) -> str:
+    """Classify one task patch for the append-only event log."""
+    keys = set(changes)
+    if "status" in keys:
+        return "status_changed"
+    if keys and keys <= _RESCHEDULE_FIELDS:
+        return "rescheduled"
+    return "edited"
+
+
+def _derive_execution_status(
+    completed: bool, completion_rate: float, changes: dict
+) -> str | None:
+    """Infer the outcome label when the user did not provide one.
+
+    Starting a task without any result is *not* an observation: without
+    ``finished_at`` / ``actual_duration`` the status stays ``None``.
+    """
+    if completed or completion_rate >= 1:
+        return "completed"
+    if 0 < completion_rate < 1:
+        return "partial"
+    if changes.get("finished_at") is not None or changes.get("actual_duration") is not None:
+        return "not_done"
+    return None
 
 
 def _agent_config_from_settings() -> AgentConfig:

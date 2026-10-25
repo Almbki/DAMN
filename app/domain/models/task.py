@@ -45,6 +45,19 @@ class Task(DomainModel):
     occurrence_date: date | None = None
     target_amount: int | None = None
     target_unit: str | None = None
+    # --- Phase 1 record-layer fields (all optional; old rows fall back) ---
+    #: Task-level deadline; None falls back to the goal deadline.
+    deadline: date | None = None
+    #: Earliest schedulable date; None falls back to occurrence_date.
+    earliest_start_date: date | None = None
+    #: 1..5 difficulty; distinct from cognitive_load.
+    difficulty: int | None = Field(default=None, ge=1, le=5)
+    #: Task type (reading/practice/writing...); distinct from task_kind.
+    task_type: str | None = None
+    #: 1..5 value of doing the task; distinct from priority.
+    value_score: int | None = Field(default=None, ge=1, le=5)
+    #: Plain-language completion criterion; task_standards stay the sub-steps.
+    completion_criterion: str | None = None
     order_index: int = 0
     # Soft delete: rows stay so TaskExecution / TaskStandard (ML data) survive.
     deleted_at: datetime | None = None
