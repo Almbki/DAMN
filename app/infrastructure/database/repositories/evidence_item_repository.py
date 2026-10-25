@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from sqlalchemy import select
+from sqlalchemy import delete, select
 
 from app.domain.models import EvidenceItem
 from app.infrastructure.database.models.evidence_item import EvidenceItem as EvidenceItemORM
@@ -36,6 +36,13 @@ class EvidenceItemRepository(RepositoryBase):
         for orm in orms:
             self._session.refresh(orm)
         return [EvidenceItem.model_validate(orm) for orm in orms]
+
+    def delete_by_feedback(self, feedback_id: int) -> int:
+        """Delete the rows extracted from one feedback (refresh replaces them)."""
+        result = self._session.execute(
+            delete(EvidenceItemORM).where(EvidenceItemORM.feedback_id == feedback_id)
+        )
+        return int(result.rowcount or 0)
 
     def list_by_feedback(self, feedback_id: int) -> list[EvidenceItem]:
         stmt = (
