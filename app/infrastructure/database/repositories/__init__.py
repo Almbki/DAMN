@@ -9,6 +9,7 @@ from app.infrastructure.database.repositories.agent_memory_repository import (
 )
 from app.infrastructure.database.repositories.agent_run_repository import AgentRunRepository
 from app.infrastructure.database.repositories.base import RepositoryBase
+from app.infrastructure.database.repositories.daily_plan_repository import DailyPlanRepository
 from app.infrastructure.database.repositories.daily_state_repository import DailyStateRepository
 from app.infrastructure.database.repositories.evidence_item_repository import (
     EvidenceItemRepository,
@@ -48,12 +49,16 @@ from app.infrastructure.database.repositories.task_standard_repository import Ta
 from app.infrastructure.database.repositories.trait_assessment_repository import (
     TraitAssessmentRepository,
 )
+from app.infrastructure.database.repositories.unscheduled_task_repository import (
+    UnscheduledTaskRepository,
+)
 from app.infrastructure.database.repositories.user_repository import UserRepository
 from app.infrastructure.database.repositories.user_state_repository import UserStateRepository
 
 __all__ = [
     "AgentMemoryRepository",
     "AgentRunRepository",
+    "DailyPlanRepository",
     "DailyStateRepository",
     "EvidenceItemRepository",
     "FeedbackRepository",
@@ -74,6 +79,7 @@ __all__ = [
     "TaskRepository",
     "TaskStandardRepository",
     "TraitAssessmentRepository",
+    "UnscheduledTaskRepository",
     "UserRepository",
     "UserStateRepository",
 ]

@@ -7,6 +7,7 @@ repositories: ``from app.infrastructure.database.models import User``.
 
 from app.infrastructure.database.models.agent_memory import AgentMemory
 from app.infrastructure.database.models.agent_run import AgentRun
+from app.infrastructure.database.models.daily_plan import DailyPlan
 from app.infrastructure.database.models.daily_state import DailyState
 from app.infrastructure.database.models.evidence_item import EvidenceItem
 from app.infrastructure.database.models.execution import TaskExecution
@@ -25,12 +26,14 @@ from app.infrastructure.database.models.task_dependency import TaskDependency
 from app.infrastructure.database.models.task_event import TaskEvent
 from app.infrastructure.database.models.task_standard import TaskStandard
 from app.infrastructure.database.models.trait_assessment import TraitAssessmentModel
+from app.infrastructure.database.models.unscheduled_task import UnscheduledTask
 from app.infrastructure.database.models.user import User
 from app.infrastructure.database.models.user_state import UserStateModel
 
 __all__ = [
     "AgentMemory",
     "AgentRun",
+    "DailyPlan",
     "DailyState",
     "EvidenceItem",
     "Feedback",
@@ -49,6 +52,7 @@ __all__ = [
     "TaskExecution",
     "TaskStandard",
     "TraitAssessmentModel",
+    "UnscheduledTask",
     "User",
     "UserStateModel",
 ]

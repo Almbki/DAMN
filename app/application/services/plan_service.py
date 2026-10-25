@@ -9,6 +9,8 @@ from __future__ import annotations
 
 import hashlib
 import logging
+import math
+from dataclasses import dataclass
 from datetime import UTC, date, datetime, time, timedelta
 from enum import Enum
 from typing import Any
@@ -44,19 +46,23 @@ from app.application.exceptions import (
     NotFoundError,
     PermissionDeniedError,
 )
+from app.application.preferences import effective_scheduling_preferences
 from app.application.services.user_model_service import UserModelService
 from app.core.config import get_settings
 from app.domain.feedback.models import AdjustmentRoute, AdjustmentSeverity
 from app.domain.models import (
     AgentRun,
+    DailyPlanRecord,
     Goal,
     Plan,
     PredictionLog,
     ReplanEvent,
     Task,
+    TaskDependency,
     TaskEvent,
     TaskExecution,
     TaskStandard,
+    UnscheduledTaskRecord,
 )
 from app.domain.models.enums import (
     CognitiveLoad,
@@ -70,14 +76,17 @@ from app.domain.scheduling.constants import DEFAULT_HORIZON_DAYS
 from app.domain.scheduling.scheduler import Scheduler
 from app.infrastructure.database.repositories import (
     AgentRunRepository,
+    DailyPlanRepository,
     GoalRepository,
     PlanRepository,
     PredictionLogRepository,
     ReplanEventRepository,
+    TaskDependencyRepository,
     TaskEventRepository,
     TaskExecutionRepository,
     TaskRepository,
     TaskStandardRepository,
+    UnscheduledTaskRepository,
     UserRepository,
 )
 
@@ -111,6 +120,22 @@ _EXECUTION_FIELDS: tuple[str, ...] = (
 _RESCHEDULE_FIELDS: frozenset[str] = frozenset({"scheduled_date", "start_time", "end_time"})
 
 
+@dataclass(frozen=True, slots=True)
+class PostponeOutcome:
+    """Result of :meth:`PlanService.postpone_unfinished`.
+
+    ``postpone`` is deliberately *not* a replan: the task content, times and plan
+    version stay untouched; only ``scheduled_date`` moves. When tomorrow cannot
+    hold the moved work the service skips the move and lets the caller fall back
+    to a micro adjustment.
+    """
+
+    postponed_task_ids: tuple[int, ...] = ()
+    over_capacity: bool = False
+    tomorrow_load_minutes: int = 0
+    tomorrow_capacity_minutes: int = 0
+
+
 class PlanService:
     def __init__(
         self,
@@ -128,6 +153,9 @@ class PlanService:
         self._plans = PlanRepository(session)
         self._tasks = TaskRepository(session)
         self._task_events = TaskEventRepository(session)
+        self._daily_plans = DailyPlanRepository(session)
+        self._unscheduled_tasks = UnscheduledTaskRepository(session)
+        self._dependencies = TaskDependencyRepository(session)
         self._standards = TaskStandardRepository(session)
         self._goals = GoalRepository(session)
         self._executions = TaskExecutionRepository(session)
@@ -579,6 +607,78 @@ class PlanService:
             },
         )
         return outcome
+
+    # ------------------------------------------------------------------
+    # Postpone (the cheap "move today's leftovers to tomorrow" route)
+    # ------------------------------------------------------------------
+    def postpone_unfinished(
+        self, user_id: int, plan_id: int, *, day: date | None = None
+    ) -> PostponeOutcome:
+        """Move the day's unfinished tasks to tomorrow without replanning.
+
+        Idempotent: a task already on a later date is never touched again, so a
+        repeated check-in on the same day is a no-op. The plan content (title,
+        description, duration, times) is preserved; only ``scheduled_date``
+        changes. When the postponed minutes would exceed tomorrow's effective
+        capacity nothing is moved and ``over_capacity`` is set, so the caller
+        can fall back to a micro adjustment.
+        """
+        detail = self.get_plan(user_id, plan_id)  # permission check + tasks
+        reference_day = day or date.today()
+        tomorrow = reference_day + timedelta(days=1)
+        terminal = {TaskStatus.COMPLETED, TaskStatus.SKIPPED}
+        tasks = [item.task for item in detail.tasks]
+        candidates = [
+            task
+            for task in tasks
+            if task.id is not None
+            and task.status not in terminal
+            and (task.scheduled_date is None or task.scheduled_date <= reference_day)
+        ]
+        tomorrow_tasks = [
+            task
+            for task in tasks
+            if task.status not in terminal and task.scheduled_date == tomorrow
+        ]
+        capacity = self._daily_capacity_minutes(user_id)
+        tomorrow_load = sum(_planned_minutes(task) for task in tomorrow_tasks)
+        postponed_minutes = sum(_planned_minutes(task) for task in candidates)
+
+        if candidates and tomorrow_load + postponed_minutes > capacity:
+            return PostponeOutcome(
+                over_capacity=True,
+                tomorrow_load_minutes=tomorrow_load,
+                tomorrow_capacity_minutes=capacity,
+            )
+
+        moved: list[int] = []
+        for task in candidates:
+            updated = self._tasks.update_fields(task.id or 0, scheduled_date=tomorrow)
+            if updated is not None and task.id is not None:
+                moved.append(task.id)
+        if moved:
+            self._session.commit()
+        return PostponeOutcome(
+            postponed_task_ids=tuple(moved),
+            tomorrow_load_minutes=tomorrow_load + postponed_minutes,
+            tomorrow_capacity_minutes=capacity,
+        )
+
+    def _daily_capacity_minutes(self, user_id: int) -> int:
+        """Effective daily capacity, mirroring the scheduler's cap."""
+        user = self._users.get_by_id(user_id)
+        if user is None:  # pragma: no cover - get_plan already proved the user
+            return 480
+        preferences = effective_scheduling_preferences(
+            user.profile, user.scheduling_preferences
+        )
+        return max(
+            1,
+            min(
+                int(preferences["daily_limit_minutes"]),
+                int(preferences["available_minutes_per_day"]),
+            ),
+        )
 
     # ------------------------------------------------------------------
     # Agent replan
@@ -1041,6 +1141,26 @@ class PlanService:
                 )
             )
         created_tasks = self._tasks.create_many(tasks)
+        provisional_to_real = {
+            draft.order_index + 1: task.id
+            for draft, task in zip(final.tasks, created_tasks, strict=False)
+            if task.id is not None
+        }
+        for index, task in enumerate(created_tasks, start=1):
+            if task.id is not None:
+                provisional_to_real.setdefault(index, task.id)
+        # Phase-4 audit trail + phase-3 prerequisite edges. Both are best-effort:
+        # they must never roll back a persisted user plan.
+        self._persist_schedule_audit(
+            plan_id=plan.id or 0,
+            schedule=schedule,
+            provisional_to_real=provisional_to_real,
+        )
+        self._persist_task_dependencies(
+            created_tasks=created_tasks,
+            drafts=final.tasks,
+            provisional_to_real=provisional_to_real,
+        )
         prediction_origin = (
             "synthetic"
             if self._user_models.has_synthetic_observations(user_id)
@@ -1299,6 +1419,87 @@ class PlanService:
             )
             self._session.rollback()
 
+    def _persist_schedule_audit(
+        self,
+        *,
+        plan_id: int,
+        schedule: Any,
+        provisional_to_real: dict[int, int],
+    ) -> None:
+        """Persist the per-day capacity report and the unscheduled reasons."""
+        if not plan_id or schedule is None:
+            return
+        try:
+            with self._session.begin_nested():
+                self._daily_plans.delete_by_plan(plan_id)
+                self._unscheduled_tasks.delete_by_plan(plan_id)
+                daily_records = [
+                    DailyPlanRecord(
+                        plan_id=plan_id,
+                        date=day.date,
+                        capacity_minutes=day.capacity_minutes,
+                        used_minutes=day.used_minutes,
+                        tasks=[
+                            provisional_to_real.get(task_id, task_id)
+                            for task_id in day.task_ids
+                        ],
+                        reasons=list(day.reasons),
+                    )
+                    for day in getattr(schedule, 'daily_plans', [])
+                ]
+                if daily_records:
+                    self._daily_plans.create_many(daily_records)
+                unscheduled = [
+                    UnscheduledTaskRecord(
+                        plan_id=plan_id,
+                        task_id=provisional_to_real[item.task_id],
+                        date=item.date,
+                        reason=item.reason,
+                    )
+                    for item in getattr(schedule, 'unscheduled_tasks', [])
+                    if item.task_id in provisional_to_real
+                ]
+                if unscheduled:
+                    self._unscheduled_tasks.create_many(unscheduled)
+        except Exception:  # noqa: BLE001 - audit trail must not break the plan
+            logger.warning(
+                "failed to persist schedule audit for plan=%s", plan_id, exc_info=True
+            )
+
+    def _persist_task_dependencies(
+        self,
+        *,
+        created_tasks: list[Task],
+        drafts: list[Any],
+        provisional_to_real: dict[int, int],
+    ) -> None:
+        """Persist draft dependency edges as task_dependencies rows."""
+        dependencies: list[TaskDependency] = []
+        seen: set[tuple[int, int]] = set()
+        for task, draft in zip(created_tasks, drafts, strict=False):
+            if task.id is None:
+                continue
+            for prerequisite in getattr(draft, 'depends_on', []) or []:
+                depends_on_id = provisional_to_real.get(prerequisite + 1)
+                if depends_on_id is None or depends_on_id == task.id:
+                    continue
+                pair = (task.id, depends_on_id)
+                if pair in seen:
+                    continue
+                seen.add(pair)
+                dependencies.append(
+                    TaskDependency(task_id=task.id, depends_on_task_id=depends_on_id)
+                )
+        if not dependencies:
+            return
+        try:
+            with self._session.begin_nested():
+                self._dependencies.create_many(dependencies)
+        except Exception:  # noqa: BLE001 - format checks already rejected bad edges
+            logger.warning(
+                "failed to persist task dependencies for plan tasks", exc_info=True
+            )
+
     def _record_execution(
         self,
         user_id: int,
@@ -1312,14 +1513,21 @@ class PlanService:
         execution_status = changes.get("execution_status")
         if execution_status is None:
             execution_status = _derive_execution_status(completed, completion_rate, changes)
+        started_at = changes.get("started_at")
+        finished_at = changes.get("finished_at")
+        actual_duration = changes.get("actual_duration")
+        if actual_duration is None and started_at is not None and finished_at is not None:
+            # "I started at X and finished at Y" is already an observation;
+            # asking the user for the minutes again would be redundant.
+            actual_duration = _minutes_between(started_at, finished_at)
         execution = TaskExecution(
             task_id=task.id,
             user_id=user_id,
             planned_duration=task.predicted_duration or task.estimated_duration,
-            actual_duration=changes.get("actual_duration"),
+            actual_duration=actual_duration,
             completion_rate=max(0.0, min(1.0, float(completion_rate))),
-            started_at=changes.get("started_at"),
-            finished_at=changes.get("finished_at"),
+            started_at=started_at,
+            finished_at=finished_at,
             difficulty_feedback=changes.get("difficulty_feedback"),
             stress_before=changes.get("stress_before"),
             stress_after=changes.get("stress_after"),
@@ -1332,6 +1540,24 @@ class PlanService:
             data_origin=task.data_origin or "real",
         )
         self._executions.create(execution)
+
+
+def _planned_minutes(task: Task) -> int:
+    """Minutes a task is expected to occupy (the scheduler's own rule)."""
+    return task.predicted_duration or task.estimated_duration
+
+
+def _minutes_between(started_at: Any, finished_at: Any) -> int | None:
+    """Whole minutes between two datetimes, rounded up and at least one.
+
+    Returns ``None`` for unusable input (e.g. an aware/naive mismatch) so the
+    execution row keeps "not observed" instead of inventing a duration.
+    """
+    try:
+        seconds = (finished_at - started_at).total_seconds()
+    except (TypeError, AttributeError):
+        return None
+    return max(1, math.ceil(seconds / 60))
 
 
 def _jsonable(value: Any) -> Any:
@@ -1423,4 +1649,4 @@ def _goal_inputs(detail: PlanDetail) -> list:
     return inputs
 
 
-__all__ = ["DEFAULT_HORIZON_DAYS", "PlanService"]
+__all__ = ["DEFAULT_HORIZON_DAYS", "PlanService", "PostponeOutcome"]
