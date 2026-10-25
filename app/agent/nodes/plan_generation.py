@@ -9,9 +9,30 @@ from app.agent.schemas import AgentError, PlanGenerationResult
 from app.agent.state import PlannerState, PreferenceInput, ToolCallRecord
 from app.agent.tools.memory_retriever import MemoryQuery, MemoryRetrieverInput
 from app.agent.tools.plan_drafter import PlanDrafterInput, PlanDrafterMode, PlanDrafterTool
+from app.domain.decomposition.validation import DraftIssue, validate_draft_tasks
 
 NODE = "plan_generation"
 TOOL = "plan_drafter"
+
+
+def _issue_summary(issues: list[DraftIssue], *, limit: int = 5) -> str:
+    """Compact, user-facing description of the format issues (bounded length)."""
+    rendered = [
+        f"{issue.code} at task {issue.task_index}: {issue.message}"
+        for issue in issues[:limit]
+    ]
+    if len(issues) > limit:
+        rendered.append(f"... and {len(issues) - limit} more")
+    return ", ".join(rendered)
+
+
+def _goal_count(state: PlannerState) -> int:
+    """Number of goals the drafts may reference (goal_id is a 1-based index)."""
+    goals = state.get("goals")
+    if not goals:
+        request = state.get("request")
+        goals = request.goals if request is not None else []
+    return len(goals)
 
 
 def _mode(state: PlannerState) -> PlanDrafterMode:
@@ -123,6 +144,73 @@ def plan_generation_node(state: PlannerState, runtime: object) -> dict:
             )
         )
 
+    # Format gate: detect structurally broken drafts before the scheduler and the
+    # preview consume them. A retry is bounded and only happens when the draft is
+    # actually invalid, so valid (deterministic) generations are unchanged.
+    goal_count = _goal_count(state)
+    issues = validate_draft_tasks(result.tasks, goal_count=goal_count)
+    format_retries = 0
+    max_format_retries = max(0, int(ctx.config.llm_max_retries))
+    while issues and format_retries < max_format_retries:
+        format_retries += 1
+        ctx.publish(
+            "draft.format_invalid",
+            {
+                "node": NODE,
+                "attempt": format_retries,
+                "max_attempts": max_format_retries,
+                "issues": [
+                    {
+                        "code": issue.code,
+                        "message": issue.message,
+                        "task_index": issue.task_index,
+                    }
+                    for issue in issues
+                ],
+            },
+        )
+        retry_outcome = ctx.tool(TOOL).invoke(payload)
+        ctx.publish("tool.completed", {"tool": TOOL, "ok": retry_outcome.ok})
+        if retry_outcome.value is None:
+            errors.append(
+                AgentError(
+                    node=NODE,
+                    kind="tool_failed",
+                    message=(
+                        retry_outcome.error
+                        or "plan_drafter failed during format retry"
+                    ),
+                    recovered=True,
+                )
+            )
+            break
+        outcome = retry_outcome
+        result = retry_outcome.value
+        issues = validate_draft_tasks(result.tasks, goal_count=goal_count)
+
+    if issues:
+        # Still return a preview: quality is never a hard gate and the user may
+        # fix the draft by adjusting the prompt. The warning is explicit and the
+        # errors are part of the run state, so nothing is silently accepted.
+        message = (
+            f"draft format check failed after {format_retries} retry attempt(s): "
+            + _issue_summary(issues)
+        )
+        errors.append(
+            AgentError(
+                node=NODE,
+                kind="draft_format_invalid",
+                message=message,
+                recovered=False,
+            )
+        )
+        notes = [f"plan_generation[{mode.value}]: {message}"]
+    else:
+        retry_note = (
+            f" after {format_retries} format retry attempt(s)" if format_retries else ""
+        )
+        notes = [f"plan_generation[{mode.value}]: {len(result.tasks)} draft(s){retry_note}"]
+
     updates["plan_draft"] = result
     # A fresh draft resets the repair budget for the new candidate.
     updates["repair_attempts"] = 0
@@ -137,8 +225,11 @@ def plan_generation_node(state: PlannerState, runtime: object) -> dict:
     ]
     if errors:
         updates["errors"] = errors
-    updates["notes"] = [f"plan_generation[{mode.value}]: {len(result.tasks)} draft(s)"]
-    ctx.publish("node.completed", {"node": NODE, "summary": updates["notes"][0]})
+    updates["notes"] = notes
+    ctx.publish(
+        "node.completed",
+        {"node": NODE, "summary": notes[0], "format_retries": format_retries},
+    )
     return updates
 
 

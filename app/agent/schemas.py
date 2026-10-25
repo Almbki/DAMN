@@ -126,6 +126,10 @@ class GeneratedTaskDraft(LLMOutput):
     standards: list[str] = Field(default_factory=list)
     deadline: datetime | None = None
     order_index: int = 0
+    #: Prerequisite tasks, expressed as their order_index (the provisional id
+    #: contract is order_index + 1). Self-dependencies and cycles are rejected by
+    #: the domain format check before a preview is produced.
+    depends_on: list[int] = Field(default_factory=list)
     # Repetition contract: defaulted so one-off drafts look exactly as before.
     task_kind: TaskKind = TaskKind.ONE_OFF
     series_id: str | None = None
