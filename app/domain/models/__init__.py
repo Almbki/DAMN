@@ -18,6 +18,7 @@ from app.domain.models.enums import (
 )
 from app.domain.models.execution import TaskExecution
 from app.domain.models.feedback import Feedback
+from app.domain.models.generation_job import GenerationJobRecord
 from app.domain.models.goal import Goal
 from app.domain.models.plan import Plan
 from app.domain.models.prediction_log import PredictionLog
@@ -34,6 +35,7 @@ __all__ = [
     "CognitiveLoad",
     "DomainModel",
     "Feedback",
+    "GenerationJobRecord",
     "Goal",
     "GoalStatus",
     "GoalType",

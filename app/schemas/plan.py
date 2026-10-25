@@ -83,6 +83,8 @@ class PlanGenerateRequest(BaseModel):
     high_cognitive_max_per_day: int | None = Field(default=None, ge=1, le=10)
     user_profile: dict = Field(default_factory=dict)
     execution_weight: float | None = Field(default=None, ge=0.0, le=1.0)
+    #: IANA timezone from the browser, used for "today"/"now" scheduling.
+    timezone: str | None = Field(default=None, max_length=64)
 
 
 class PreviewTaskRead(BaseModel):
@@ -203,6 +205,7 @@ class DecomposeRequest(BaseModel):
     goals: list[DecomposeGoal] = Field(min_length=1)
     draft_id: str | None = None
     feedback: str | None = None
+    timezone: str | None = Field(default=None, max_length=64)
 
 
 class DecomposeDraftTask(BaseModel):

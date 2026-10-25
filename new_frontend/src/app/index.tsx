@@ -20,6 +20,7 @@ import { groupByGoal, weekDates } from '@/domain/selectors';
 import { isClosed, type Task } from '@/domain/task';
 import { useListKeys } from '@/hooks/use-list-keys';
 import { usePlan } from '@/state/plan';
+import { useSchedule } from '@/state/schedule';
 import { useTheme } from '@/state/theme';
 
 type FilterKey = 'all' | 'open' | 'done';
@@ -45,6 +46,8 @@ function toItem(task: Task): TimelineItem {
     taskKind: task.taskKind,
     seriesIndex: task.seriesIndex,
     occurrenceDate: task.occurrenceDate,
+    standards: task.standards,
+    startedAt: task.startedAt ?? null,
   };
 }
 
@@ -75,6 +78,7 @@ export default function TodoScreen() {
     planChanges,
     updateTask,
     updateStandard,
+    startTask,
     setDone,
     setSkipped,
     moveBy,
@@ -82,6 +86,7 @@ export default function TodoScreen() {
     createTask,
     deleteTask,
   } = usePlan();
+  const { showSchedule } = useSchedule();
   const isApi = mode === 'api';
 
   const [view, setView] = useState(0);
@@ -93,6 +98,7 @@ export default function TodoScreen() {
   const [replanConfirmOpen, setReplanConfirmOpen] = useState(false);
   const [activeId, setActiveId] = useState<number | null>(null);
   const [detailId, setDetailId] = useState<number | null>(null);
+  const [expandedIds, setExpandedIds] = useState<Set<number>>(() => new Set());
   const [deleteTargetId, setDeleteTargetId] = useState<number | null>(null);
   const [deleteNotice, setDeleteNotice] = useState<{ id: number; title: string } | null>(null);
   const [undo, setUndo] = useState<{ id: number; title: string } | null>(null);
@@ -147,6 +153,18 @@ export default function TodoScreen() {
 
   const handleOpen = useCallback((id: number) => {
     setDetailId(id);
+  }, []);
+
+  const toggleExpanded = useCallback((id: number) => {
+    setExpandedIds((current) => {
+      const next = new Set(current);
+      if (next.has(id)) {
+        next.delete(id);
+      } else {
+        next.add(id);
+      }
+      return next;
+    });
   }, []);
 
   // The confirmation lives on this screen: the sheet asks, we close it, and the
@@ -278,6 +296,7 @@ export default function TodoScreen() {
 
   const keysEnabled =
     view === 0 &&
+    !showSchedule &&
     detailTask == null &&
     !changeOpen &&
     !addHintOpen &&
@@ -302,8 +321,13 @@ export default function TodoScreen() {
         items={items.map(toItem)}
         nowId={currentTask?.id ?? null}
         activeId={activeId}
+        canEdit={canEditTasks}
+        expandedIds={expandedIds}
         onToggleDone={handleToggleById}
         onOpen={handleOpen}
+        onStartTask={startTask}
+        onToggleExpanded={toggleExpanded}
+        onUpdateStandard={updateStandard}
       />
     );
   }
@@ -314,8 +338,13 @@ export default function TodoScreen() {
         key={task.id}
         task={task}
         active={task.id === activeId}
+        canEdit={canEditTasks}
+        expanded={expandedIds.has(task.id)}
         onToggleDone={() => handleToggleById(task.id)}
         onOpen={() => handleOpen(task.id)}
+        onStartTask={() => startTask(task.id)}
+        onToggleExpanded={() => toggleExpanded(task.id)}
+        onUpdateStandard={updateStandard}
       />
     );
   }
@@ -487,9 +516,13 @@ export default function TodoScreen() {
         ) : null}
       </View>
 
-      <ScheduleSection onOverlayChange={setScheduleOverlayOpen} />
+      <ScheduleSection
+        tasks={tasks}
+        onSelectTask={(task) => handleOpen(task.id)}
+        onOverlayChange={setScheduleOverlayOpen}
+      />
 
-      {view === 0 ? (
+      {view === 0 && (!showSchedule || overdueTasks.length > 0) ? (
         <View style={styles.body} testID="todo-list">
           {overdueTasks.length > 0 ? (
             <View style={styles.group}>
@@ -500,7 +533,7 @@ export default function TodoScreen() {
             </View>
           ) : null}
 
-          {todayTasks.length > 0 ? (
+          {!showSchedule && todayTasks.length > 0 ? (
             grouped ? (
               groupedTasks.map((group) => (
                 <View key={group.goal?.id ?? 'none'} style={styles.group}>
@@ -520,11 +553,13 @@ export default function TodoScreen() {
             )
           ) : null}
 
-          {todayTasks.length === 0 && overdueTasks.length === 0 ? renderEmpty() : null}
+          {!showSchedule && todayTasks.length === 0 && overdueTasks.length === 0
+            ? renderEmpty()
+            : null}
         </View>
       ) : null}
 
-      {view === 1 ? (
+      {view === 1 && !showSchedule ? (
         <View style={styles.week}>
           {week.map((day) => {
             const isToday = day.date === today;

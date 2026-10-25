@@ -48,6 +48,21 @@ async def lifespan(app: FastAPI):
     # Convenience for local SQLite development; use Alembic for PostgreSQL.
     if settings.is_sqlite:
         init_db()
+    # Generation jobs are durable rows, but a crash kills their worker thread.
+    # Mark any pending/running row left from a previous process as failed so
+    # pollers/SSE clients get a terminal answer instead of waiting forever.
+    try:
+        from app.application.services.generation_service import (
+            recover_orphaned_generation_jobs,
+        )
+
+        recovered = recover_orphaned_generation_jobs()
+        if recovered:
+            logger.warning(
+                "marked %s orphaned generation job(s) as failed", recovered
+            )
+    except Exception as exc:  # noqa: BLE001 - startup must never fail on this
+        logger.warning("generation job recovery failed: %s: %s", type(exc).__name__, exc)
     # Warm up the agent checkpointer so the LangGraph checkpoint tables exist
     # before the first preview/confirm request. If Postgres is unreachable the
     # factory logs loudly and degrades to in-memory (previews then do not survive

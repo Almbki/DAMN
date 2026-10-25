@@ -421,12 +421,14 @@ export default function FeedbackScreen() {
 const styles = StyleSheet.create({
   page: {
     flex: 1,
+    minHeight: 0,
   },
   emptyPage: {
     paddingTop: Space.xl,
   },
   scroll: {
     flex: 1,
+    minHeight: 0,
   },
   content: {
     gap: Space.xl,

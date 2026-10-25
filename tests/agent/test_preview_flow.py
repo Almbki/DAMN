@@ -97,7 +97,7 @@ def test_long_term_goal_persists_daily_occurrences(
     assert {task["is_flexible"] for task in tasks} == {False}
     assert [task["occurrence_date"] for task in tasks] == expected_days
     assert [task["scheduled_date"] for task in tasks] == expected_days
-    assert all(task["standards"] for task in tasks)
+    assert all(not task["standards"] for task in tasks)
 
     confirmed = client.post(
         f"/api/v1/plans/preview/{body['thread_id']}/confirm", headers=auth_headers

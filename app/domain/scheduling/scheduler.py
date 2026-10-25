@@ -116,7 +116,9 @@ class Scheduler:
     def schedule(
         self, tasks: list[Task], context: RuleContext
     ) -> CandidateSchedule:
-        start_date, end_date = self.default_horizon(tasks, context)
+        start_date, end_date = self.default_horizon(
+            tasks, context, today=context.today or date.today()
+        )
 
         # (1) skip completed tasks; ids are required to place a task.
         eligible = [
@@ -256,8 +258,15 @@ class Scheduler:
         """Earliest slot (on ``slot_minutes`` boundaries) that satisfies the
         window, the buffer and the non-consecutive HIGH spacing rule."""
         start_bound = _to_minutes(context.day_start)
+        not_before = context.not_before.get(day)
+        if not_before is not None:
+            start_bound = max(start_bound, _to_minutes(not_before))
         end_bound = _to_minutes(context.day_end)
         step = self.config.slot_minutes
+        # Round "now" up to the next slot boundary instead of starting at an
+        # arbitrary minute such as 15:07.
+        if start_bound % step:
+            start_bound += step - (start_bound % step)
         k = 0
         while start_bound + k * step + duration <= end_bound:
             slot = start_bound + k * step

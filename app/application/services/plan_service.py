@@ -325,45 +325,89 @@ class PlanService:
         )
 
     def confirm_plan(self, user_id: int, thread_id: str, *, emit=None) -> ConfirmResult:
-        """Confirm the preview and persist v1."""
-        self._authorise_thread(user_id, thread_id)
+        """Confirm the preview and persist v1.
+
+        The graph consumes the interrupt before the service persists the plan.
+        A persistence failure therefore used to leave the draft in a state where
+        every retry returned a misleading 409. Confirm is now idempotent: a
+        repeated call returns the already-created plan, and a failed persist can
+        retry from the graph's completed final state.
+        """
+        existing = self._confirmed_plan(user_id, thread_id)
+        if existing is not None:
+            return ConfirmResult(detail=existing, degraded=False, warnings=[])
+
         graph = self._graph()
-        (state, preview), _events, run_id = self._run(
-            user_id=user_id,
-            trigger_type="confirm_preview",
-            emit=emit,
-            call=lambda sink: graph.resume_preview(
-                thread_id=thread_id, action="confirm", emit=sink
-            ),
-            summary={"stage": "confirm", "thread_id": thread_id},
-        )
-        warnings = _warnings_from_state(state)
-        if preview is not None:  # pragma: no cover - confirm always finalises
+        pending = graph.pending_state(thread_id)
+        if pending is not None:
+            if pending.get("user_id") != user_id:
+                raise PermissionDeniedError("draft belongs to another user")
+            (state, preview), _events, run_id = self._run(
+                user_id=user_id,
+                trigger_type="confirm_preview",
+                emit=emit,
+                call=lambda sink: graph.resume_preview(
+                    thread_id=thread_id, action="confirm", emit=sink
+                ),
+                summary={"stage": "confirm", "thread_id": thread_id},
+            )
+            warnings = _warnings_from_state(state)
+            if preview is not None:  # pragma: no cover - confirm always finalises
+                return ConfirmResult(
+                    detail=None,
+                    pending_preview=preview,
+                    degraded=bool(warnings),
+                    warnings=warnings,
+                )
+            detail = self._persist_final_plan(user_id, state, run_id=run_id)
+            self._link_run(
+                run_id,
+                plan_id=detail.plan.id,
+                summary=self._confirm_summary(thread_id, detail, warnings),
+            )
             return ConfirmResult(
-                detail=None,
-                pending_preview=preview,
+                detail=detail,
                 degraded=bool(warnings),
                 warnings=warnings,
             )
-        detail = self._persist_final_plan(user_id, state)
-        self._link_run(
-            run_id,
-            plan_id=detail.plan.id,
-            summary={
-                "stage": "confirm",
-                "thread_id": thread_id,
-                "plan_id": detail.plan.id,
-                "version": detail.plan.version,
-                "tasks": len(detail.tasks),
-                "confidence": detail.plan.confidence,
-                "degraded": bool(warnings),
-            },
+
+        # No pending interrupt. If the graph already finalized but persistence
+        # failed (e.g. the historical goal_id=0 FK error), reuse that final state
+        # instead of refusing the retry with 409.
+        state = graph.final_state(thread_id)
+        if state is None or state.get("user_id") != user_id:
+            # Preserve the old 404/409 distinction for unknown/foreign drafts.
+            self._authorise_thread(user_id, thread_id)
+            raise NotFoundError("draft not found or expired")  # pragma: no cover
+
+        warnings = _warnings_from_state(state)
+        run = self._find_confirm_run(user_id, thread_id)
+        detail = self._persist_final_plan(
+            user_id, state, run_id=run.run_id if run is not None else None
         )
+        if run is not None:
+            self._link_run(
+                run.run_id,
+                plan_id=detail.plan.id,
+                summary=self._confirm_summary(thread_id, detail, warnings),
+            )
         return ConfirmResult(
             detail=detail,
             degraded=bool(warnings),
             warnings=warnings,
         )
+
+    @staticmethod
+    def _confirm_summary(thread_id: str, detail: PlanDetail, warnings: list[str]) -> dict:
+        return {
+            "stage": "confirm",
+            "thread_id": thread_id,
+            "plan_id": detail.plan.id,
+            "version": detail.plan.version,
+            "tasks": len(detail.tasks),
+            "confidence": detail.plan.confidence,
+            "degraded": bool(warnings),
+        }
 
     def adjust_preview(
         self, user_id: int, thread_id: str, feedback: str, *, emit=None
@@ -735,6 +779,25 @@ class PlanService:
             raise PermissionDeniedError("draft belongs to another user")
         return state
 
+    def _find_confirm_run(self, user_id: int, draft_id: str):
+        """The confirm trace for a draft, if the graph was already resumed."""
+        for run in self._agent_runs.list_by_user(user_id, limit=200):
+            if run.trigger_type != "confirm_preview":
+                continue
+            if (run.result_summary or {}).get("thread_id") == draft_id:
+                return run
+        return None
+
+    def _confirmed_plan(self, user_id: int, draft_id: str) -> PlanDetail | None:
+        """Return the plan already created by a confirm, if any."""
+        run = self._find_confirm_run(user_id, draft_id)
+        if run is None or run.plan_id is None:
+            return None
+        try:
+            return self.get_plan(user_id, run.plan_id)
+        except NotFoundError:  # pragma: no cover - defensive
+            return None
+
     def _already_confirmed(self, user_id: int, draft_id: str) -> bool:
         """True when a confirm run already consumed this draft.
 
@@ -742,12 +805,7 @@ class PlanService:
         `agent_runs` trace is what distinguishes "already confirmed" (409) from
         "never existed" (404).
         """
-        for run in self._agent_runs.list_by_user(user_id, limit=200):
-            if run.trigger_type != "confirm_preview":
-                continue
-            if (run.result_summary or {}).get("thread_id") == draft_id:
-                return True
-        return False
+        return self._find_confirm_run(user_id, draft_id) is not None
 
     def _authorise_thread(self, user_id: int, thread_id: str) -> None:
         self.pending_draft(user_id, thread_id)
@@ -840,6 +898,7 @@ class PlanService:
         *,
         parent_plan_id: int | None = None,
         replan_reason: str | None = None,
+        run_id: str | None = None,
     ) -> PlanDetail:
         final = state.get("final_plan")
         if final is None:
@@ -894,7 +953,13 @@ class PlanService:
             tasks.append(
                 Task(
                     plan_id=plan.id,
-                    goal_id=goal_id_map.get(draft.goal_id or 0, draft.goal_id),
+                    # Draft goal ids are 1-based indices. Never turn a missing/zero
+                    # index into a fake row id: `goals.id=0` violates the FK.
+                    goal_id=(
+                        goal_id_map.get(draft.goal_id, draft.goal_id)
+                        if draft.goal_id and draft.goal_id > 0
+                        else None
+                    ),
                     title=self._clip(draft.title, _TITLE_MAX_LEN),
                     description=self._clip(draft.description, _DESCRIPTION_MAX_LEN),
                     estimated_duration=max(draft.estimated_duration, 1),
@@ -967,6 +1032,11 @@ class PlanService:
                 )
             )
 
+        # The confirm idempotency key is the agent run. Link it in the SAME
+        # transaction as the plan so a crash after commit cannot create a
+        # duplicate plan on retry.
+        if run_id is not None:
+            self._agent_runs.update_fields(run_id, plan_id=plan.id)
         self._session.commit()
         detail = self.get_plan(user_id, plan.id or 0)
         # Level 3 shadow runs only AFTER the production plan is persisted. It

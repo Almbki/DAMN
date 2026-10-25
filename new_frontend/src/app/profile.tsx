@@ -1,7 +1,6 @@
 import { useRouter } from 'expo-router';
 import { StyleSheet, Text, View } from 'react-native';
 
-import { BasicProfileSection } from '@/components/profile/basic-profile';
 import { DynamicStateSection } from '@/components/profile/dynamic-state';
 import { TraitOverviewSection } from '@/components/profile/trait-overview';
 import { TrendChart } from '@/components/trend-chart';
@@ -39,13 +38,6 @@ export default function ProfileScreen() {
 
       <DynamicStateSection />
 
-      <View style={styles.section}>
-        <Text style={[styles.sectionTitle, { color: colors.ink }]}>补充自述（可选）</Text>
-        <Text style={[styles.note, { color: colors.inkMuted }]}>
-          MBTI 只是你自己的补充描述，不会覆盖上面的模型估计。
-        </Text>
-      </View>
-      <BasicProfileSection />
 
       <View style={styles.section}>
         <Text style={[styles.sectionTitle, { color: colors.ink }]}>近期反馈趋势</Text>

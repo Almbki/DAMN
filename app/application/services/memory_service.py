@@ -76,11 +76,9 @@ class MemoryService:
         state = self._states.get_by_user(user_id)
         executions = self._executions.list_by_user(user_id)
         feedbacks = self._feedback.list_by_user(user_id)
-        profile = (user.profile if user else None) or {}
-        mbti = (user.mbti_type if user else None) or profile.get("mbti")
 
         items = [
-            *build_semantic_memory(user, state, mbti=mbti),
+            *build_semantic_memory(user, state),
             *build_episodic_memory(executions, feedbacks),
             *derive_procedural_memory(state, executions, feedbacks),
         ]

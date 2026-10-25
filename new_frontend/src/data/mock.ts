@@ -22,9 +22,6 @@ export const mockUser: UserRead = {
 
 /** Demo 基础画像; mirrors the `GET /users/me/profile` payload. */
 export const mockProfile: UserProfileRead = {
-  mbti_type: 'INTP',
-  // INTP: I (ie >= .5), N (sn < .5), T (tf >= .5), P (jp < .5).
-  mbti_dims: { ie: 0.65, sn: 0.35, tf: 0.58, jp: 0.42 },
   identity: '大学生 / 开发者',
 };
 

@@ -159,3 +159,10 @@ def test_plan_drafter_never_emits_times() -> None:
     assert isinstance(result.tasks, list)
     for draft in result.tasks:
         assert isinstance(draft, GeneratedTaskDraft)
+
+
+def test_task_decomposer_without_supplement_has_no_subtasks() -> None:
+    tool = default_registry().get("task_decomposer")
+    goal = GoalInput(title="no supplement", subject="math")
+    result = tool.run(TaskDecomposerInput(goals=[goal]))  # type: ignore[attr-defined]
+    assert result.goals[0].subtasks == []

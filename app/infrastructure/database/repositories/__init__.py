@@ -11,6 +11,9 @@ from app.infrastructure.database.repositories.agent_run_repository import AgentR
 from app.infrastructure.database.repositories.base import RepositoryBase
 from app.infrastructure.database.repositories.execution_repository import TaskExecutionRepository
 from app.infrastructure.database.repositories.feedback_repository import FeedbackRepository
+from app.infrastructure.database.repositories.generation_job_repository import (
+    GenerationJobRepository,
+)
 from app.infrastructure.database.repositories.goal_repository import GoalRepository
 from app.infrastructure.database.repositories.plan_repository import PlanRepository
 from app.infrastructure.database.repositories.prediction_log_repository import (
@@ -38,6 +41,7 @@ __all__ = [
     "AgentMemoryRepository",
     "AgentRunRepository",
     "FeedbackRepository",
+    "GenerationJobRepository",
     "GoalRepository",
     "PlanRepository",
     "PredictionLogRepository",

@@ -286,6 +286,18 @@ class PlannerRuntime:
             return None
         return dict(snapshot.values)
 
+    def final_state(self, thread_id: str) -> PlannerState | None:
+        """Return the completed graph state, even though it has no next node.
+
+        A confirm run consumes the interrupt before the service persists the
+        plan. If persistence fails, this lets a retry reuse the already-computed
+        final plan instead of reporting a misleading "already confirmed" 409.
+        """
+        snapshot = self.initial_graph.get_state(self._config(thread_id))
+        if snapshot is None:
+            return None
+        return dict(snapshot.values)
+
     # -- workflows ---------------------------------------------------------
     def start_initial(
         self,
