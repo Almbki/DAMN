@@ -110,6 +110,19 @@ class FeedbackService:
         decision = self._decide_replan(user_id, saved)
         route = decision.route
         replan_reason = decision.reason
+        if (
+            route == "full_replan"
+            and eligibility is not None
+            and not eligibility.eligible
+        ):
+            # A big rebuild has a cooldown (one per day at most by default). When
+            # it is still cooling down, do the cheap content-preserving move
+            # instead of churning another plan version.
+            route = "postpone"
+            replan_reason = (
+                "full replan blocked by cooldown; postponed instead: "
+                + decision.reason
+            )
         adjustment = None
         postponed_task_ids: list[int] = []
 
