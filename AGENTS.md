@@ -6,6 +6,26 @@ validation → scheduling → execution feedback → replan.
 Python 3.12 · uv · FastAPI · Pydantic v2 · SQLAlchemy 2 · Alembic · LangGraph.
 Single package (`app/`) at the repo root — no monorepo. Windows-first.
 
+## Document authority (read before changing docs or code)
+
+The current human design is the plain-language docs under `docs/`:
+
+- `docs/README.md`, `docs/架构.md`, `docs/需求.md`,
+  `docs/决策记录.md`, `docs/三层用户模型.md`, `docs/当前实现.md`,
+  `docs/证据现状.md`, `docs/实施指导.md`.
+
+Technical/implementation docs: `docs/技术索引.md`,
+`docs/架构总览.md`, `docs/agent/`,
+`docs/模型与Agent集成-v1.md`, `docs/前端模型集成-v1.md`,
+`docs/开发手册.md`, `docs/模块详解.md`.
+Evidence: `docs/research/`.
+
+On conflict: the human docs win; change code to match them. If a decision
+genuinely changes, update `docs/决策记录.md` first, then
+`docs/架构.md` / `docs/需求.md`.
+Agent-only docs: this `AGENTS.md` and `docs/research/AGENTS.md`; they may stay
+technical.
+
 ## Commands (verified)
 
 - Install: `uv sync --extra dev` (creates `.venv`; requires Python 3.12)
@@ -109,25 +129,29 @@ synchronously (events are stored then replayed over SSE).
 
 ## Pointers
 
-- **中文模块详解（含调用链与调试清单）：`docs/modules.md`** — start here when
+- **中文模块详解（含调用链与调试清单）：`docs/模块详解.md`** — start here when
   adding/debugging a module.
-- **Frontend contract: `docs/api-frontend-alignment.md`** — the endpoint map,
+- **Frontend contract: `docs/前后端接口对齐.md`** — the endpoint map,
   the decisions behind it, and what was deliberately left unchanged.
-- **Model/Agent integration: `docs/model-agent-integration-v1.md`** — the final
+- **Model/Agent integration: `docs/模型与Agent集成-v1.md`** — the final
   three-layer runtime, shadow mode, workflow refactor, migration and validation.
-- **Frontend integration: `docs/frontend-model-integration-v1.md`** — the
+- **Frontend integration: `docs/前端模型集成-v1.md`** — the
   frontend/backend contract audit, CAT assessment UI/API, Profile Level 1/2,
   task execution capture, developer runtime page.
-- **Auth/Demo/Synthetic: `docs/auth-demo-synthetic-v1.md`** — Login/Register/
+- **Auth/Demo/Synthetic: `docs/认证与合成数据-v1.md`** — Login/Register/
   Logout, Level 1 onboarding guard, reassessment cooldown, IDOR tests, execution
   provenance, and guarded synthetic scenario import/reset.
-- **User portrait (画像): `docs/user-portrait.md`** — MBTI cold-start priors,
+- **User portrait (画像): `docs/用户画像.md`** — MBTI cold-start priors,
   the EWMA state, how it reaches the agent, and the minority-weight fix.
 - **Agent layer (P0+P1): `docs/agent/`** — state-machine, data-flow, prompts,
   tools, ml-interface, memory, testing, development.
-- Design docs: `docs/architecture.md`, `docs/api.md`, `docs/langgraph.md`,
-  `docs/ml.md`, `docs/domain.md`, `docs/development.md`.
-- Schema history: `docs/database/agent-migration.md` (`7f9ae3f96ba3` added
+- Human docs: `docs/README.md`, `docs/架构.md`, `docs/需求.md`,
+  `docs/决策记录.md`, `docs/三层用户模型.md`, `docs/当前实现.md`,
+  `docs/证据现状.md`, `docs/实施指导.md`.
+- Technical index: `docs/技术索引.md`; implementation details in
+  `docs/架构总览.md`, `docs/开发手册.md`,
+  `docs/模块详解.md`, `docs/agent/`.
+- Schema history: `docs/database/数据库迁移.md` (`7f9ae3f96ba3` added
   `agent_runs`/`prediction_logs`/`agent_memories`; `d696086158be` added
   `users.scheduling_preferences`; `4d1dc7a359da` added the portrait columns +
   `user_states` and dropped `user_models`).
