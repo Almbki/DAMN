@@ -55,6 +55,12 @@ class Settings(BaseSettings):
     # Structured Outputs, which DeepSeek rejects with HTTP 400
     # ("This response_format type is unavailable now").
     llm_response_format: str = "json_object"
+    #: Whether the provider may spend hidden "reasoning" tokens before answering.
+    #: Reasoning models are much slower for structured planning calls; set
+    #: LLM_ENABLE_THINKING=false to send "enable_thinking": false (Aliyun/Qwen
+    #: compatible mode accepts it). Providers that reject the field will surface
+    #: an LLMError and the caller degrades as usual.
+    llm_enable_thinking: bool = True
 
     # --- Scheduler / rules -------------------------------------------------
     scheduler_daily_limit_minutes: int = Field(default=300, ge=1)

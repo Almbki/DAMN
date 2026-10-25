@@ -143,6 +143,11 @@ class HttpLLMClient:
                 )
         messages.append({"role": "user", "content": user_content})
         payload["messages"] = messages
+        if not self._settings.llm_enable_thinking:
+            # Reasoning models (e.g. Qwen3 on Aliyun MaaS) can spend thousands of
+            # hidden thinking tokens per structured call, turning a 4-call plan
+            # preview into minutes. Ask them to answer directly instead.
+            payload["enable_thinking"] = False
         return payload
 
     def complete(
@@ -196,6 +201,7 @@ def _client_key(settings: Settings) -> tuple[Any, ...]:
         settings.llm_model,
         settings.llm_timeout_seconds,
         settings.llm_response_format,
+        settings.llm_enable_thinking,
     )
 
 

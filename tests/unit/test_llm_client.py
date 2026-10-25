@@ -33,7 +33,9 @@ SCHEMA = {
 
 
 def _client(**overrides) -> HttpLLMClient:
+    # Keep the payload tests hermetic: a developer .env may set provider/model.
     settings = Settings(
+        _env_file=None,
         llm_provider="openai_compatible",
         llm_api_base="https://api.example.test/v1",
         llm_api_key="test-key",
@@ -74,6 +76,22 @@ def test_plain_completion_sends_no_response_format() -> None:
 
     assert "response_format" not in payload
     assert payload["messages"][-1]["content"] == "hello"
+
+
+def test_thinking_is_left_to_the_provider_by_default() -> None:
+    payload = _client()._build_payload("hello", system=None, json_schema=SCHEMA)
+
+    assert "enable_thinking" not in payload
+
+
+def test_thinking_can_be_disabled_through_settings() -> None:
+    payload = _client(llm_enable_thinking=False)._build_payload(
+        "hello", system=None, json_schema=SCHEMA
+    )
+
+    assert payload["enable_thinking"] is False
+    # The JSON-mode contract is unchanged by the switch.
+    assert payload["response_format"] == {"type": "json_object"}
 
 
 def test_invalid_response_format_is_rejected() -> None:
