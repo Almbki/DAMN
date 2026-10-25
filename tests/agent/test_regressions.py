@@ -140,7 +140,9 @@ def test_sustained_low_completion_is_only_a_policy_signal() -> None:
         duration_bias=0.0,
         portrait_decision="none",
     )
-    assert feedback_decision.route == "none"
+    # Low completion with no current pressure is a scheduling problem, not a
+    # plan-quality problem: the policy postpones the unfinished tasks.
+    assert feedback_decision.route == "postpone"
 
 
 def test_no_feedback_is_no_change() -> None:

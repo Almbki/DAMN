@@ -12,6 +12,9 @@ Design rules
 * Current pressure is the primary signal: high stress / low energy is enough
   for a micro adjustment; severe pressure only escalates to a full replan when
   completion is low or the duration bias is high.
+* A low completion rate *without* current pressure is not a replan signal: it
+  routes to ``postpone``, which only moves the day's unfinished tasks to
+  tomorrow and keeps the plan content untouched.
 * Free text is context for the prompt, never a route override. Explicit manual
   replans (``REPLAN_REQUEST``) bypass this policy at the service/API entrypoint.
 """
@@ -20,7 +23,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 
-Route = str  # Literal["none", "micro_adjust", "full_replan"]
+Route = str  # Literal["none", "postpone", "micro_adjust", "full_replan"]
 Pressure = str  # Literal["none", "high", "severe"]
 
 
@@ -46,6 +49,7 @@ def decide_feedback_replan(
     stress_severe: float = 8.0,
     energy_critical: float = 3.0,
     duration_bias_high: float = 0.50,
+    completion_low: float = 0.50,
 ) -> FeedbackReplanDecision:
     """Decide whether the current check-in should trigger a replan.
 
@@ -53,10 +57,12 @@ def decide_feedback_replan(
     user did not report them). ``portrait_decision`` is the existing portrait
     verdict (``"full_replan"`` / ``"local_repair"`` / ``"none"``).
 
-    The returned route is one of ``"none"``, ``"micro_adjust"`` or
-    ``"full_replan"``. ``pressure`` reports the current stress/energy band;
-    note it can be ``"none"`` while the route is ``micro_adjust`` when only the
-    duration bias is high.
+    The returned route is one of ``"none"``, ``"postpone"``,
+    ``"micro_adjust"`` or ``"full_replan"``. ``pressure`` reports the
+    current stress/energy band; note it can be ``"none"`` while the route is
+    ``micro_adjust`` when only the duration bias is high. ``postpone`` means
+    "no pressure, but a lot was left undone": move the day's unfinished tasks to
+    tomorrow instead of replanning.
     """
     pressure_high = (stress is not None and stress >= stress_high) or (
         energy is not None and energy <= energy_low
@@ -78,6 +84,17 @@ def decide_feedback_replan(
     severe_escalation = pressure_severe and (
         completion_rate < 0.6 or duration_bias_pressure
     )
+    # Low completion under *no* pressure is a scheduling problem, not a plan
+    # problem: the plan content is fine, the day just ran out. Postpone keeps
+    # the same tasks (same plan version) and only moves them to tomorrow.
+    low_completion = completion_rate < completion_low
+    postpone_candidate = (
+        pressure == "none"
+        and low_completion
+        and not duration_bias_pressure
+        and not portrait_full
+        and not portrait_local
+    )
 
     reasons: list[str] = []
     if portrait_full:
@@ -90,11 +107,18 @@ def decide_feedback_replan(
         reasons.append(f"duration bias {duration_bias:.2f} > {duration_bias_high:.2f}")
     if severe_escalation:
         reasons.append(f"completion rate {completion_rate:.2f} under severe pressure")
+    if postpone_candidate:
+        reasons.append(
+            f"completion rate {completion_rate:.2f} < {completion_low:.2f} "
+            "without pressure: postpone unfinished tasks"
+        )
 
     if portrait_full or severe_escalation:
         route = "full_replan"
     elif pressure_high or duration_bias_pressure or portrait_local:
         route = "micro_adjust"
+    elif postpone_candidate:
+        route = "postpone"
     else:
         route = "none"
 
@@ -117,6 +141,9 @@ def decide_feedback_replan(
             "pressure_severe": pressure_severe,
             "duration_bias_high": duration_bias_high,
             "portrait_gate_open": portrait_gate_open,
+            "completion_low": completion_low,
+            "low_completion": low_completion,
+            "postpone_candidate": postpone_candidate,
         },
     )
 

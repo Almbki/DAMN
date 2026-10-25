@@ -11,6 +11,20 @@ class DailyCompletion(BaseModel):
     completed_tasks: int = 0
     completion_rate: float = 0.0
     planned_minutes: int = 0
+    #: Observed minutes for tasks scheduled that day (0 = nothing recorded).
+    actual_minutes: int = 0
+    #: actual / planned; ``None`` when the day had no planned minutes.
+    estimate_accuracy_ratio: float | None = None
+
+
+class DailyEstimateAccuracy(BaseModel):
+    """One day of the profile page's "estimate vs actual" card."""
+
+    date: str
+    planned_minutes: int = 0
+    actual_minutes: int = 0
+    #: actual / planned; ``None`` when nothing was planned that day.
+    ratio: float | None = None
 
 
 class InsightReport(BaseModel):
@@ -26,6 +40,8 @@ class InsightReport(BaseModel):
     avg_energy: float | None = None
     high_cognitive_minutes: int = 0
     predicted_vs_actual_ratio: float | None = None
+    #: total_actual_minutes / total_planned_minutes (None when nothing planned).
+    estimate_accuracy_ratio: float | None = None
     cognitive_load_breakdown: dict[str, int] = Field(default_factory=dict)
     daily: list[DailyCompletion] = Field(default_factory=list)
     recommendations: list[str] = Field(default_factory=list)

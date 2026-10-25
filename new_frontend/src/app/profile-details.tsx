@@ -229,7 +229,7 @@ export default function ProfileDetailsScreen() {
 
       const typed = normalizeClockTime(reminderTime);
       const stored = normalizeClockTime(preferences.feedbackTime);
-      const normalized = typed ?? stored ?? '21:00';
+      const normalized = typed ?? stored ?? '22:00';
       reminderTouchedRef.current = true;
       setReminderTime(normalized);
       await updatePreferences({ feedbackEnabled: true, feedbackTime: normalized });
@@ -263,9 +263,9 @@ export default function ProfileDetailsScreen() {
   const normalizedReminderTime = normalizeClockTime(reminderTime);
   const reminderHelper =
     reminderTime.trim().length === 0
-      ? '例如 21:00。开启后，到点会在应用里挡住页面，提醒你写反馈。'
+      ? '例如 22:00。开启后，到点会在应用里挡住页面，提醒你写反馈。'
       : !normalizedReminderTime
-        ? '时间格式用 HH:MM，例如 21:00。'
+        ? '时间格式用 HH:MM，例如 22:00。'
         : preferences.feedbackEnabled
           ? `每天 ${normalizedReminderTime} 在应用内提醒。`
           : `保存为 ${normalizedReminderTime}，打开开关后生效。`;
@@ -352,7 +352,7 @@ export default function ProfileDetailsScreen() {
               label="提醒时间"
               value={reminderTime}
               onChangeText={commitReminderTime}
-              placeholder="21:00"
+              placeholder="22:00"
               testID="feedback-time"
               background={colors.surfaceContainerLowest}
             />

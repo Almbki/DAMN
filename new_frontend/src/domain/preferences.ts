@@ -12,12 +12,13 @@ export interface SchedulingPreferences {
   /** Local clock, `HH:MM`. */
   sleepStart: string;
   sleepEnd: string;
-  /** Local clock, `HH:MM`; `null` until the user picks a reminder time. */
+  /** Local clock, `HH:MM`; defaults to 22:00 (the backend default). */
   feedbackTime: string | null;
-  /** Whether the daily feedback reminder is enabled. */
+  /** Whether the daily feedback reminder is enabled (on by default). */
   feedbackEnabled: boolean;
 }
 
+/** Defaults must match the backend's `SchedulingPreferences` defaults. */
 export const DEFAULT_PREFERENCES: SchedulingPreferences = {
   availableMinutesPerDay: 480,
   dailyLimitMinutes: 300,
@@ -25,8 +26,8 @@ export const DEFAULT_PREFERENCES: SchedulingPreferences = {
   highCognitiveMaxPerDay: 2,
   sleepStart: '23:30',
   sleepEnd: '07:30',
-  feedbackTime: null,
-  feedbackEnabled: false,
+  feedbackTime: '22:00',
+  feedbackEnabled: true,
 };
 
 export const PREFERENCE_BOUNDS = {
@@ -55,13 +56,17 @@ export function normalizeClockTime(value: string | null | undefined): string | n
   return `${String(hour).padStart(2, '0')}:${String(minute).padStart(2, '0')}`;
 }
 
-/** Coerce cached/server preferences into the domain shape (invalid reminder time → `null`). */
+/**
+ * Coerce cached/server preferences into the domain shape. An invalid or missing
+ * reminder time falls back to the default `22:00` so an old cache / a `null`
+ * from the server cannot silently disable an otherwise-enabled reminder.
+ */
 export function normalizePreferences(
   preferences: SchedulingPreferences,
 ): SchedulingPreferences {
   return {
     ...preferences,
-    feedbackTime: normalizeClockTime(preferences.feedbackTime),
+    feedbackTime: normalizeClockTime(preferences.feedbackTime) ?? DEFAULT_PREFERENCES.feedbackTime,
     feedbackEnabled: Boolean(preferences.feedbackEnabled),
   };
 }

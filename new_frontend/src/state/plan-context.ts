@@ -1,6 +1,6 @@
 import { createContext, useContext } from 'react';
 
-import type { FeedbackRead, InsightRead, UserRead } from '@/api/types';
+import type { EstimateAccuracy, FeedbackRead, InsightRead, UserRead } from '@/api/types';
 import type { DraftTask, PendingTask } from '@/domain/decompose';
 import type { Goal } from '@/domain/goal';
 import type { PlanChange } from '@/domain/plan-change';
@@ -19,14 +19,25 @@ export type Assessment = { energy: number; mood: number; stress: number };
 
 export type FeedbackInput = {
   completionRate: number;
+  /** 四段反思（今天做得怎么样 / 哪里卡住 / 今天状态 / 明天怎么看），保存到 day_review。 */
+  dayReview?: string;
+  /** Legacy free text; still sent as free_text so older backends keep working. */
   freeText?: string;
   delayReason?: string;
   /** Per-task reasons (interrupted / not_enough_time / too_hard / ...). */
   taskReasons?: { taskId: number; reason: string; note?: string | null }[];
+  /** 预估准确性：只覆盖「直接点完成、没点开始」且没有实际分钟的任务。 */
+  taskEstimates?: {
+    taskId: number;
+    accuracy: EstimateAccuracy;
+    actualMinutes?: number | null;
+  }[];
+  /** 今天任务全部 done/skipped 时提交，后端记录 day_closed_at。 */
+  closeDay?: boolean;
 };
 
-/** Policy route returned by the feedback loop. */
-export type FeedbackRoute = 'none' | 'micro_adjust' | 'full_replan';
+/** Policy route returned by the feedback loop (`postpone` moves tasks, no replan). */
+export type FeedbackRoute = 'none' | 'postpone' | 'micro_adjust' | 'full_replan';
 
 export type FeedbackResult = {
   /** True only when a new plan was generated and adopted. */

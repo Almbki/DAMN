@@ -179,6 +179,7 @@ def insight_read(report: InsightReport) -> InsightRead:
         avg_energy=report.avg_energy,
         high_cognitive_minutes=report.high_cognitive_minutes,
         predicted_vs_actual_ratio=report.predicted_vs_actual_ratio,
+        estimate_accuracy_ratio=report.estimate_accuracy_ratio,
         cognitive_load_breakdown=report.cognitive_load_breakdown,
         daily=[DailyCompletionRead(**item.model_dump()) for item in report.daily],
         recommendations=report.recommendations,

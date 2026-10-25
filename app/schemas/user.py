@@ -9,6 +9,7 @@ from pydantic import BaseModel, ConfigDict, EmailStr, Field, field_validator
 
 __all__ = [
     "DataSufficiency",
+    "EstimateAccuracyPoint",
     "SchedulingPreferences",
     "SituationTrendPoint",
     "SituationTrendRead",
@@ -56,10 +57,10 @@ class SchedulingPreferences(BaseModel):
     high_cognitive_max_per_day: int = Field(default=2, ge=1, le=10)
     sleep_start: str | None = Field(default=None, examples=["23:30"])
     sleep_end: str | None = Field(default=None, examples=["07:00"])
-    #: Daily feedback reminder ("HH:MM", 24h). ``None`` = no reminder time set.
-    feedback_time: str | None = Field(default=None, examples=["20:00"])
-    #: Whether the daily feedback reminder is enabled (default off).
-    feedback_enabled: bool = False
+    #: Daily feedback reminder ("HH:MM", 24h). Defaults to the end-of-day prompt.
+    feedback_time: str | None = Field(default="22:00", examples=["22:00"])
+    #: Whether the daily feedback reminder is enabled (default on).
+    feedback_enabled: bool = True
 
     @field_validator("sleep_start", "sleep_end", "feedback_time")
     @classmethod
@@ -72,6 +73,16 @@ class SchedulingPreferences(BaseModel):
         except (ValueError, TypeError) as exc:
             raise ValueError("expected HH:MM") from exc
         return parsed.strftime("%H:%M")
+
+
+class EstimateAccuracyPoint(BaseModel):
+    """One day of ``GET /users/me/estimate-accuracy`` (planned vs actual)."""
+
+    date: date
+    planned_minutes: int = 0
+    actual_minutes: int = 0
+    #: actual / planned; ``None`` when nothing was planned that day.
+    ratio: float | None = None
 
 
 class SituationTrendPoint(BaseModel):

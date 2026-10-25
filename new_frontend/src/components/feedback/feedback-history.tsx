@@ -50,6 +50,9 @@ export function FeedbackHistory({
       ) : (
         rows.map((item) => {
           const reasons = item.task_reasons ?? [];
+          // Four-section reflections are saved to day_review; free_text is the
+          // legacy fallback for older rows.
+          const review = item.day_review ?? item.free_text;
           const levels = [
             item.energy_level != null ? `精力 ${item.energy_level}` : null,
             item.stress_level != null ? `压力 ${item.stress_level}` : null,
@@ -102,8 +105,8 @@ export function FeedbackHistory({
                 </Text>
               )}
 
-              {item.free_text ? (
-                <Text style={[styles.freeText, { color: colors.ink }]}>{item.free_text}</Text>
+              {review ? (
+                <Text style={[styles.freeText, { color: colors.ink }]}>{review}</Text>
               ) : null}
             </View>
           );

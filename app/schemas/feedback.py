@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from datetime import date, datetime
+from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
@@ -16,6 +17,16 @@ class TaskReason(BaseModel):
     task_id: int
     reason: str = Field(max_length=32)
     note: str | None = Field(default=None, max_length=500)
+
+
+class TaskEstimateFeedback(BaseModel):
+    """Self-reported estimate accuracy for a task without a timed execution."""
+
+    task_id: int
+    #: Was the planned duration too high (``over``), too low (``under``) or ok?
+    accuracy: Literal["over", "under", "ok"]
+    #: Optional real minutes when the user knows them.
+    actual_minutes: int | None = Field(default=None, ge=0, le=1440)
 
 
 class FeedbackCreate(BaseModel):
@@ -34,6 +45,10 @@ class FeedbackCreate(BaseModel):
     day_closed_at: datetime | None = None
     sleep_hours: float | None = Field(default=None, ge=0, le=24)
     dominant_time_of_day: TimeOfDay | None = None
+    #: End-of-day marker: the service stores ``day_closed_at = now`` when true.
+    close_day: bool = False
+    #: Optional per-task estimate accuracy (applied to the latest execution row).
+    task_estimates: list[TaskEstimateFeedback] = Field(default_factory=list)
 
 
 class FeedbackRead(BaseModel):
@@ -75,7 +90,10 @@ class FeedbackSubmitResponse(BaseModel):
     replan_eligibility: ReplanEligibilityRead | None = None
     #: Agent decision from the feedback loop (route / severity / reasons).
     adjustment: FeedbackAdjustmentRead | None = None
-    #: Service-level policy route: "none" / "micro_adjust" / "full_replan".
+    #: Service-level policy route: "none" / "postpone" / "micro_adjust" /
+    #: "full_replan".
     replan_decision: str = "none"
     #: Why the policy chose that route (or the graph's reason when it ran).
     replan_reason: str | None = None
+    #: Tasks whose ``scheduled_date`` was moved to tomorrow by the postpone route.
+    postponed_task_ids: list[int] = Field(default_factory=list)

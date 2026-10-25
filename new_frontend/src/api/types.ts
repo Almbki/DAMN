@@ -14,8 +14,8 @@ export type TaskStatus =
 /** Backend `TaskKind`: how a goal/task repeats over time. */
 export type TaskKind = 'one_off' | 'long_term' | 'routine';
 
-/** Backend feedback policy route. */
-export type ReplanDecision = 'none' | 'micro_adjust' | 'full_replan';
+/** Backend feedback policy route (`postpone` only moves unfinished tasks). */
+export type ReplanDecision = 'none' | 'postpone' | 'micro_adjust' | 'full_replan';
 
 /** Backend `CognitiveLoad` also includes `restorative`. */
 export type CognitiveLoad = 'low' | 'medium' | 'high' | 'restorative';
@@ -348,6 +348,53 @@ export interface DailyCompletionRead {
   completed_tasks: number;
   completion_rate: number;
   planned_minutes: number;
+  /** Phase 5: recorded execution minutes for that day. */
+  actual_minutes?: number | null;
+  /** Phase 5: actual / planned for that day (`null` when nothing was planned). */
+  estimate_accuracy_ratio?: number | null;
+}
+
+/** Phase 5: post-hoc estimate accuracy for one task (估高了 / 估低了 / 差不多). */
+export type EstimateAccuracy = 'over' | 'under' | 'ok';
+
+/** One task's answer on the feedback screen (task_estimates in FeedbackCreate). */
+export interface TaskEstimate {
+  task_id: number;
+  accuracy: EstimateAccuracy;
+  /** Observed actual minutes; null/omitted means not measured. */
+  actual_minutes?: number | null;
+}
+
+/** One day of planned-vs-actual minutes (GET /users/me/estimate-accuracy). */
+export interface EstimateAccuracyDay {
+  date: string;
+  planned_minutes: number;
+  actual_minutes: number;
+  ratio: number | null;
+}
+
+/** Normalised estimate-vs-actual summary used by the UI. */
+export interface EstimateAccuracySummary {
+  points: EstimateAccuracyDay[];
+  planned_minutes: number;
+  actual_minutes: number;
+  ratio: number | null;
+}
+
+/**
+ * Tolerant wire shape of GET /users/me/estimate-accuracy. The endpoint is new
+ * (Phase 5): a bare per-day list or a wrapped object both work, so a slightly
+ * different backend envelope cannot break the profile card.
+ */
+export interface EstimateAccuracyResponse {
+  days?: EstimateAccuracyDay[] | number;
+  points?: EstimateAccuracyDay[];
+  daily?: EstimateAccuracyDay[];
+  total_planned_minutes?: number;
+  total_actual_minutes?: number;
+  planned_minutes?: number;
+  actual_minutes?: number;
+  ratio?: number | null;
 }
 
 /** Backend `DataSufficiency` - is there enough history to trust a signal. */
@@ -376,6 +423,8 @@ export interface InsightRead {
   data_sufficiency?: DataSufficiency | null;
   /** Human-readable reasons behind the summary (Chinese UI copy). */
   drivers?: string[] | null;
+  /** Phase 5: total actual / total planned minutes for this plan. */
+  estimate_accuracy_ratio?: number | null;
 }
 
 export interface TaskUpdateRequest {
@@ -516,9 +565,15 @@ export interface FeedbackCreate {
   energy_level?: number | null;
   delay_reason?: string | null;
   free_text?: string | null;
+  /** Four-section reflection (今天做得怎么样 / 哪里卡住 / 今天状态 / 明天怎么看). */
+  day_review?: string | null;
   sleep_hours?: number | null;
   dominant_time_of_day?: string | null;
   task_reasons?: TaskReason[];
+  /** Phase 5: estimate accuracy for tasks finished without a recorded start. */
+  task_estimates?: TaskEstimate[];
+  /** Phase 5: marks the day closed (day_closed_at); true when everything is done/skipped. */
+  close_day?: boolean;
 }
 
 export interface FeedbackRead extends FeedbackCreate {

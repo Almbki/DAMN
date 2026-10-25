@@ -2,6 +2,8 @@ import { apiPollJob, apiRequest, apiStream, apiUpload, isApiError } from '@/api/
 import { apiPrefix } from '@/api/config';
 import type {
   ConfirmPlanResponse,
+  EstimateAccuracyDay,
+  EstimateAccuracyResponse,
   FeedbackCreate,
   FeedbackRead,
   FeedbackSubmitResponse,
@@ -91,6 +93,16 @@ export function putPreferences(body: SchedulingPreferences) {
     method: 'PUT' as unknown as 'POST',
     body,
   });
+}
+
+/**
+ * Planned vs recorded minutes per day (Phase 5). Used by the profile card and
+ * the feedback result summary; the backend may return a list or a wrapper.
+ */
+export function getEstimateAccuracy(days = 7) {
+  return apiRequest<EstimateAccuracyResponse | EstimateAccuracyDay[]>(
+    `/users/me/estimate-accuracy?days=${days}`,
+  );
 }
 
 /** Energy / stress / efficacy trend for the profile page. */

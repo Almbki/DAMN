@@ -37,6 +37,17 @@ class TaskExecutionRepository(RepositoryBase):
         self._session.refresh(orm)
         return TaskExecution.model_validate(orm)
 
+    def update_fields(self, execution_id: int, **fields: object) -> TaskExecution | None:
+        """Patch one execution row (used by feedback estimate corrections)."""
+        orm = self._session.get(TaskExecutionORM, execution_id)
+        if orm is None:
+            return None
+        for field, value in fields.items():
+            setattr(orm, field, value)
+        self._session.flush()
+        self._session.refresh(orm)
+        return TaskExecution.model_validate(orm)
+
     def list_by_user(self, user_id: int, limit: int = 500) -> list[TaskExecution]:
         stmt = (
             select(TaskExecutionORM)

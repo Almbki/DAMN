@@ -7,6 +7,7 @@ from fastapi import APIRouter, Depends, Query
 from app.api.deps import (
     get_auth_service,
     get_current_user,
+    get_insight_service,
     get_profile_service,
     get_situation_service,
     get_trait_assessment_service,
@@ -18,6 +19,7 @@ from app.application.dto.trait_assessment import (
 from app.application.exceptions import NotFoundError
 from app.application.services import (
     AuthService,
+    InsightService,
     ProfileService,
     SituationService,
     TraitAssessmentService,
@@ -27,6 +29,7 @@ from app.schemas.common import ErrorResponse
 from app.schemas.profile import ModelRuntimeRead, ProfileRead
 from app.schemas.trait_assessment import TraitAssessmentAnswerRequest
 from app.schemas.user import (
+    EstimateAccuracyPoint,
     SchedulingPreferences,
     SituationTrendRead,
     UserRead,
@@ -277,3 +280,24 @@ def update_preferences(
         current_user.id or 0, payload.model_dump(mode="json")
     )
     return SchedulingPreferences.model_validate(updated)
+
+
+@router.get(
+    "/me/estimate-accuracy",
+    response_model=list[EstimateAccuracyPoint],
+    summary="Planned vs actual minutes per day (profile card)",
+    description=(
+        "Last ``days`` days (1-90, default 7), one entry per day that has a "
+        "scheduled task or a recorded execution. ``ratio = actual / planned``; "
+        "it is ``null`` when nothing was planned that day. Planned minutes count "
+        "each task once; actual minutes come from ``task_executions``."
+    ),
+    responses={401: {"model": ErrorResponse, "description": "Not authenticated"}},
+)
+def read_estimate_accuracy(
+    days: int = Query(default=7, ge=1, le=90),
+    current_user: User = Depends(get_current_user),
+    service: InsightService = Depends(get_insight_service),
+) -> list[EstimateAccuracyPoint]:
+    points = service.estimate_accuracy(current_user.id or 0, days=days)
+    return [EstimateAccuracyPoint(**point.model_dump()) for point in points]

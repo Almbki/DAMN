@@ -7,12 +7,14 @@ import { useTheme } from '@/state/theme';
 
 const ROUTE_LABEL: Record<FeedbackRoute, string> = {
   none: '不重排',
+  postpone: '顺延未完成任务',
   micro_adjust: '小幅调整',
   full_replan: '完整重排',
 };
 
 const ROUTE_REASON: Record<FeedbackRoute, string> = {
   none: '压力、精力和完成情况还没到需要重排的程度。',
+  postpone: '没做完的任务已顺延到明天，计划内容没有重排。',
   micro_adjust: '这次只做了小幅调整，没有替换整个计划。',
   full_replan: '这次没有生成新的计划版本。',
 };
@@ -66,6 +68,13 @@ function outcomeFor(result: FeedbackResult): Outcome {
 
   const route = result.route ?? null;
   const reason = result.reasons?.[0] ?? (route ? ROUTE_REASON[route] : null);
+  if (route === 'postpone') {
+    return {
+      tone: 'info',
+      title: '反馈已记录，没做完的任务顺延到明天',
+      body: reason ? `反馈已经保存。${reason}` : ROUTE_REASON.postpone,
+    };
+  }
   return {
     tone: 'info',
     title: '反馈已记录，本轮不重排',

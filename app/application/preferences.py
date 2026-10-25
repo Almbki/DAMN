@@ -30,8 +30,11 @@ SLEEP_KEYS: tuple[str, str] = ("sleep_start", "sleep_end")
 #: Daily feedback reminder ("HH:MM") - notification settings, not scheduling.
 FEEDBACK_TIME_KEY: str = "feedback_time"
 
-#: Daily feedback reminder toggle.
-BOOL_DEFAULTS: dict[str, bool] = {"feedback_enabled": False}
+#: Default reminder time: the end-of-day check-in prompt (user decision).
+DEFAULT_FEEDBACK_TIME: str = "22:00"
+
+#: Daily feedback reminder toggle (on by default; a reminder at 22:00).
+BOOL_DEFAULTS: dict[str, bool] = {"feedback_enabled": True}
 
 
 def effective_scheduling_preferences(
@@ -50,7 +53,12 @@ def effective_scheduling_preferences(
 
     for key in (*SLEEP_KEYS, FEEDBACK_TIME_KEY):
         value = stored.get(key) or profile.get(key)
-        resolved[key] = str(value) if value else None
+        if value:
+            resolved[key] = str(value)
+        else:
+            resolved[key] = (
+                DEFAULT_FEEDBACK_TIME if key == FEEDBACK_TIME_KEY else None
+            )
 
     for key, default in BOOL_DEFAULTS.items():
         value = stored.get(key)
@@ -62,6 +70,7 @@ def effective_scheduling_preferences(
 
 __all__ = [
     "BOOL_DEFAULTS",
+    "DEFAULT_FEEDBACK_TIME",
     "FEEDBACK_TIME_KEY",
     "NUMERIC_DEFAULTS",
     "SLEEP_KEYS",
