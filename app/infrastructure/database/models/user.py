@@ -29,7 +29,7 @@ class User(Base):
     profile: Mapped[dict[str, Any]] = mapped_column(JSON, nullable=False, default=dict)
     #: Dedicated column for SchedulingPreferences so a wholesale `profile` update
     #: (PATCH /users/me) can never clobber the scheduling settings. Added in
-    #: revision 8b1f... (see docs/database/agent-migration.md). Nullable so the
+    #: revision 8b1f... (see docs/database/数据库迁移.md). Nullable so the
     #: migration is safe for existing rows; readers normalise NULL to {}.
     scheduling_preferences: Mapped[dict[str, Any] | None] = mapped_column(
         JSON, nullable=True, default=None

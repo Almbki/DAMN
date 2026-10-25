@@ -8,7 +8,7 @@ The agent consumes three structured memory kinds (no vector database):
 
 These modules are pure functions over domain rows. The *database read* lives in
 ``app.application.context.RepoContextBuilder`` so no agent node touches a
-session or a repository (see docs/agent/memory.md).
+session or a repository (see docs/agent/记忆.md).
 """
 
 from app.agent.memory.episodic import build_episodic_memory
