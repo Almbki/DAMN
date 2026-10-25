@@ -144,14 +144,18 @@ def test_migration_chain_contains_phase1_revisions() -> None:
         revision = script.get_revision(revision).down_revision
     assert len(chain) == len(set(chain))
     assert set(PHASE1_REVISIONS) <= set(chain)
-    # The eight Phase-1 revisions sit directly on top of the external revision,
-    # which itself sits on the pre-Phase-1 head.
-    assert chain.index(OLD_HEAD) - chain.index(NEW_HEAD) == len(PHASE1_REVISIONS) + 1
+    # The eight Phase-1 revisions form one contiguous block directly on top of
+    # the externally applied revision (which sits on the pre-Phase-1 head).
+    assert chain.index(OLD_HEAD) - chain.index(NEW_HEAD) >= len(PHASE1_REVISIONS) + 1
+    parents = {
+        revision_id: script.get_revision(revision_id).down_revision
+        for revision_id in PHASE1_REVISIONS
+    }
+    assert parents[PHASE1_REVISIONS[0]] == EXTERNAL_REVISION
+    for revision_id in PHASE1_REVISIONS[1:]:
+        assert parents[revision_id] in PHASE1_REVISIONS, revision_id
     for revision_id in PHASE1_REVISIONS:
-        item = script.get_revision(revision_id)
-        parent = item.down_revision
-        assert parent in {OLD_HEAD, EXTERNAL_REVISION} or parent in PHASE1_REVISIONS
-        path = Path(item.path)
+        path = Path(script.get_revision(revision_id).path)
         text = path.read_text(encoding="utf-8")
         assert "def upgrade()" in text, revision_id
         assert "def downgrade()" in text, revision_id
