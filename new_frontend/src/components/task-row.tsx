@@ -73,6 +73,7 @@ export function TaskRow({
       <View style={styles.row}>
         <Checkbox
           checked={done}
+          disabled={!canEdit}
           onPress={onToggleDone}
           label={`${done ? '取消完成' : '完成'}：${task.title}`}
         />

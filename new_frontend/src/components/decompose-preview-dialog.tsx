@@ -43,6 +43,7 @@ export function DecomposePreviewDialog({
   onDismissError,
   onRegenerate,
   onConfirm,
+  onDefer,
   onClose,
 }: {
   tasks: DraftTask[];
@@ -61,11 +62,13 @@ export function DecomposePreviewDialog({
   onDismissError?: () => void;
   onRegenerate: (feedback: string) => void;
   onConfirm: () => Promise<void> | void;
+  /** Hide the dialog but keep the provider-owned preview for later. */
+  onDefer: () => void;
+  /** Explicitly discard the generated preview. */
   onClose: () => void;
 }) {
   const { colors } = useTheme();
   const [feedback, setFeedback] = useState('');
-  const [closing, setClosing] = useState(false);
 
   const trimmedFeedback = feedback.trim();
   // The backend requires `feedback` to be non-empty (422 otherwise).
@@ -75,7 +78,7 @@ export function DecomposePreviewDialog({
 
   function requestClose() {
     if (busy) return;
-    setClosing(true);
+    onDefer();
   }
 
   return (
@@ -83,42 +86,35 @@ export function DecomposePreviewDialog({
       visible
       width={640}
       title="拆解预览"
-      description={
-        closing
-          ? '关闭后需要重新拆解，当前这版预览和写下的反馈都不会保留。'
-          : `共 ${tasks.length} 条，分布在 ${days.length} 天。预览仅供参考，不可编辑。`
-      }
+      description={`共 ${tasks.length} 条，分布在 ${days.length} 天。预览仅供参考，不可编辑；可以先稍后继续，预览会保留。`}
       closable={!busy}
       onRequestClose={requestClose}
-      actions={
-        closing
-          ? [
-              {
-                label: '继续编辑',
-                variant: 'tonal',
-                onPress: () => setClosing(false),
-              },
-              {
-                label: '关闭预览',
-                variant: 'filled',
-                onPress: onClose,
-              },
-            ]
-          : [
-              {
-                label: canAdjust ? '重新生成' : '不能再调整',
-                variant: 'tonal',
-                disabled: !canRegenerate,
-                onPress: () => onRegenerate(trimmedFeedback),
-              },
-              {
-                label: busy ? '生成中…' : '确认并生成计划',
-                variant: 'filled',
-                disabled: busy,
-                onPress: onConfirm,
-              },
-            ]
-      }>
+      actions={[
+        {
+          label: canAdjust ? '重新生成' : '不能再调整',
+          variant: 'tonal',
+          disabled: !canRegenerate,
+          onPress: () => onRegenerate(trimmedFeedback),
+        },
+        {
+          label: '稍后继续',
+          variant: 'text',
+          disabled: busy,
+          onPress: onDefer,
+        },
+        {
+          label: '关闭预览',
+          variant: 'text',
+          disabled: busy,
+          onPress: onClose,
+        },
+        {
+          label: busy ? '生成中…' : '确认并生成计划',
+          variant: 'filled',
+          disabled: busy,
+          onPress: onConfirm,
+        },
+      ]}>
       <Surface level="level0" radius="md" bordered>
         <View style={styles.summary}>
           <Text style={[styles.summaryTitle, { color: colors.ink }]}>这次拆解</Text>

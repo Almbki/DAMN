@@ -25,5 +25,7 @@ class ReconciliationResult:
 
     as_of_date: date
     overdue_task_ids: tuple[int, ...] = ()
+    #: Past normal tasks auto-moved from OVERDUE into BACKLOG.
+    backlogged_task_ids: tuple[int, ...] = ()
     missed_task_ids: tuple[int, ...] = ()
     pending_feedback_dates: tuple[date, ...] = ()

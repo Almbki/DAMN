@@ -55,10 +55,13 @@ export default function GoalScreen() {
   const [addOpen, setAddOpen] = useState(false);
   const [editingId, setEditingId] = useState<number | null>(null);
   const [previewMessage, setPreviewMessage] = useState<string | null>(null);
+  const [previewHidden, setPreviewHidden] = useState(false);
+  const editingLocked = previewTasks != null;
 
   const editingItem = editingId == null ? undefined : pendingTasks.find((item) => item.id === editingId);
 
   function submit(input: PendingTaskInput) {
+    if (editingLocked) return;
     if (editingId != null) updatePendingTask(editingId, input);
     else addPendingTask(input);
     setAddOpen(false);
@@ -66,13 +69,16 @@ export default function GoalScreen() {
   }
 
   function openAdd() {
+    if (editingLocked) return;
     setEditingId(null);
     setAddOpen(true);
   }
 
   async function startDecompose() {
+    if (editingLocked) return;
     clearLastConfirmed();
     setPreviewMessage(null);
+    setPreviewHidden(false);
     await decomposePreview();
   }
 
@@ -87,6 +93,7 @@ export default function GoalScreen() {
     if (planId != null) {
       // The preview is consumed by the provider before this resolves. Navigate
       // only on a confirmed plan so a failed request stays retryable.
+      setPreviewHidden(false);
       clearLastConfirmed();
       router.replace('/');
     }
@@ -123,6 +130,43 @@ export default function GoalScreen() {
           </Text>
         </View>
 
+        {editingLocked && previewHidden ? (
+          <Surface level="level2" radius="lg" bordered style={{ borderColor: colors.primary }}>
+            <View style={styles.success}>
+              <View style={styles.successHead}>
+                <View style={[styles.successIcon, { backgroundColor: colors.primaryContainer }]}>
+                  <Icon name="clock" size={18} color={colors.onPrimaryContainer} strokeWidth={2.2} />
+                </View>
+                <Text style={[styles.successTitle, { color: colors.ink }]}>计划待确认</Text>
+              </View>
+              <Text style={[styles.body, { color: colors.inkMuted }]}>
+                拆解结果还没有确认。继续查看并确认，或放弃这次预览。
+              </Text>
+              <View style={styles.successActions}>
+                <Button
+                  label="继续查看计划"
+                  variant="filled"
+                  icon="arrowRight"
+                  onPress={() => setPreviewHidden(false)}
+                />
+                <Button
+                  label="放弃预览"
+                  variant="text"
+                  onPress={() => {
+                    dismissPreview();
+                    setPreviewMessage(null);
+                    setPreviewHidden(false);
+                  }}
+                />
+              </View>
+            </View>
+          </Surface>
+        ) : null}
+
+        {editingLocked ? (
+          <InlineNotice tone="info" message="请先完成当前计划" />
+        ) : null}
+
         {actionError && !previewTasks ? (
           <InlineNotice message={actionError} onDismiss={clearActionError} />
         ) : null}
@@ -157,9 +201,9 @@ export default function GoalScreen() {
           <EmptyState
             title="还没有要拆解的任务"
             body="先写一件想推进的事，可以一次加多条。加好后点右下角「拆解」，系统会先给一版可以预览、可以反馈的安排。"
-            actionLabel="添加第一条"
+            actionLabel={editingLocked ? undefined : '添加第一条'}
             actionIcon="plus"
-            onAction={openAdd}
+            onAction={editingLocked ? undefined : openAdd}
           />
         ) : (
           <View style={styles.list}>
@@ -167,11 +211,16 @@ export default function GoalScreen() {
               <PendingCard
                 key={item.id}
                 item={item}
+                disabled={editingLocked}
                 onEdit={() => {
+                  if (editingLocked) return;
                   setEditingId(item.id);
                   setAddOpen(true);
                 }}
-                onRemove={() => removePendingTask(item.id)}
+                onRemove={() => {
+                  if (editingLocked) return;
+                  removePendingTask(item.id);
+                }}
               />
             ))}
           </View>
@@ -183,7 +232,13 @@ export default function GoalScreen() {
           styles.fabBar,
           { bottom: Space.lg + (wide ? insets.bottom : 0) },
         ]}>
-        <Fab icon="plus" label="添加任务" variant="tonal" onPress={openAdd} />
+        <Fab
+          icon="plus"
+          label="添加任务"
+          variant="tonal"
+          disabled={editingLocked}
+          onPress={openAdd}
+        />
         <ExtendedFab
           icon="target"
           label={
@@ -191,11 +246,13 @@ export default function GoalScreen() {
               ? previewMeta?.stage
                 ? `拆解中 · ${previewMeta.stage}`
                 : '拆解中…'
-              : pendingTasks.length > 0
-                ? `拆解 · ${pendingTasks.length} 条`
-                : '拆解'
+              : editingLocked
+                ? '计划待确认'
+                : pendingTasks.length > 0
+                  ? `拆解 · ${pendingTasks.length} 条`
+                  : '拆解'
           }
-          disabled={pendingTasks.length === 0 || previewBusy}
+          disabled={pendingTasks.length === 0 || previewBusy || editingLocked}
           onPress={startDecompose}
         />
       </View>
@@ -221,7 +278,7 @@ export default function GoalScreen() {
         />
       ) : null}
 
-      {previewTasks ? (
+      {previewTasks && !previewHidden ? (
         <DecomposePreviewDialog
           mode={mode}
           tasks={previewTasks}
@@ -237,9 +294,11 @@ export default function GoalScreen() {
           onDismissError={clearActionError}
           onRegenerate={regenerate}
           onConfirm={confirm}
+          onDefer={() => setPreviewHidden(true)}
           onClose={() => {
             dismissPreview();
             setPreviewMessage(null);
+            setPreviewHidden(false);
           }}
         />
       ) : null}
@@ -254,10 +313,12 @@ function formatCalendarDay(date: string): string {
 
 function PendingCard({
   item,
+  disabled,
   onEdit,
   onRemove,
 }: {
   item: PendingTask;
+  disabled?: boolean;
   onEdit: () => void;
   onRemove: () => void;
 }) {
@@ -304,8 +365,20 @@ function PendingCard({
             ) : null}
           </View>
           <View style={styles.cardActions}>
-            <Button label="编辑" variant="text" size="sm" onPress={onEdit} />
-            <Button label="删除" variant="text" size="sm" onPress={onRemove} />
+            <Button
+              label="编辑"
+              variant="text"
+              size="sm"
+              disabled={disabled}
+              onPress={onEdit}
+            />
+            <Button
+              label="删除"
+              variant="text"
+              size="sm"
+              disabled={disabled}
+              onPress={onRemove}
+            />
           </View>
         </View>
       </View>

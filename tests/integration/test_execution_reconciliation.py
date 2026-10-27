@@ -31,6 +31,7 @@ from app.infrastructure.database.models import (
 from app.infrastructure.database.models import (
     TaskExecution as TaskExecutionORM,
 )
+from app.infrastructure.database.models import User as UserORM
 
 DAY_1 = date(2026, 10, 26)
 DAY_2 = date(2026, 10, 27)
@@ -67,6 +68,8 @@ def _seed_task(
     series_id: str | None = None,
     task_kind: TaskKind = TaskKind.ONE_OFF,
     estimated_duration: int = 30,
+    work_unit_key: str | None = None,
+    chunk_index: int | None = None,
     deleted_at: datetime | None = None,
 ) -> int:
     with SessionLocal() as db:
@@ -79,6 +82,8 @@ def _seed_task(
             occurrence_date=occurrence_date,
             series_id=series_id,
             task_kind=task_kind,
+            work_unit_key=work_unit_key,
+            chunk_index=chunk_index,
             order_index=0,
             deleted_at=deleted_at,
         )
@@ -141,6 +146,15 @@ def _reconcile(user_id: int, as_of: date):
         return ExecutionReconciliationService(db).reconcile_user_execution_state(
             user_id, as_of_date=as_of
         )
+
+
+def _set_auto_backlog(user_id: int, enabled: bool = True) -> None:
+    with SessionLocal() as db:
+        user = db.get(UserORM, user_id)
+        preferences = dict(user.scheduling_preferences or {})
+        preferences["auto_backlog_overdue"] = enabled
+        user.scheduling_preferences = preferences
+        db.commit()
 
 
 def _obligations(user_id: int, as_of: date):
@@ -250,6 +264,130 @@ def test_feedback_obligations_are_scoped_to_the_authenticated_user(
     own = client.get("/api/v1/feedback/obligations", headers=auth_headers)
     assert own.status_code == 200, own.text
     assert [item["execution_date"] for item in own.json()] == [DAY_1.isoformat()]
+
+
+# ---------------------------------------------------------------------------
+# Automatic backlog preference
+# ---------------------------------------------------------------------------
+def test_auto_backlog_moves_past_normal_task_into_backlog(registered_user):
+    user_id = registered_user["user"]["id"]
+    _set_auto_backlog(user_id, True)
+    plan_id = _seed_plan(user_id)
+    task_id = _seed_task(
+        plan_id,
+        scheduled_date=DAY_1,
+        status=TaskStatus.SCHEDULED,
+        work_unit_key="wg-1-project-0",
+        chunk_index=0,
+        series_id="math-project",
+        estimated_duration=45,
+    )
+
+    result = _reconcile(user_id, DAY_2)
+
+    task = _task(task_id)
+    assert result.backlogged_task_ids == (task_id,)
+    assert result.overdue_task_ids == ()
+    assert task.status == TaskStatus.BACKLOG
+    assert task.scheduled_date is None
+    assert task.start_time is None
+    assert task.end_time is None
+    assert task.work_unit_key == "wg-1-project-0"
+    assert task.chunk_index == 0
+    assert task.series_id == "math-project"
+    assert task.estimated_duration == 45
+
+
+def test_auto_backlog_disabled_keeps_existing_overdue_behaviour(registered_user):
+    user_id = registered_user["user"]["id"]
+    _set_auto_backlog(user_id, False)
+    plan_id = _seed_plan(user_id)
+    task_id = _seed_task(plan_id, scheduled_date=DAY_1, status=TaskStatus.SCHEDULED)
+
+    result = _reconcile(user_id, DAY_2)
+
+    assert result.overdue_task_ids == (task_id,)
+    assert result.backlogged_task_ids == ()
+    assert _status(task_id) == TaskStatus.OVERDUE
+    assert _task(task_id).scheduled_date == DAY_1
+
+
+def test_auto_backlog_converts_an_already_overdue_task(registered_user):
+    user_id = registered_user["user"]["id"]
+    _set_auto_backlog(user_id, True)
+    plan_id = _seed_plan(user_id)
+    task_id = _seed_task(plan_id, scheduled_date=DAY_1, status=TaskStatus.OVERDUE)
+
+    result = _reconcile(user_id, DAY_2)
+
+    assert result.backlogged_task_ids == (task_id,)
+    assert _status(task_id) == TaskStatus.BACKLOG
+    assert _task(task_id).scheduled_date is None
+
+
+def test_auto_backlog_never_touches_recurring_missed(registered_user):
+    user_id = registered_user["user"]["id"]
+    _set_auto_backlog(user_id, True)
+    plan_id = _seed_plan(user_id)
+    task_id = _seed_task(
+        plan_id,
+        scheduled_date=DAY_1,
+        status=TaskStatus.SCHEDULED,
+        occurrence_date=DAY_1,
+        series_id="vocab",
+        task_kind=TaskKind.ROUTINE,
+    )
+
+    result = _reconcile(user_id, DAY_2)
+
+    assert result.missed_task_ids == (task_id,)
+    assert result.backlogged_task_ids == ()
+    assert _status(task_id) == TaskStatus.MISSED
+    assert _task(task_id).scheduled_date == DAY_1
+
+
+def test_auto_backlog_is_idempotent_and_ignores_future_tasks(registered_user):
+    user_id = registered_user["user"]["id"]
+    _set_auto_backlog(user_id, True)
+    plan_id = _seed_plan(user_id)
+    past = _seed_task(plan_id, scheduled_date=DAY_1, status=TaskStatus.SCHEDULED)
+    future = _seed_task(plan_id, scheduled_date=DAY_3, status=TaskStatus.SCHEDULED)
+
+    first = _reconcile(user_id, DAY_2)
+    second = _reconcile(user_id, DAY_2)
+
+    assert first.backlogged_task_ids == (past,)
+    assert second.backlogged_task_ids == ()
+    assert second.overdue_task_ids == ()
+    assert _status(past) == TaskStatus.BACKLOG
+    assert _status(future) == TaskStatus.SCHEDULED
+
+
+def test_auto_backlog_preference_is_exposed_and_used_on_plan_read(
+    client, registered_user, auth_headers
+):
+    user_id = registered_user["user"]["id"]
+    plan_id = _seed_plan(user_id)
+    task_id = _seed_task(plan_id, scheduled_date=DAY_1, status=TaskStatus.SCHEDULED)
+
+    current = client.get("/api/v1/users/me/preferences", headers=auth_headers)
+    assert current.status_code == 200, current.text
+    payload = current.json()
+    assert payload["auto_backlog_overdue"] is False
+    payload["auto_backlog_overdue"] = True
+    saved = client.put(
+        "/api/v1/users/me/preferences", headers=auth_headers, json=payload
+    )
+    assert saved.status_code == 200, saved.text
+    assert saved.json()["auto_backlog_overdue"] is True
+
+    # GET /plans is a documented read-time reconciliation hook.
+    listed = client.get("/api/v1/plans", headers=auth_headers)
+    assert listed.status_code == 200, listed.text
+
+    task = _task(task_id)
+    assert task.status == TaskStatus.BACKLOG
+    assert task.scheduled_date is None
 
 
 # ---------------------------------------------------------------------------

@@ -20,6 +20,7 @@ import {
 } from '@/domain/decompose';
 import type { Goal } from '@/domain/goal';
 import { buildInsight } from '@/domain/insight';
+import { PLAN_LOCK_MESSAGE, isPlanEditingLocked } from '@/domain/plan-lock';
 import { type SchedulingPreferences } from '@/domain/preferences';
 import { buildLists, buildRuler, countLists, pickCurrentTask } from '@/domain/selectors';
 import { buildSituation } from '@/domain/situation';
@@ -61,6 +62,17 @@ function MockPlanProvider({ children }: { children: React.ReactNode }) {
   const [preferences, setPreferences] = useState<SchedulingPreferences>(() => loadPreferences());
   const [actionError, setActionError] = useState<string | null>(null);
   const [lastConfirmedPlanId, setLastConfirmedPlanId] = useState<number | null>(null);
+  const [mockPreview, setMockPreview] = useState<DraftTask[] | null>(null);
+  const editingLocked = isPlanEditingLocked({
+    previewBusy: false,
+    hasPreview: mockPreview != null,
+  });
+
+  const ensureEditable = useCallback((): boolean => {
+    if (!editingLocked) return true;
+    setActionError(PLAN_LOCK_MESSAGE);
+    return false;
+  }, [editingLocked]);
 
   const ordered = useMemo(() => {
     const seen = new Set<number>();
@@ -117,16 +129,20 @@ function MockPlanProvider({ children }: { children: React.ReactNode }) {
   );
 
   const addTask = useCallback((text: string, defaults?: Partial<NewTaskInput>) => {
+    if (!ensureEditable()) return;
     setState((prev) => ops.createTaskFromText(prev, text, defaults).state);
-  }, []);
+  }, [ensureEditable]);
   const createTask = useCallback((input: NewTaskInput) => {
+    if (!ensureEditable()) return;
     setState((prev) => ops.makeTask(prev, input).state);
-  }, []);
+  }, [ensureEditable]);
   const updateTask = useCallback((id: number, patch: Partial<Task>) => {
+    if (!ensureEditable()) return;
     setState((prev) => ops.updateTask(prev, id, patch));
-  }, []);
+  }, [ensureEditable]);
   const updateStandard = useCallback(
     async (taskId: number, standardId: number, completed: boolean) => {
+      if (!ensureEditable()) return;
       setState((prev) =>
         ops.updateTask(prev, taskId, {
           standards: (prev.tasks.find((task) => task.id === taskId)?.standards ?? []).map(
@@ -135,12 +151,14 @@ function MockPlanProvider({ children }: { children: React.ReactNode }) {
         }),
       );
     },
-    [],
+    [ensureEditable],
   );
   const deleteTask = useCallback((id: number) => {
+    if (!ensureEditable()) return;
     setState((prev) => ops.deleteTask(prev, id));
-  }, []);
+  }, [ensureEditable]);
   const deleteTaskSeries = useCallback(async (taskId: number) => {
+    if (!ensureEditable()) return;
     setState((prev) => {
       const task = prev.tasks.find((item) => item.id === taskId);
       if (!task) return prev;
@@ -149,51 +167,62 @@ function MockPlanProvider({ children }: { children: React.ReactNode }) {
         .map((item) => item.id);
       return ids.length > 0 ? ops.batchDelete(prev, ids) : prev;
     });
-  }, []);
+  }, [ensureEditable]);
   const setDone = useCallback((id: number, done: boolean) => {
+    if (!ensureEditable()) return;
     setState((prev) => ops.setDone(prev, id, done));
-  }, []);
+  }, [ensureEditable]);
   const startTask = useCallback((id: number) => {
+    if (!ensureEditable()) return;
     setState((prev) => ops.updateTask(prev, id, { startedAt: new Date().toISOString() }));
-  }, []);
+  }, [ensureEditable]);
   const completeTask = useCallback((id: number, actualMinutes?: number | null) => {
+    if (!ensureEditable()) return;
     setState((prev) => {
       const done = ops.setDone(prev, id, true);
       return actualMinutes != null
         ? ops.updateTask(done, id, { actualMinutes: Math.round(actualMinutes) })
         : done;
     });
-  }, []);
+  }, [ensureEditable]);
   const partialCompleteTask = useCallback(
     (id: number, _completionRate: number, actualMinutes?: number | null) => {
+      if (!ensureEditable()) return;
       if (actualMinutes == null) return;
       setState((prev) =>
         ops.updateTask(prev, id, { actualMinutes: Math.round(actualMinutes) }),
       );
     },
-    [],
+    [ensureEditable],
   );
   const toggleDone = useCallback((id: number) => {
+    if (!ensureEditable()) return;
     setState((prev) => ops.toggleDone(prev, id));
-  }, []);
+  }, [ensureEditable]);
   const setSkipped = useCallback((id: number, skipped: boolean) => {
+    if (!ensureEditable()) return;
     setState((prev) => ops.setSkipped(prev, id, skipped));
-  }, []);
+  }, [ensureEditable]);
   const reorder = useCallback((draggedId: number, targetId: number) => {
+    if (!ensureEditable()) return;
     setState((prev) => ops.reorder(prev, draggedId, targetId));
-  }, []);
+  }, [ensureEditable]);
   const moveBy = useCallback((id: number, delta: number) => {
+    if (!ensureEditable()) return;
     setState((prev) => ops.moveBy(prev, id, delta));
-  }, []);
+  }, [ensureEditable]);
   const batchSetDone = useCallback((ids: number[], done: boolean) => {
+    if (!ensureEditable()) return;
     setState((prev) => ops.batchSetDone(prev, ids, done));
-  }, []);
+  }, [ensureEditable]);
   const batchDelete = useCallback((ids: number[]) => {
+    if (!ensureEditable()) return;
     setState((prev) => ops.batchDelete(prev, ids));
-  }, []);
+  }, [ensureEditable]);
   const batchReschedule = useCallback((ids: number[], date: string | null) => {
+    if (!ensureEditable()) return;
     setState((prev) => ops.batchReschedule(prev, ids, date));
-  }, []);
+  }, [ensureEditable]);
   const logFocus = useCallback((taskId: number, minutes: number) => {
     setState((prev) => ops.logFocus(prev, taskId, minutes));
   }, []);
@@ -231,7 +260,6 @@ function MockPlanProvider({ children }: { children: React.ReactNode }) {
     setPendingTasks((prev) => prev.filter((item) => item.id !== id));
   }, []);
 
-  const [mockPreview, setMockPreview] = useState<DraftTask[] | null>(null);
   const dismissPreview = useCallback(() => setMockPreview(null), []);
 
   const previewMeta = useMemo(
@@ -342,29 +370,51 @@ function MockPlanProvider({ children }: { children: React.ReactNode }) {
   );
 
   const submitFeedback = useCallback(
-    async (_input: FeedbackInput): Promise<FeedbackResult> => ({
-      replanTriggered: false,
-      replanPlanId: null,
-      cooldownMessage: null,
-      saved: true,
-      mode: 'recorded',
-      route: 'none',
-      reasons: [],
-      replanError: null,
-    }),
-    [],
+    async (_input: FeedbackInput): Promise<FeedbackResult> => {
+      if (!ensureEditable()) {
+        return {
+          replanTriggered: false,
+          replanPlanId: null,
+          cooldownMessage: PLAN_LOCK_MESSAGE,
+          saved: false,
+          mode: 'recorded',
+          route: 'none',
+          reasons: [],
+          replanError: PLAN_LOCK_MESSAGE,
+        };
+      }
+      return {
+        replanTriggered: false,
+        replanPlanId: null,
+        cooldownMessage: null,
+        saved: true,
+        mode: 'recorded',
+        route: 'none',
+        reasons: [],
+        replanError: null,
+      };
+    },
+    [ensureEditable],
   );
 
   const scheduleUnavailable = useCallback(async (): Promise<SchedulingActionResult> => {
+    if (!ensureEditable()) {
+      return { ok: false, message: PLAN_LOCK_MESSAGE };
+    }
     const message = '演示模式：任务池和顺延需要连接后端。';
     setActionError(message);
     return { ok: false, message };
-  }, []);
+  }, [ensureEditable]);
+
+  const mockReplanNow = useCallback(async (): Promise<string> => {
+    if (!ensureEditable()) return PLAN_LOCK_MESSAGE;
+    return '演示模式：重排需要连接后端。';
+  }, [ensureEditable]);
 
   const value = useMemo<PlanContextValue>(
     () => ({
       mode: 'mock',
-      canEditTasks: true,
+      canEditTasks: !editingLocked,
       canCreateTasks: true,
       loading: false,
       error: null,
@@ -389,7 +439,7 @@ function MockPlanProvider({ children }: { children: React.ReactNode }) {
       planChanges: mockPlanChanges,
       lastConfirmedPlanId,
       clearLastConfirmed: () => setLastConfirmedPlanId(null),
-      replanNow: async () => '演示模式：重排需要连接后端。',
+      replanNow: mockReplanNow,
       feedbackHistory: [],
       refreshFeedbackHistory: async () => undefined,
       feedbackObligations: [],
@@ -464,6 +514,8 @@ function MockPlanProvider({ children }: { children: React.ReactNode }) {
       assessment,
       submitFeedback,
       scheduleUnavailable,
+      mockReplanNow,
+      editingLocked,
       addTask,
       createTask,
       updateTask,

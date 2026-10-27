@@ -485,6 +485,55 @@ def test_completed_and_missed_tasks_cannot_move(registered_user):
         _move(missed, user_id, plan_id, TOMORROW, time(9, 0))
 
 
+def test_api_completing_backlog_task_removes_it_from_the_pool(
+    client, registered_user, auth_headers
+):
+    user_id = registered_user["user"]["id"]
+    plan_id = _seed_plan(user_id)
+    task_id = _seed_task(
+        plan_id,
+        scheduled_date=None,
+        status=TaskStatus.BACKLOG,
+    )
+
+    response = client.patch(
+        f"/api/v1/plans/{plan_id}/tasks/{task_id}",
+        headers=auth_headers,
+        json={"completed": True},
+    )
+    assert response.status_code == 200, response.text
+    assert response.json()["status"] == "completed"
+
+    backlog = client.get(f"/api/v1/plans/{plan_id}/backlog", headers=auth_headers)
+    assert backlog.status_code == 200, backlog.text
+    assert backlog.json() == []
+
+
+def test_api_completing_overdue_task_clears_overdue_lifecycle(
+    client, registered_user, auth_headers
+):
+    user_id = registered_user["user"]["id"]
+    plan_id = _seed_plan(user_id)
+    task_id = _seed_task(
+        plan_id,
+        scheduled_date=YESTERDAY,
+        status=TaskStatus.OVERDUE,
+    )
+
+    response = client.patch(
+        f"/api/v1/plans/{plan_id}/tasks/{task_id}",
+        headers=auth_headers,
+        json={"completed": True, "finished_at": datetime.now().isoformat()},
+    )
+    assert response.status_code == 200, response.text
+    assert response.json()["status"] == "completed"
+
+    detail = client.get(f"/api/v1/plans/{plan_id}", headers=auth_headers)
+    assert detail.status_code == 200, detail.text
+    task = next(item for item in detail.json()["tasks"] if item["id"] == task_id)
+    assert task["status"] == "completed"
+
+
 def test_move_does_not_create_a_replan(registered_user):
     user_id = registered_user["user"]["id"]
     plan_id = _seed_plan(user_id)

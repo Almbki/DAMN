@@ -37,6 +37,7 @@ def test_preferences_defaults_then_roundtrip(client: TestClient, auth_headers: d
         "sleep_end": None,
         "feedback_time": None,
         "feedback_enabled": False,
+        "auto_backlog_overdue": False,
     }
 
     updated = client.put(
@@ -51,6 +52,7 @@ def test_preferences_defaults_then_roundtrip(client: TestClient, auth_headers: d
             "sleep_end": "07:00",
             "feedback_time": "20:15",
             "feedback_enabled": True,
+            "auto_backlog_overdue": True,
         },
         headers=auth_headers,
     )
@@ -58,6 +60,7 @@ def test_preferences_defaults_then_roundtrip(client: TestClient, auth_headers: d
     assert updated.json()["daily_limit_minutes"] == 120
     assert updated.json()["max_daily_minutes_per_goal"] == 90
     assert updated.json()["feedback_time"] == "20:15"
+    assert updated.json()["auto_backlog_overdue"] is True
     assert updated.json()["feedback_enabled"] is True
 
     reread = client.get("/api/v1/users/me/preferences", headers=auth_headers)

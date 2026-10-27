@@ -5,6 +5,9 @@ import { getPreferences, putPreferences } from '@/api/endpoints';
 import {
   DEFAULT_PREFERENCES,
   normalizePreferences,
+  preferencesFromApi,
+  preferencesToApi,
+  type ApiSchedulingPreferences,
   type SchedulingPreferences,
 } from '@/domain/preferences';
 
@@ -18,45 +21,14 @@ const KEY = 'damn.preferences';
 const isWeb = Platform.OS === 'web';
 
 /** Wire shape of the preferences endpoints (`snake_case`, backend `SchedulingPreferences`). */
-type ApiPreferences = {
-  available_minutes_per_day: number;
-  daily_limit_minutes: number;
-  buffer_minutes: number;
-  high_cognitive_max_per_day: number;
-  max_daily_minutes_per_goal?: number;
-  sleep_start?: string | null;
-  sleep_end?: string | null;
-  feedback_time?: string | null;
-  feedback_enabled?: boolean;
-};
+type ApiPreferences = ApiSchedulingPreferences;
 
 function fromApi(raw: ApiPreferences): SchedulingPreferences {
-  return normalizePreferences({
-    availableMinutesPerDay: raw.available_minutes_per_day,
-    dailyLimitMinutes: raw.daily_limit_minutes,
-    bufferMinutes: raw.buffer_minutes,
-    highCognitiveMaxPerDay: raw.high_cognitive_max_per_day,
-    maxDailyMinutesPerGoal:
-      raw.max_daily_minutes_per_goal ?? DEFAULT_PREFERENCES.maxDailyMinutesPerGoal,
-    sleepStart: raw.sleep_start ?? DEFAULT_PREFERENCES.sleepStart,
-    sleepEnd: raw.sleep_end ?? DEFAULT_PREFERENCES.sleepEnd,
-    feedbackTime: raw.feedback_time ?? null,
-    feedbackEnabled: raw.feedback_enabled ?? DEFAULT_PREFERENCES.feedbackEnabled,
-  });
+  return preferencesFromApi(raw);
 }
 
 function toApi(preferences: SchedulingPreferences): ApiPreferences {
-  return {
-    available_minutes_per_day: preferences.availableMinutesPerDay,
-    daily_limit_minutes: preferences.dailyLimitMinutes,
-    buffer_minutes: preferences.bufferMinutes,
-    high_cognitive_max_per_day: preferences.highCognitiveMaxPerDay,
-    max_daily_minutes_per_goal: preferences.maxDailyMinutesPerGoal,
-    sleep_start: preferences.sleepStart,
-    sleep_end: preferences.sleepEnd,
-    feedback_time: preferences.feedbackTime,
-    feedback_enabled: preferences.feedbackEnabled,
-  };
+  return preferencesToApi(preferences);
 }
 
 export function loadPreferences(): SchedulingPreferences {

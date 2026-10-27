@@ -58,14 +58,28 @@ function taskMeta(task: Task): string {
     .join(' · ');
 }
 
+function poolMeta(task: Task, goalTitleById: Map<number, string>): string {
+  const planned = task.estimatedMinutes ?? task.predictedDuration;
+  const goal = task.goalId != null ? goalTitleById.get(task.goalId) : null;
+  return [
+    planned != null ? `计划 ${planned} 分` : null,
+    goal ?? '未归入目标',
+  ]
+    .filter(Boolean)
+    .join(' · ');
+}
+
 export default function FeedbackScreen() {
   const { colors } = useTheme();
   const router = useRouter();
   const profile = useProfile();
   const {
     tasks,
+    goals,
+    backlogTasks,
     assessment,
     setAssessment,
+    setDone,
     submitFeedback,
     feedbackHistory,
     refreshFeedbackHistory,
@@ -106,6 +120,14 @@ export default function FeedbackScreen() {
   const backfill = useMemo(
     () => retrospectiveObligations(feedbackObligations, today),
     [feedbackObligations, today],
+  );
+  const openBacklog = useMemo(
+    () => backlogTasks.filter((task) => !isClosed(task)),
+    [backlogTasks],
+  );
+  const goalTitleById = useMemo(
+    () => new Map(goals.map((goal) => [goal.id, goal.title])),
+    [goals],
   );
 
   const [reasonByTask, setReasonByTask] = useState<Record<number, ReasonState>>({});
@@ -447,10 +469,46 @@ export default function FeedbackScreen() {
                     missing={!state.reason}
                     onReasonChange={(reason) => setReason(task, reason)}
                     onNoteChange={(note) => setNote(task, note)}
+                    onComplete={
+                      !isClosed(task) ? () => setDone(task.id, true) : undefined
+                    }
                   />
                 );
               })
             )}
+          </View>
+        ) : null}
+
+        {selectedDate === today && openBacklog.length > 0 ? (
+          <View style={styles.section}>
+            <View style={styles.sectionHead}>
+              <Text style={[styles.sectionTitle, { color: colors.ink }]}>
+                任务池 · {openBacklog.length}
+              </Text>
+              <Text style={[styles.sectionHint, { color: colors.inkFaint }]}>
+                没有排日期，完成会直接记完成
+              </Text>
+            </View>
+
+            {openBacklog.map((task) => (
+              <Surface key={task.id} level="level0" radius="lg" bordered>
+                <View style={styles.poolRow}>
+                  <View style={styles.poolCopy}>
+                    <Text style={[styles.taskTitle, { color: colors.ink }]}>{task.title}</Text>
+                    <Text style={[styles.taskMeta, { color: colors.inkMuted }]}>
+                      {poolMeta(task, goalTitleById)}
+                    </Text>
+                  </View>
+                  <Button
+                    label="已完成"
+                    variant="filled"
+                    size="sm"
+                    icon="check"
+                    onPress={() => setDone(task.id, true)}
+                  />
+                </View>
+              </Surface>
+            ))}
           </View>
         ) : null}
 
@@ -676,6 +734,17 @@ const styles = StyleSheet.create({
     marginTop: 1,
   },
   completedCopy: {
+    flex: 1,
+    minWidth: 0,
+    gap: 2,
+  },
+  poolRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Space.md,
+    padding: Space.lg,
+  },
+  poolCopy: {
     flex: 1,
     minWidth: 0,
     gap: 2,
