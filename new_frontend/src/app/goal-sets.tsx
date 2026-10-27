@@ -88,7 +88,7 @@ function goalImpactMessage(
 
 export default function GoalSetsScreen() {
   const { colors } = useTheme();
-  const { mode, refresh } = usePlan();
+  const { mode, refresh, canEditTasks } = usePlan();
   const isApi = mode === 'api';
 
   const [sets, setSets] = useState<GoalSetRead[]>([]);
@@ -204,6 +204,10 @@ export default function GoalSetsScreen() {
   }
 
   async function toggleGoal(goal: GoalDetailRead) {
+    if (!canEditTasks) {
+      setNotice({ tone: 'info', message: '请先完成当前计划' });
+      return;
+    }
     setGoalBusyId(goal.id);
     setNotice(null);
     const restoring = goal.status === 'archived';
@@ -221,6 +225,10 @@ export default function GoalSetsScreen() {
   }
 
   async function openAttach() {
+    if (!canEditTasks) {
+      setNotice({ tone: 'info', message: '请先完成当前计划' });
+      return;
+    }
     if (!detail) return;
     const inSet = new Set(detail.goals.map((goal) => goal.id));
     setAttachOpen(true);
@@ -259,6 +267,10 @@ export default function GoalSetsScreen() {
   }
 
   async function submitAttach() {
+    if (!canEditTasks) {
+      setAttachError('请先完成当前计划');
+      return;
+    }
     if (!detail || selectedGoalIds.size === 0) return;
     const setId = detail.id;
     const setName = detail.name;
@@ -285,6 +297,10 @@ export default function GoalSetsScreen() {
   }
 
   function openArchiveConfirm() {
+    if (!canEditTasks) {
+      setNotice({ tone: 'info', message: '请先完成当前计划' });
+      return;
+    }
     if (!detail) return;
     setArchiveOpen(true);
     setSelectedId(null);
@@ -296,6 +312,10 @@ export default function GoalSetsScreen() {
   }
 
   async function confirmArchive() {
+    if (!canEditTasks) {
+      setNotice({ tone: 'info', message: '请先完成当前计划' });
+      return;
+    }
     if (!detail) return;
     const setId = detail.id;
     const setName = detail.name;
@@ -324,6 +344,10 @@ export default function GoalSetsScreen() {
   }
 
   async function restoreSet() {
+    if (!canEditTasks) {
+      setNotice({ tone: 'info', message: '请先完成当前计划' });
+      return;
+    }
     if (!detail) return;
     const setId = detail.id;
     const setName = detail.name;
@@ -497,7 +521,7 @@ export default function GoalSetsScreen() {
                 <Button
                   label={setBusy ? '恢复中…' : '恢复目标集'}
                   variant="filled"
-                  disabled={setBusy}
+                  disabled={setBusy || !canEditTasks}
                   onPress={() => void restoreSet()}
                 />
               ) : (
@@ -506,13 +530,13 @@ export default function GoalSetsScreen() {
                     label="添加目标"
                     variant="tonal"
                     icon="plus"
-                    disabled={!canAttachGoals(detail.status) || setBusy}
+                    disabled={!canAttachGoals(detail.status) || setBusy || !canEditTasks}
                     onPress={() => void openAttach()}
                   />
                   <Button
                     label="归档目标集"
                     variant="outlined"
-                    disabled={setBusy}
+                    disabled={setBusy || !canEditTasks}
                     onPress={openArchiveConfirm}
                   />
                 </>

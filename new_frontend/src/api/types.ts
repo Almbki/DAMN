@@ -782,6 +782,8 @@ export interface SchedulingPreferences {
   /** Local `HH:MM` at which the daily feedback reminder fires. */
   feedback_time?: string | null;
   feedback_enabled?: boolean;
+  /** Move overdue unfinished normal tasks into the 任务池 on reconciliation. */
+  auto_backlog_overdue?: boolean;
 }
 
 /** `POST /plans/preview` — a not-yet-persisted plan the user can adjust. */

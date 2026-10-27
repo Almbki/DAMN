@@ -16,6 +16,7 @@ import { Segmented } from '@/components/ui/segmented';
 import { EmptyState } from '@/components/ui/states';
 import { Fonts, Layout, Line, Radius, Space, Type } from '@/constants/tokens';
 import { formatShort, parseISO, todayISO } from '@/domain/date';
+import { PLAN_LOCK_MESSAGE } from '@/domain/plan-lock';
 import { groupByGoal, weekDates } from '@/domain/selectors';
 import { isClosed, seriesTasks, type Task } from '@/domain/task';
 import { useListKeys } from '@/hooks/use-list-keys';
@@ -142,6 +143,7 @@ export default function TodoScreen() {
 
   const handleToggleById = useCallback(
     (id: number) => {
+      if (!canEditTasks) return;
       const task = tasks.find((item) => item.id === id);
       if (!task) return;
       if (task.done) {
@@ -151,14 +153,15 @@ export default function TodoScreen() {
       setDone(id, true);
       showUndo(task);
     },
-    [tasks, setDone, showUndo],
+    [canEditTasks, tasks, setDone, showUndo],
   );
 
   const undoCompletion = useCallback(() => {
+    if (!canEditTasks) return;
     if (!undo) return;
     setDone(undo.id, false);
     dismissUndo();
-  }, [undo, setDone, dismissUndo]);
+  }, [canEditTasks, undo, setDone, dismissUndo]);
 
   const handleOpen = useCallback((id: number) => {
     setDetailId(id);
@@ -245,6 +248,10 @@ export default function TodoScreen() {
 
   const runReplan = useCallback(async () => {
     setReplanConfirmOpen(false);
+    if (!canEditTasks) {
+      setReplanMessage(PLAN_LOCK_MESSAGE);
+      return;
+    }
     setReplanBusy(true);
     setReplanMessage(null);
     dismissUndo();
@@ -255,7 +262,7 @@ export default function TodoScreen() {
     } finally {
       setReplanBusy(false);
     }
-  }, [replanNow, dismissUndo]);
+  }, [canEditTasks, replanNow, dismissUndo]);
 
   const today = todayISO();
   const allToday = lists.today;
@@ -326,18 +333,20 @@ export default function TodoScreen() {
   );
 
   const toggleActive = useCallback(() => {
+    if (!canEditTasks) return;
     const id = activeId ?? currentTask?.id ?? todayTasks[0]?.id;
     if (id == null) return;
     setActiveId(id);
     handleToggleById(id);
-  }, [activeId, currentTask, todayTasks, handleToggleById]);
+  }, [activeId, canEditTasks, currentTask, todayTasks, handleToggleById]);
 
   const deferActive = useCallback(() => {
+    if (!canEditTasks) return;
     const id = activeId ?? currentTask?.id ?? todayTasks[0]?.id;
     if (id == null) return;
     setActiveId(id);
     moveBy(id, 1);
-  }, [activeId, currentTask, todayTasks, moveBy]);
+  }, [activeId, canEditTasks, currentTask, todayTasks, moveBy]);
 
   const keysEnabled =
     view === 0 &&
@@ -553,7 +562,7 @@ export default function TodoScreen() {
             label={replanBusy ? '重排中…' : '重排计划'}
             variant="outlined"
             icon="swap"
-            disabled={replanBusy}
+            disabled={replanBusy || !canEditTasks}
             onPress={() => setReplanConfirmOpen(true)}
           />
         </View>

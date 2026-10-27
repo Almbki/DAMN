@@ -1,6 +1,12 @@
 import { describe, expect, it } from 'vitest';
 
-import { isBacklog, isClosed, isOverdue, type Task } from '@/domain/task';
+import {
+  isBacklog,
+  isClosed,
+  isOverdue,
+  openBacklogTasks,
+  type Task,
+} from '@/domain/task';
 
 function task(overrides: Partial<Task>): Task {
   return {
@@ -70,6 +76,13 @@ describe('isBacklog', () => {
 
   it('does not infer backlog from a missing date', () => {
     expect(isBacklog(task({ dueDate: null }))).toBe(false);
+  });
+
+  it('keeps completed backlog tasks out of the tray helper', () => {
+    const open = task({ id: 1, backlog: true });
+    const done = task({ id: 2, backlog: true, done: true });
+    const scheduled = task({ id: 3 });
+    expect(openBacklogTasks([open, done, scheduled]).map((item) => item.id)).toEqual([1]);
   });
 });
 

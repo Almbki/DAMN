@@ -176,9 +176,9 @@ function TimelineRow({
         <View style={styles.cardRow}>
           <Checkbox
             checked={done}
-            disabled={!interactive}
+            disabled={!interactive || !canEdit}
             label={`${done ? '取消完成' : '完成'}：${item.title}`}
-            onPress={() => interactive && onToggleDone?.(item.id)}
+            onPress={() => interactive && canEdit && onToggleDone?.(item.id)}
           />
 
           <Pressable

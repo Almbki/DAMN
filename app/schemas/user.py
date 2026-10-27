@@ -62,6 +62,9 @@ class SchedulingPreferences(BaseModel):
     feedback_time: str | None = Field(default=None, examples=["20:00"])
     #: Whether the daily feedback reminder is enabled (default off).
     feedback_enabled: bool = False
+    #: Move past unfinished normal tasks into the backlog instead of leaving
+    #: them OVERDUE (default off). Recurring occurrences are never affected.
+    auto_backlog_overdue: bool = False
 
     @field_validator("sleep_start", "sleep_end", "feedback_time")
     @classmethod

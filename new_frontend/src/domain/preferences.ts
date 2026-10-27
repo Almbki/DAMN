@@ -1,3 +1,5 @@
+import type { SchedulingPreferences as ApiSchedulingPreferences } from '@/api/types';
+
 /**
  * Scheduling preferences the user sets once and expects to keep. The backend
  * currently only reads these from each `POST /plans/generate` body (see
@@ -18,7 +20,11 @@ export interface SchedulingPreferences {
   feedbackTime: string | null;
   /** Whether the daily feedback reminder is enabled. */
   feedbackEnabled: boolean;
+  /** Move past unfinished normal tasks to the 任务池 on reconciliation. */
+  autoBacklogOverdue: boolean;
 }
+
+export type { ApiSchedulingPreferences };
 
 export const DEFAULT_PREFERENCES: SchedulingPreferences = {
   availableMinutesPerDay: 480,
@@ -30,6 +36,7 @@ export const DEFAULT_PREFERENCES: SchedulingPreferences = {
   sleepEnd: '07:30',
   feedbackTime: null,
   feedbackEnabled: false,
+  autoBacklogOverdue: false,
 };
 
 export const PREFERENCE_BOUNDS = {
@@ -66,5 +73,42 @@ export function normalizePreferences(
     ...preferences,
     feedbackTime: normalizeClockTime(preferences.feedbackTime),
     feedbackEnabled: Boolean(preferences.feedbackEnabled),
+    autoBacklogOverdue: Boolean(preferences.autoBacklogOverdue),
+  };
+}
+
+/** Wire shape → domain shape (server-authoritative in API mode). */
+export function preferencesFromApi(raw: ApiSchedulingPreferences): SchedulingPreferences {
+  return normalizePreferences({
+    availableMinutesPerDay: raw.available_minutes_per_day,
+    dailyLimitMinutes: raw.daily_limit_minutes,
+    bufferMinutes: raw.buffer_minutes,
+    highCognitiveMaxPerDay: raw.high_cognitive_max_per_day,
+    maxDailyMinutesPerGoal:
+      raw.max_daily_minutes_per_goal ?? DEFAULT_PREFERENCES.maxDailyMinutesPerGoal,
+    sleepStart: raw.sleep_start ?? DEFAULT_PREFERENCES.sleepStart,
+    sleepEnd: raw.sleep_end ?? DEFAULT_PREFERENCES.sleepEnd,
+    feedbackTime: raw.feedback_time ?? null,
+    feedbackEnabled: raw.feedback_enabled ?? DEFAULT_PREFERENCES.feedbackEnabled,
+    autoBacklogOverdue:
+      raw.auto_backlog_overdue ?? DEFAULT_PREFERENCES.autoBacklogOverdue,
+  });
+}
+
+/** Domain shape → wire shape for `PUT /users/me/preferences`. */
+export function preferencesToApi(
+  preferences: SchedulingPreferences,
+): ApiSchedulingPreferences {
+  return {
+    available_minutes_per_day: preferences.availableMinutesPerDay,
+    daily_limit_minutes: preferences.dailyLimitMinutes,
+    buffer_minutes: preferences.bufferMinutes,
+    high_cognitive_max_per_day: preferences.highCognitiveMaxPerDay,
+    max_daily_minutes_per_goal: preferences.maxDailyMinutesPerGoal,
+    sleep_start: preferences.sleepStart,
+    sleep_end: preferences.sleepEnd,
+    feedback_time: preferences.feedbackTime,
+    feedback_enabled: preferences.feedbackEnabled,
+    auto_backlog_overdue: preferences.autoBacklogOverdue,
   };
 }

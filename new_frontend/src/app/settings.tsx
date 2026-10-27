@@ -2,6 +2,7 @@ import { useRouter, type Href } from 'expo-router';
 import { useEffect, useRef, useState } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 
+import { ReminderSwitch } from '@/components/feedback/reminder-switch';
 import { Button } from '@/components/ui/button';
 import { InlineNotice, SaveStatus, type SaveState } from '@/components/ui/states';
 import { Surface } from '@/components/ui/surface';
@@ -23,6 +24,7 @@ export default function SettingsScreen() {
     preferences,
     updatePreferences,
     updateWeight,
+    refresh,
     actionError,
     clearActionError,
   } = usePlan();
@@ -103,6 +105,17 @@ export default function SettingsScreen() {
     void runSave(() => updateWeight(next));
   };
 
+  const toggleAutoBacklog = (next: boolean) => {
+    if (preferences.autoBacklogOverdue === next) return;
+    prefsRef.current = { ...prefsRef.current, autoBacklogOverdue: next };
+    void runSave(async () => {
+      await updatePreferences({ autoBacklogOverdue: next });
+      // A plan read runs reconciliation; with the preference on, overdue
+      // normal tasks move to the 任务池 immediately.
+      refresh();
+    });
+  };
+
   const saveError = saveState === 'error' ? (actionError ?? '保存失败，请稍后重试。') : null;
 
   return (
@@ -181,7 +194,7 @@ export default function SettingsScreen() {
         <View style={styles.card}>
           <Text style={[styles.title, { color: colors.ink }]}>排程上限</Text>
           <Text style={[styles.body, { color: colors.inkMuted }]}>
-            这里只负责生成计划时的硬上限：单日上限、任务之间的缓冲，以及每天最多几条高认知任务。
+            这里设置生成计划时的硬上限：单日上限、任务之间的缓冲、每天最多几条高认知任务，以及逾期任务是否自动进入任务池。
           </Text>
 
           <PrefRow
@@ -208,6 +221,23 @@ export default function SettingsScreen() {
             onShift={(delta) => shiftPreference('highCognitiveMaxPerDay', delta)}
             step={PREFERENCE_BOUNDS.highCognitiveMaxPerDay.step}
           />
+
+          <View style={[styles.prefRow, { borderTopColor: colors.outlineVariant }]}>
+            <View style={styles.prefText}>
+              <Text style={[styles.prefLabel, { color: colors.ink }]}>
+                逾期任务自动进入任务池
+              </Text>
+              <Text style={[styles.helper, { color: colors.inkMuted }]}>
+                开启后，过了当天仍未完成的普通任务会移到任务池，等待重新安排。重复任务不受影响。
+              </Text>
+            </View>
+            <ReminderSwitch
+              value={preferences.autoBacklogOverdue}
+              onValueChange={toggleAutoBacklog}
+              label="逾期任务自动进入任务池"
+              disabled={saveState === 'saving'}
+            />
+          </View>
 
           <View style={[styles.crossLink, { borderTopColor: colors.outlineVariant }]}>
             <Text style={[styles.helper, { color: colors.inkMuted }]}>

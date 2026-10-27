@@ -33,7 +33,12 @@ SLEEP_KEYS: tuple[str, str] = ("sleep_start", "sleep_end")
 FEEDBACK_TIME_KEY: str = "feedback_time"
 
 #: Daily feedback reminder toggle.
-BOOL_DEFAULTS: dict[str, bool] = {"feedback_enabled": False}
+BOOL_DEFAULTS: dict[str, bool] = {
+    "feedback_enabled": False,
+    #: Move past unfinished normal tasks from OVERDUE into BACKLOG during the
+    #: daily reconciliation. Recurring occurrences are never affected.
+    "auto_backlog_overdue": False,
+}
 
 
 def effective_scheduling_preferences(

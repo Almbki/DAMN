@@ -20,7 +20,7 @@ function useWide() {
 
 export function AppShell({ children }: { children: React.ReactNode }) {
   const { colors } = useTheme();
-  const { actionError, clearActionError, previewBusy } = usePlan();
+  const { actionError, clearActionError, previewBusy, previewTasks } = usePlan();
   const { demoMode } = useSession();
   const insets = useSafeAreaInsets();
   const wide = useWide();
@@ -146,6 +146,34 @@ export function AppShell({ children }: { children: React.ReactNode }) {
             <Text style={[styles.previewText, { color: colors.onSecondaryContainer }]}>
               正在生成/确认计划，完成前请勿切换页面。
             </Text>
+          </View>
+        ) : null}
+
+        {!previewBusy && previewTasks != null ? (
+          <View
+            accessibilityRole="alert"
+            accessibilityLiveRegion="polite"
+            style={[
+              styles.pendingBanner,
+              {
+                backgroundColor: colors.surfaceContainerLow,
+                borderBottomColor: colors.outlineVariant,
+                paddingHorizontal: wide ? Layout.padWide : Layout.padNarrow,
+              },
+            ]}>
+            <Icon name="clock" size={16} color={colors.inkMuted} />
+            <Text style={[styles.pendingText, { color: colors.inkMuted }]}>
+              计划待确认，当前为只读；完成后可继续编辑。
+            </Text>
+            <Pressable
+              accessibilityRole="link"
+              accessibilityLabel="继续查看计划"
+              onPress={() => router.push('/goal')}
+              style={[styles.pendingAction, { borderColor: colors.outline }]}>
+              <Text style={[styles.pendingActionText, { color: colors.primary }]}>
+                继续查看
+              </Text>
+            </Pressable>
           </View>
         ) : null}
 
@@ -355,6 +383,30 @@ const styles = StyleSheet.create({
     fontSize: Type.labelSmall,
     fontWeight: '700',
     letterSpacing: 0.5,
+  },
+  pendingBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Space.md,
+    borderBottomWidth: 1,
+    paddingVertical: Space.sm,
+  },
+  pendingText: {
+    flex: 1,
+    fontSize: Type.labelLarge,
+    lineHeight: Type.labelLarge * Line.normal,
+  },
+  pendingAction: {
+    minHeight: 32,
+    justifyContent: 'center',
+    borderWidth: 1,
+    borderRadius: Radius.pill,
+    paddingHorizontal: Space.md,
+    paddingVertical: 2,
+  },
+  pendingActionText: {
+    fontSize: Type.labelMedium,
+    fontWeight: '600',
   },
   errorBanner: {
     flexDirection: 'row',

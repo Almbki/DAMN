@@ -63,6 +63,7 @@ import type {
 import { addDays, todayISO } from '@/domain/date';
 import type { DraftTask, PendingTask } from '@/domain/decompose';
 import type { Goal } from '@/domain/goal';
+import { PLAN_LOCK_MESSAGE, isPlanEditingLocked } from '@/domain/plan-lock';
 import type { PlanChange } from '@/domain/plan-change';
 import type { SchedulingPreferences } from '@/domain/preferences';
 import { schedulingErrorMessage } from '@/domain/schedule-error';
@@ -71,8 +72,8 @@ import { buildSituation } from '@/domain/situation';
 import { completedToday } from '@/domain/stats';
 import {
   goalTypeFromTaskKind,
-  isBacklog,
   isClosed,
+  openBacklogTasks,
   planningModeFromTaskKind,
   seriesTasks,
   taskKindFromGoalType,
@@ -341,6 +342,13 @@ export function ApiPlanProvider({ children }: { children: React.ReactNode }) {
   // `actionError` so one failed PATCH never blanks the whole app.
   const [error, setError] = useState<string | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
+  // Provider-owned preview state so a deferred preview survives route changes.
+  const [previewTasks, setPreviewTasks] = useState<DraftTask[] | null>(null);
+  const [previewBusy, setPreviewBusy] = useState(false);
+  const editingLocked = isPlanEditingLocked({
+    previewBusy,
+    hasPreview: previewTasks != null,
+  });
   const [assessment, setAssessment] = useState<Assessment>({ energy: 5, mood: 3, stress: 4 });
   const [goals, setGoals] = useState<Goal[]>([]);
   const [pendingTasks, setPendingTasks] = useState<PendingTask[]>([]);
@@ -388,6 +396,13 @@ export function ApiPlanProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   const clearActionError = useCallback(() => setActionError(null), []);
+
+  /** Single boundary for active-plan edits while a preview is in flight/pending. */
+  const ensureEditable = useCallback((): boolean => {
+    if (!editingLocked) return true;
+    setActionError(PLAN_LOCK_MESSAGE);
+    return false;
+  }, [editingLocked]);
 
   // 待拆解 drafts live on the backend as `draft` goals; the local list stays the
   // UI source of truth so a failed fetch never blanks the screen.
@@ -588,6 +603,9 @@ export function ApiPlanProvider({ children }: { children: React.ReactNode }) {
     async (
       action: (targetPlanId: number) => Promise<unknown>,
     ): Promise<SchedulingActionResult> => {
+      if (!ensureEditable()) {
+        return { ok: false, message: PLAN_LOCK_MESSAGE };
+      }
       if (planId == null) {
         const message = '还没有计划，先生成一个。';
         setActionError(message);
@@ -604,7 +622,7 @@ export function ApiPlanProvider({ children }: { children: React.ReactNode }) {
         return { ok: false, message };
       }
     },
-    [planId, load],
+    [planId, load, ensureEditable],
   );
 
   const moveTask = useCallback(
@@ -633,7 +651,7 @@ export function ApiPlanProvider({ children }: { children: React.ReactNode }) {
     () => [...store.tasks].sort((a, b) => a.order - b.order),
     [store.tasks],
   );
-  const backlogTasks = useMemo(() => ordered.filter(isBacklog), [ordered]);
+  const backlogTasks = useMemo(() => openBacklogTasks(ordered), [ordered]);
 
   const today = todayISO();
   const lists = useMemo(() => buildLists(ordered, today), [ordered, today]);
@@ -762,9 +780,6 @@ export function ApiPlanProvider({ children }: { children: React.ReactNode }) {
   const [previewThread, setPreviewThread] = useState<string | null>(null);
   const [previewMeta, setPreviewMeta] = useState<PlanContextValue['previewMeta']>(null);
   const [previewStage, setPreviewStage] = useState<string | null>(null);
-  // Provider-owned so an in-flight or completed preview survives route changes.
-  const [previewTasks, setPreviewTasks] = useState<DraftTask[] | null>(null);
-  const [previewBusy, setPreviewBusy] = useState(false);
   const [clarification, setClarification] = useState<ClarificationRead | null>(null);
   const previewUserId = session.user?.id ?? null;
   const previewHydratedFor = useRef<number | null>(null);
@@ -1101,6 +1116,7 @@ export function ApiPlanProvider({ children }: { children: React.ReactNode }) {
 
   /** 手动重排：先查冷却，可用则生成新版本并切过去。返回一句给用户看的结果。 */
   const replanNow = useCallback(async () => {
+    if (!ensureEditable()) return PLAN_LOCK_MESSAGE;
     if (planId == null) return '还没有计划，先去「目标」拆一个。';
     setActionError(null);
     try {
@@ -1122,7 +1138,7 @@ export function ApiPlanProvider({ children }: { children: React.ReactNode }) {
       setActionError(message);
       return message;
     }
-  }, [planId, adoptPlan]);
+  }, [planId, adoptPlan, ensureEditable]);
 
   const updatePreferences = useCallback(
     async (patch: Partial<SchedulingPreferences>) => {
@@ -1142,6 +1158,7 @@ export function ApiPlanProvider({ children }: { children: React.ReactNode }) {
 
   const setDone = useCallback(
     (id: number, done: boolean) => {
+      if (!ensureEditable()) return;
       setActionError(null);
       const previousTask = storeRef.current.tasks.find((task) => task.id === id) ?? null;
       const previousCompletions = storeRef.current.completions.filter(
@@ -1168,7 +1185,7 @@ export function ApiPlanProvider({ children }: { children: React.ReactNode }) {
           if (mountedRef.current) setActionError(errorMessage(caught, '同步任务失败'));
         });
     },
-    [planId, refreshInsights, refreshFeedbackHistory, updateStore],
+    [planId, refreshInsights, refreshFeedbackHistory, updateStore, ensureEditable],
   );
 
   const toggleDone = useCallback(
@@ -1183,6 +1200,7 @@ export function ApiPlanProvider({ children }: { children: React.ReactNode }) {
 
   const startTask = useCallback(
     (id: number) => {
+      if (!ensureEditable()) return;
       setActionError(null);
       const now = new Date();
       const previous = storeRef.current.tasks.find((task) => task.id === id) ?? null;
@@ -1195,11 +1213,12 @@ export function ApiPlanProvider({ children }: { children: React.ReactNode }) {
           if (mountedRef.current) setActionError(errorMessage(caught, '记录开始时间失败'));
         });
     },
-    [planId, refreshInsights, updateStore],
+    [planId, refreshInsights, updateStore, ensureEditable],
   );
 
   const completeTask = useCallback(
     (id: number, actualMinutes?: number | null, interruptionCount?: number | null) => {
+      if (!ensureEditable()) return;
       setActionError(null);
       const previous = storeRef.current.tasks.find((task) => task.id === id) ?? null;
       updateStore((prev) => {
@@ -1218,7 +1237,7 @@ export function ApiPlanProvider({ children }: { children: React.ReactNode }) {
           if (mountedRef.current) setActionError(errorMessage(caught, '同步完成记录失败'));
         });
     },
-    [planId, refreshInsights, refreshFeedbackHistory, updateStore],
+    [planId, refreshInsights, refreshFeedbackHistory, updateStore, ensureEditable],
   );
 
   const partialCompleteTask = useCallback(
@@ -1228,6 +1247,7 @@ export function ApiPlanProvider({ children }: { children: React.ReactNode }) {
       actualMinutes?: number | null,
       interruptionCount?: number | null,
     ) => {
+      if (!ensureEditable()) return;
       setActionError(null);
       const previous = storeRef.current.tasks.find((task) => task.id === id) ?? null;
       updateStore((prev) =>
@@ -1246,11 +1266,12 @@ export function ApiPlanProvider({ children }: { children: React.ReactNode }) {
           if (mountedRef.current) setActionError(errorMessage(caught, '保存进度失败'));
         });
     },
-    [planId, refreshInsights, refreshFeedbackHistory, updateStore],
+    [planId, refreshInsights, refreshFeedbackHistory, updateStore, ensureEditable],
   );
 
   const setSkipped = useCallback(
     (id: number, skipped: boolean) => {
+      if (!ensureEditable()) return;
       setActionError(null);
       const previousTask = storeRef.current.tasks.find((task) => task.id === id) ?? null;
       const previousCompletions = storeRef.current.completions.filter(
@@ -1276,11 +1297,12 @@ export function ApiPlanProvider({ children }: { children: React.ReactNode }) {
           if (mountedRef.current) setActionError(errorMessage(caught, '同步任务失败'));
         });
     },
-    [planId, refreshInsights, refreshFeedbackHistory, updateStore],
+    [planId, refreshInsights, refreshFeedbackHistory, updateStore, ensureEditable],
   );
 
   const updateTask = useCallback(
     (id: number, patch: Partial<Task>) => {
+      if (!ensureEditable()) return;
       setActionError(null);
       const previous = storeRef.current.tasks.find((task) => task.id === id) ?? null;
       updateStore((prev) => ops.updateTask(prev, id, patch));
@@ -1295,11 +1317,12 @@ export function ApiPlanProvider({ children }: { children: React.ReactNode }) {
           if (mountedRef.current) setActionError(errorMessage(caught, '保存任务失败'));
         });
     },
-    [planId, refreshInsights, updateStore],
+    [planId, refreshInsights, updateStore, ensureEditable],
   );
 
   const updateStandard = useCallback(
     async (taskId: number, standardId: number, completed: boolean) => {
+      if (!ensureEditable()) return;
       setActionError(null);
       const previous = storeRef.current.tasks.find((task) => task.id === taskId)?.standards;
       updateStore((prev) =>
@@ -1323,11 +1346,12 @@ export function ApiPlanProvider({ children }: { children: React.ReactNode }) {
         if (mountedRef.current) setActionError(errorMessage(caught, '保存子任务失败'));
       }
     },
-    [planId, refreshInsights, updateStore],
+    [planId, refreshInsights, updateStore, ensureEditable],
   );
 
   const moveBy = useCallback(
     (id: number, delta: number) => {
+      if (!ensureEditable()) return;
       if (planId == null) {
         updateStore((prev) => ops.moveBy(prev, id, delta));
         return;
@@ -1338,7 +1362,7 @@ export function ApiPlanProvider({ children }: { children: React.ReactNode }) {
       const base = task.dueDate ?? todayISO();
       updateTask(id, { dueDate: addDays(base, delta) });
     },
-    [planId, updateTask, updateStore],
+    [planId, updateTask, updateStore, ensureEditable],
   );
 
   // The backend records actual duration only as part of a completion execution
@@ -1354,6 +1378,7 @@ export function ApiPlanProvider({ children }: { children: React.ReactNode }) {
   /** Soft-delete a task optimistically; a failure restores the whole store. */
   const deleteTask = useCallback(
     (id: number) => {
+      if (!ensureEditable()) return;
       const snapshot = storeRef.current;
       setActionError(null);
       updateStore((prev) => ops.deleteTask(prev, id));
@@ -1367,7 +1392,7 @@ export function ApiPlanProvider({ children }: { children: React.ReactNode }) {
           if (mountedRef.current) setActionError(errorMessage(caught, '删除任务失败'));
         });
     },
-    [planId, refreshInsights, refreshFeedbackHistory, updateStore],
+    [planId, refreshInsights, refreshFeedbackHistory, updateStore, ensureEditable],
   );
 
   /**
@@ -1377,6 +1402,7 @@ export function ApiPlanProvider({ children }: { children: React.ReactNode }) {
    */
   const deleteTaskSeries = useCallback(
     async (taskId: number) => {
+      if (!ensureEditable()) return;
       const task = storeRef.current.tasks.find((item) => item.id === taskId) ?? null;
       if (!task) return;
       const targets = seriesTasks(storeRef.current.tasks, task).filter((item) => !item.done);
@@ -1394,7 +1420,7 @@ export function ApiPlanProvider({ children }: { children: React.ReactNode }) {
         if (mountedRef.current) setActionError(errorMessage(caught, '删除系列失败'));
       }
     },
-    [planId, refreshInsights, refreshFeedbackHistory, updateStore],
+    [planId, refreshInsights, refreshFeedbackHistory, updateStore, ensureEditable],
   );
 
   const updateWeight = useCallback(
@@ -1412,6 +1438,18 @@ export function ApiPlanProvider({ children }: { children: React.ReactNode }) {
 
   const submitFeedback = useCallback(
     async (input: FeedbackInput): Promise<FeedbackResult> => {
+      if (!ensureEditable()) {
+        return {
+          replanTriggered: false,
+          replanPlanId: null,
+          cooldownMessage: PLAN_LOCK_MESSAGE,
+          saved: false,
+          mode: 'recorded',
+          route: null,
+          reasons: [],
+          replanError: PLAN_LOCK_MESSAGE,
+        };
+      }
       const targetPlanId = input.planId ?? planId;
       if (targetPlanId == null) {
         return {
@@ -1530,7 +1568,7 @@ export function ApiPlanProvider({ children }: { children: React.ReactNode }) {
         replanError,
       };
     },
-    [planId, assessment, adoptPlan, refreshFeedbackHistory, loadFeedbackObligations],
+    [planId, assessment, adoptPlan, refreshFeedbackHistory, loadFeedbackObligations, ensureEditable],
   );
 
   const value = useMemo<PlanContextValue>(() => {
@@ -1538,7 +1576,7 @@ export function ApiPlanProvider({ children }: { children: React.ReactNode }) {
     const unsupported = () => undefined;
     return {
       mode: 'api',
-      canEditTasks: true,
+      canEditTasks: !editingLocked,
       canCreateTasks: false,
       loading: loading,
       error,
@@ -1615,6 +1653,7 @@ export function ApiPlanProvider({ children }: { children: React.ReactNode }) {
     session.user,
     error,
     actionError,
+    editingLocked,
     clearActionError,
     refresh,
     retryConnection,

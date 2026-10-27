@@ -26,6 +26,7 @@ from app.application.dto.reconciliation import (
     FeedbackObligation,
     ReconciliationResult,
 )
+from app.application.preferences import effective_scheduling_preferences
 from app.core.clock import local_date_at, local_today
 from app.domain.execution import is_observed_execution
 from app.domain.models import Plan, Task
@@ -39,6 +40,7 @@ from app.infrastructure.database.repositories import (
     PlanRepository,
     TaskExecutionRepository,
     TaskRepository,
+    UserRepository,
 )
 
 #: Only unfinished, non-terminal states may roll into OVERDUE / MISSED.
@@ -65,6 +67,7 @@ class ExecutionReconciliationService:
         self._plans = PlanRepository(session)
         self._executions = TaskExecutionRepository(session)
         self._feedbacks = FeedbackRepository(session)
+        self._users = UserRepository(session)
 
     # ------------------------------------------------------------------
     # Public API
@@ -76,11 +79,20 @@ class ExecutionReconciliationService:
         as_of = as_of_date or local_today()
         tasks = self._tasks.list_by_user(user_id)
         plans = self._plan_map(user_id)
+        auto_backlog = self._auto_backlog_enabled(user_id)
 
         overdue: list[int] = []
+        backlogged: list[int] = []
         missed: list[int] = []
         for task in tasks:
-            if task.id is None or task.status not in _RECONCILABLE_STATUSES:
+            if task.id is None:
+                continue
+            # Already-OVERDUE rows are only revisited when the user has opted
+            # into automatic backlog. Recurring rows are never converted.
+            revisiting_overdue = (
+                auto_backlog and task.status == TaskStatus.OVERDUE
+            )
+            if task.status not in _RECONCILABLE_STATUSES and not revisiting_overdue:
                 continue
             plan = plans.get(task.plan_id)
             # A superseded/archived plan version is already a terminal outcome
@@ -89,6 +101,8 @@ class ExecutionReconciliationService:
                 continue
 
             if _is_recurring_occurrence(task):
+                if task.status not in _RECONCILABLE_STATUSES:
+                    continue
                 day = task.occurrence_date or task.scheduled_date
                 if day is None or day >= as_of:
                     continue
@@ -98,11 +112,25 @@ class ExecutionReconciliationService:
                 day = task.scheduled_date
                 if day is None or day >= as_of:
                     continue
-                # OVERDUE is a lifecycle fact only: the date is left untouched.
-                self._tasks.update_fields(task.id, status=TaskStatus.OVERDUE)
-                overdue.append(task.id)
+                if auto_backlog:
+                    # BACKLOG means "still to do, no placement". Clearing the
+                    # date is the existing backlog mutation semantics.
+                    self._tasks.update_fields(
+                        task.id,
+                        status=TaskStatus.BACKLOG,
+                        scheduled_date=None,
+                        start_time=None,
+                        end_time=None,
+                        scheduling_reason=None,
+                        scheduling_detail=None,
+                    )
+                    backlogged.append(task.id)
+                else:
+                    # OVERDUE is a lifecycle fact only: the date is left untouched.
+                    self._tasks.update_fields(task.id, status=TaskStatus.OVERDUE)
+                    overdue.append(task.id)
 
-        if overdue or missed:
+        if overdue or backlogged or missed:
             self._session.commit()
 
         pending_dates = tuple(
@@ -114,6 +142,7 @@ class ExecutionReconciliationService:
         return ReconciliationResult(
             as_of_date=as_of,
             overdue_task_ids=tuple(overdue),
+            backlogged_task_ids=tuple(backlogged),
             missed_task_ids=tuple(missed),
             pending_feedback_dates=pending_dates,
         )
@@ -193,6 +222,14 @@ class ExecutionReconciliationService:
             for plan in self._plans.list_by_user(user_id)
             if plan.id is not None
         }
+
+    def _auto_backlog_enabled(self, user_id: int) -> bool:
+        user = self._users.get_by_id(user_id)
+        preferences = effective_scheduling_preferences(
+            user.profile if user is not None else None,
+            user.scheduling_preferences if user is not None else None,
+        )
+        return bool(preferences.get("auto_backlog_overdue"))
 
     @staticmethod
     def _choose_plan(candidates: set[int], plans: dict[int, Plan]) -> int | None:

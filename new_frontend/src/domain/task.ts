@@ -217,6 +217,11 @@ export function isBacklog(task: Task): boolean {
   return task.backlog === true;
 }
 
+/** Tray items the user can still act on; completed/skipped/missed stay out. */
+export function openBacklogTasks(tasks: Task[]): Task[] {
+  return tasks.filter((task) => isBacklog(task) && !isClosed(task));
+}
+
 /**
  * A past task that still needs attention. The backend's `overdue` flag is
  * authoritative; mock/legacy rows fall back to the scheduled date.

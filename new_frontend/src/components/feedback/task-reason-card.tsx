@@ -1,6 +1,7 @@
 import { StyleSheet, Text, View } from 'react-native';
 
 import { TASK_REASON_OPTIONS, taskReasonLabel } from '@/components/feedback/reasons';
+import { Button } from '@/components/ui/button';
 import { FilterChip } from '@/components/ui/chip';
 import { Surface } from '@/components/ui/surface';
 import { TextField } from '@/components/ui/text-field';
@@ -19,6 +20,7 @@ export function TaskReasonCard({
   missing,
   onReasonChange,
   onNoteChange,
+  onComplete,
 }: {
   task: Task;
   reason: string;
@@ -26,6 +28,8 @@ export function TaskReasonCard({
   missing: boolean;
   onReasonChange: (reason: string) => void;
   onNoteChange: (note: string) => void;
+  /** Optional fast completion; only open tasks receive this. */
+  onComplete?: () => void;
 }) {
   const { colors } = useTheme();
   const planned = task.estimatedMinutes ?? task.predictedDuration;
@@ -48,11 +52,22 @@ export function TaskReasonCard({
       <View style={styles.card}>
         <View style={styles.head}>
           <Text style={[styles.title, { color: colors.ink }]}>{task.title}</Text>
-          {task.skipped ? (
-            <View style={[styles.badge, { backgroundColor: colors.warningContainer }]}>
-              <Text style={[styles.badgeText, { color: colors.onWarningContainer }]}>已跳过</Text>
-            </View>
-          ) : null}
+          <View style={styles.headActions}>
+            {task.skipped ? (
+              <View style={[styles.badge, { backgroundColor: colors.warningContainer }]}>
+                <Text style={[styles.badgeText, { color: colors.onWarningContainer }]}>已跳过</Text>
+              </View>
+            ) : null}
+            {onComplete ? (
+              <Button
+                label="已完成"
+                variant="filled"
+                size="sm"
+                icon="check"
+                onPress={onComplete}
+              />
+            ) : null}
+          </View>
         </View>
 
         {meta ? <Text style={[styles.meta, { color: colors.inkMuted }]}>{meta}</Text> : null}
@@ -114,6 +129,12 @@ const styles = StyleSheet.create({
     fontSize: Type.bodyLarge,
     lineHeight: Type.bodyLarge * Line.normal,
     fontWeight: '600',
+  },
+  headActions: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    flexWrap: 'wrap',
+    gap: Space.sm,
   },
   badge: {
     borderRadius: Radius.pill,

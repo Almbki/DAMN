@@ -301,15 +301,22 @@ export function TaskDetailSheet({
       footer={
         <>
           <Button label="关闭" variant="text" onPress={onClose} />
-          <Button label="今天先不做" variant="text" onPress={() => onMoveTomorrow(task.id)} />
+          <Button
+            label="今天先不做"
+            variant="text"
+            disabled={!canEdit}
+            onPress={() => onMoveTomorrow(task.id)}
+          />
           <Button
             label={task.skipped ? '取消跳过' : '跳过'}
             variant="tonal"
+            disabled={!canEdit}
             onPress={() => onSetSkipped(task.id, !task.skipped)}
           />
           <Button
             label={task.done ? '取消完成' : '完成'}
             variant="filled"
+            disabled={!canEdit}
             onPress={() => onToggleDone(task.id)}
           />
         </>
