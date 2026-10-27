@@ -1,11 +1,11 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   Pressable,
   ScrollView,
   StyleSheet,
   Text,
   View,
-  useWindowDimensions,
+  type GestureResponderEvent,
   type LayoutChangeEvent,
 } from 'react-native';
 
@@ -21,14 +21,20 @@ import { useInteraction } from '@/components/ui/interaction';
 import {
   Elevation,
   Fonts,
-  Layout,
   Radius,
   Space,
   Type,
   type ThemeColors,
 } from '@/constants/tokens';
 import { addDays, todayISO } from '@/domain/date';
-import type { Task } from '@/domain/task';
+import type { Goal } from '@/domain/goal';
+import {
+  dropTargetFromPosition,
+  minutesToTime,
+  timeToMinutes,
+  type DropTarget,
+} from '@/domain/schedule-drag';
+import { isBacklog, isClosed, type Task } from '@/domain/task';
 import { useTheme } from '@/state/theme';
 
 const START_HOUR = 6;
@@ -54,6 +60,19 @@ const MIN_LAYOUT_MINUTES = Math.ceil((MIN_BLOCK_HEIGHT / HOUR_HEIGHT) * 60);
 const LANE_GAP = 3;
 const BLOCK_INSET = 4;
 const DEFAULT_TASK_MINUTES = 30;
+const LONG_PRESS_MS = 270;
+const DRAG_SLOP = 8;
+
+type MoveResult = { ok: boolean; message: string | null };
+type WindowRect = { x: number; y: number; width: number; height: number };
+
+type DragState = {
+  task: Task;
+  pageX: number;
+  pageY: number;
+  target: DropTarget | null;
+  overTray: boolean;
+};
 
 /** One text line inside a block; the visibility maths below mirrors the styles. */
 const BLOCK_LINE_HEIGHT = 14;
@@ -168,6 +187,7 @@ export function taskDay(task: Task): string | null {
 export function tasksForWeek(tasks: Task[], weekStart: string): Task[] {
   const weekEnd = addDays(weekStart, 6);
   return tasks.filter((task) => {
+    if (isBacklog(task)) return false;
     const day = taskDay(task);
     return day != null && day >= weekStart && day <= weekEnd;
   });
@@ -176,7 +196,7 @@ export function tasksForWeek(tasks: Task[], weekStart: string): Task[] {
 /**
  * Planned tasks use `startTime` (or `dueTime`), then `endTime`, then the
  * estimate, then a 30-minute default. Like events, they are clipped to the
- * 06:00–24:00 grid; anything unplaceable falls through to the untimed list.
+ * 06:00–24:00 grid; anything without a placeable clock time is not drawn.
  */
 function toTaskOccurrence(task: Task): TaskOccurrence | null {
   const start = parseClock(task.startTime ?? task.dueTime);
@@ -316,22 +336,28 @@ function taskPalette(task: Task, colors: ThemeColors): BlockPalette {
 export function CourseTimetable({
   events,
   tasks,
+  backlogTasks,
+  goals,
   weekStart,
+  canEdit = true,
   onSelect,
   onSelectTask,
-  onImport,
+  onMoveTask,
+  onMoveToBacklog,
 }: {
   events: ScheduleEventRead[];
   tasks: Task[];
+  backlogTasks: Task[];
+  goals: Goal[];
   /** Monday of the visible week. */
   weekStart: string;
+  canEdit?: boolean;
   onSelect: (event: ScheduleEventRead) => void;
   onSelectTask: (task: Task) => void;
-  onImport?: () => void;
+  onMoveTask: (taskId: number, targetDate: string, targetStart: string) => Promise<MoveResult>;
+  onMoveToBacklog: (taskId: number) => Promise<MoveResult>;
 }) {
   const { colors } = useTheme();
-  const { width } = useWindowDimensions();
-  const isMobile = width > 0 && width < Layout.breakpoint;
 
   const days = useMemo(
     () => Array.from({ length: 7 }, (_, index) => addDays(weekStart, index)),
@@ -339,119 +365,485 @@ export function CourseTimetable({
   );
 
   const weekTasks = useMemo(() => tasksForWeek(tasks, weekStart), [tasks, weekStart]);
-  // Undated tasks belong to no week, so they must stay reachable while the
-  // timetable is expanded instead of disappearing with the daily list.
-  const noDateTasks = useMemo(() => tasks.filter((task) => taskDay(task) == null), [tasks]);
-
   const dayBlocks = useMemo(
     () => days.map((day) => layoutDay(buildDayOccurrences(events, weekTasks, day))),
     [days, events, weekTasks],
   );
 
-  const untimedTasks = useMemo(
-    () =>
-      [...weekTasks, ...noDateTasks]
-        .filter((task) => taskDay(task) == null || toTaskOccurrence(task) == null)
-        .sort((a, b) => a.order - b.order || a.id - b.id),
-    [weekTasks, noDateTasks],
+  const [drag, setDrag] = useState<DragState | null>(null);
+  const dragRef = useRef<DragState | null>(null);
+  const gridBodyRef = useRef<View>(null);
+  const trayRef = useRef<View>(null);
+  const gridRectRef = useRef<WindowRect | null>(null);
+  const trayRectRef = useRef<WindowRect | null>(null);
+  const [moving, setMoving] = useState(false);
+
+  const applyPointer = useCallback(
+    (pageX: number, pageY: number) => {
+      const current = dragRef.current;
+      if (!current) return;
+
+      const tray = trayRectRef.current;
+      const overTray =
+        tray != null &&
+        pageX >= tray.x &&
+        pageX <= tray.x + tray.width &&
+        pageY >= tray.y &&
+        pageY <= tray.y + tray.height;
+
+      let target: DropTarget | null = null;
+      const grid = gridRectRef.current;
+      if (!overTray && grid != null && days.length > 0 && grid.width > 0) {
+        target = dropTargetFromPosition(
+          { x: pageX - grid.x, y: pageY - grid.y },
+          {
+            days,
+            // The measured node is the first day column: its width is one day,
+            // and its x already includes any horizontal scroll offset.
+            dayWidth: grid.width,
+            hourHeight: HOUR_HEIGHT,
+            dayStart: DAY_START,
+            dayEnd: DAY_END,
+            slotMinutes: SLOT_MINUTES,
+          },
+        );
+      }
+
+      const next = { ...current, pageX, pageY, target, overTray };
+      dragRef.current = next;
+      setDrag(next);
+    },
+    [days],
   );
 
+  const beginDrag = useCallback(
+    (task: Task, pageX: number, pageY: number) => {
+      if (!canEdit || moving || isClosed(task)) return;
+      const next: DragState = { task, pageX, pageY, target: null, overTray: false };
+      dragRef.current = next;
+      setDrag(next);
+      gridRectRef.current = null;
+      trayRectRef.current = null;
+
+      const refresh = () => {
+        const current = dragRef.current;
+        if (current) applyPointer(current.pageX, current.pageY);
+      };
+      gridBodyRef.current?.measureInWindow((x, y, width, height) => {
+        gridRectRef.current = { x, y, width, height };
+        refresh();
+      });
+      trayRef.current?.measureInWindow((x, y, width, height) => {
+        trayRectRef.current = { x, y, width, height };
+        refresh();
+      });
+    },
+    [applyPointer, canEdit, moving],
+  );
+
+  const moveDrag = useCallback(
+    (pageX: number, pageY: number) => {
+      if (!dragRef.current) return;
+      applyPointer(pageX, pageY);
+    },
+    [applyPointer],
+  );
+
+  const cancelDrag = useCallback(() => {
+    dragRef.current = null;
+    setDrag(null);
+  }, []);
+
+  const runMove = useCallback(async (action: () => Promise<MoveResult>) => {
+    setMoving(true);
+    try {
+      await action();
+    } catch {
+      // The provider surfaces the mapped scheduling reason via actionError.
+    } finally {
+      setMoving(false);
+    }
+  }, []);
+
+  const endDrag = useCallback(
+    (pageX: number, pageY: number) => {
+      if (!dragRef.current) return;
+      applyPointer(pageX, pageY);
+      const final = dragRef.current;
+      dragRef.current = null;
+      setDrag(null);
+      if (!final) return;
+
+      if (final.overTray) {
+        if (final.task.backlog !== true) {
+          void runMove(() => onMoveToBacklog(final.task.id));
+        }
+        return;
+      }
+      const target = final.target;
+      if (!target) return;
+      const currentStart = final.task.startTime ?? final.task.dueTime;
+      if (final.task.dueDate === target.date && currentStart === target.start) return;
+      void runMove(() => onMoveTask(final.task.id, target.date, target.start));
+    },
+    [applyPointer, onMoveTask, onMoveToBacklog, runMove],
+  );
+
+  const draggingTaskId = drag?.task.id ?? null;
+  const dragTargetIndex = drag?.target ? days.indexOf(drag.target.date) : -1;
+  const dragStartMinutes = drag?.target ? timeToMinutes(drag.target.start) : null;
+  const dragActive = drag != null;
   const hasPlacedContent = dayBlocks.some((blocks) => blocks.length > 0);
 
   return (
     <View style={styles.root}>
-      {/* Even a week with no imported courses keeps a usable timetable shell:
-          planned tasks may still exist, and an empty grid is clearer than a
-          disappearing section. */}
-      {isMobile ? (
-        <MobileAgenda
-          days={days}
-          dayBlocks={dayBlocks}
-          onSelectEvent={onSelect}
-          onSelectTask={onSelectTask}
-        />
-      ) : (
-        <DesktopTimetable
-          days={days}
-          dayBlocks={dayBlocks}
-          onSelectEvent={onSelect}
-          onSelectTask={onSelectTask}
-        />
-      )}
-      {!hasPlacedContent && untimedTasks.length === 0 ? (
+      <DesktopTimetable
+        days={days}
+        dayBlocks={dayBlocks}
+        onSelectEvent={onSelect}
+        onSelectTask={onSelectTask}
+        bodyRef={gridBodyRef}
+        canDrag={canEdit && !moving}
+        dragActive={dragActive}
+        draggingTaskId={draggingTaskId}
+        dragTargetIndex={dragTargetIndex}
+        dragStartMinutes={dragStartMinutes}
+        scrollEnabled={!dragActive}
+        onDragStart={beginDrag}
+        onDragMove={moveDrag}
+        onDragEnd={endDrag}
+        onDragCancel={cancelDrag}
+      />
+      {!hasPlacedContent && backlogTasks.length === 0 ? (
         <Text style={[styles.emptyWeek, { color: colors.inkMuted }]}>
           本周暂无课程或任务安排。
         </Text>
       ) : null}
 
-      {untimedTasks.length > 0 ? (
-        <UntimedTasks tasks={untimedTasks} onSelectTask={onSelectTask} />
-      ) : null}
+      <BacklogTray
+        trayRef={trayRef}
+        tasks={backlogTasks}
+        goals={goals}
+        dragActive={dragActive}
+        active={drag?.overTray === true}
+        draggingTaskId={draggingTaskId}
+        moving={moving}
+        canDrag={canEdit}
+        onSelectTask={onSelectTask}
+        onDragStart={beginDrag}
+        onDragMove={moveDrag}
+        onDragEnd={endDrag}
+        onDragCancel={cancelDrag}
+      />
     </View>
   );
 }
 
-function UntimedTasks({
-  tasks,
-  onSelectTask,
+/**
+ * Long-press gesture shared by grid cards and tray rows.
+ *
+ * It claims the responder on touch-down so a held press can become a drag;
+ * before the timer fires it gives the responder back, which keeps the parent
+ * scroller usable. A release without an active drag stays a normal tap.
+ */
+function useTaskDrag({
+  dragDisabled,
+  onTap,
+  onDragStart,
+  onDragMove,
+  onDragEnd,
+  onDragCancel,
 }: {
+  dragDisabled: boolean;
+  onTap: () => void;
+  onDragStart: (pageX: number, pageY: number) => void;
+  onDragMove: (pageX: number, pageY: number) => void;
+  onDragEnd: (pageX: number, pageY: number) => void;
+  onDragCancel: () => void;
+}) {
+  const [pressed, setPressed] = useState(false);
+  const [dragging, setDragging] = useState(false);
+  const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const originRef = useRef<{ x: number; y: number } | null>(null);
+  const lastRef = useRef<{ x: number; y: number } | null>(null);
+  const activeRef = useRef(false);
+
+  useEffect(
+    () => () => {
+      if (timerRef.current) clearTimeout(timerRef.current);
+    },
+    [],
+  );
+
+  const clearTimer = () => {
+    if (timerRef.current) {
+      clearTimeout(timerRef.current);
+      timerRef.current = null;
+    }
+  };
+
+  const point = (event: GestureResponderEvent) => ({
+    x: event.nativeEvent.pageX,
+    y: event.nativeEvent.pageY,
+  });
+
+  const grant = (event: GestureResponderEvent) => {
+    const start = point(event);
+    originRef.current = start;
+    lastRef.current = start;
+    setPressed(true);
+    if (dragDisabled) return;
+    timerRef.current = setTimeout(() => {
+      timerRef.current = null;
+      activeRef.current = true;
+      setDragging(true);
+      onDragStart(start.x, start.y);
+    }, LONG_PRESS_MS);
+  };
+
+  const move = (event: GestureResponderEvent) => {
+    const next = point(event);
+    lastRef.current = next;
+    if (activeRef.current) {
+      onDragMove(next.x, next.y);
+      return;
+    }
+    const origin = originRef.current;
+    if (origin) {
+      const dx = next.x - origin.x;
+      const dy = next.y - origin.y;
+      if (Math.hypot(dx, dy) > DRAG_SLOP) {
+        // The user is scrolling, not holding: do not treat the release as a tap.
+        originRef.current = null;
+        clearTimer();
+      }
+    }
+  };
+
+  const release = (event: GestureResponderEvent) => {
+    const final = lastRef.current ?? point(event);
+    clearTimer();
+    setPressed(false);
+    const wasDragging = activeRef.current;
+    activeRef.current = false;
+    setDragging(false);
+
+    if (wasDragging) {
+      onDragEnd(final.x, final.y);
+    } else if (originRef.current) {
+      onTap();
+    }
+    originRef.current = null;
+    lastRef.current = null;
+  };
+
+  const terminate = () => {
+    clearTimer();
+    setPressed(false);
+    const wasDragging = activeRef.current;
+    activeRef.current = false;
+    setDragging(false);
+    originRef.current = null;
+    lastRef.current = null;
+    if (wasDragging) onDragCancel();
+  };
+
+  return {
+    pressed,
+    dragging,
+    responderProps: {
+      onStartShouldSetResponder: () => true,
+      onResponderGrant: grant,
+      onResponderMove: move,
+      onResponderRelease: release,
+      onResponderTerminate: terminate,
+      onResponderTerminationRequest: () => !activeRef.current,
+    },
+  };
+}
+
+function BacklogTray({
+  trayRef,
+  tasks,
+  goals,
+  dragActive,
+  active,
+  draggingTaskId,
+  moving,
+  canDrag,
+  onSelectTask,
+  onDragStart,
+  onDragMove,
+  onDragEnd,
+  onDragCancel,
+}: {
+  trayRef: React.RefObject<View | null>;
   tasks: Task[];
+  goals: Goal[];
+  dragActive: boolean;
+  active: boolean;
+  draggingTaskId: number | null;
+  moving: boolean;
+  canDrag: boolean;
   onSelectTask: (task: Task) => void;
+  onDragStart: (task: Task, pageX: number, pageY: number) => void;
+  onDragMove: (pageX: number, pageY: number) => void;
+  onDragEnd: (pageX: number, pageY: number) => void;
+  onDragCancel: () => void;
 }) {
   const { colors } = useTheme();
+  const goalById = useMemo(() => new Map(goals.map((goal) => [goal.id, goal])), [goals]);
+  const ordered = useMemo(
+    () => [...tasks].sort((a, b) => a.order - b.order || a.id - b.id),
+    [tasks],
+  );
+
+  const hint = moving
+    ? '正在更新…'
+    : active
+      ? '松手放入任务池'
+      : dragActive
+        ? '拖到这里可以移出时间表'
+        : canDrag
+          ? '长按卡片拖动到时间表'
+          : '当前计划不可编辑';
 
   return (
     <View
+      ref={trayRef}
       style={[
-        styles.untimed,
+        styles.backlog,
         {
-          borderColor: colors.outlineVariant,
-          backgroundColor: colors.surfaceContainerLow,
+          borderColor: active ? colors.primary : colors.outlineVariant,
+          borderStyle: dragActive ? 'dashed' : 'solid',
+          backgroundColor: active ? colors.primaryContainer : colors.surfaceContainerLow,
         },
       ]}>
-      <View style={styles.untimedHeader}>
-        <Text style={[styles.untimedTitle, { color: colors.ink }]}>未排时间</Text>
-        <Text style={[styles.untimedCount, { color: colors.inkMuted }]}>{tasks.length} 件</Text>
+      <View style={styles.backlogHeader}>
+        <View style={styles.backlogHeading}>
+          <Text
+            style={[
+              styles.backlogTitle,
+              { color: active ? colors.onPrimaryContainer : colors.ink },
+            ]}>
+            任务池
+          </Text>
+          <Text
+            style={[
+              styles.backlogCount,
+              { color: active ? colors.onPrimaryContainer : colors.inkMuted },
+            ]}>
+            {ordered.length} 件
+          </Text>
+        </View>
+        <Text
+          style={[
+            styles.backlogHint,
+            { color: active ? colors.onPrimaryContainer : colors.inkFaint },
+          ]}>
+          {hint}
+        </Text>
       </View>
 
-      {tasks.map((task, index) => {
-        const day = taskDay(task);
-        const dayLabel = day ? `${WEEKDAY_LABELS[weekdayIndex(day)]} ${monthDay(day)}` : '';
-        const status = task.done ? '已完成' : task.skipped ? '已跳过' : '待安排';
-        return (
-          <Pressable
-            key={task.id}
-            accessibilityRole="button"
-            accessibilityLabel={`任务详情：${task.title}${dayLabel ? `，${dayLabel}` : ''}，${status}`}
-            onPress={() => onSelectTask(task)}
-            style={({ pressed }) => [
-              styles.untimedRow,
-              index > 0
-                ? { borderTopColor: colors.outlineVariant, borderTopWidth: 1 }
-                : null,
-              { opacity: pressed ? 0.72 : 1 },
-            ]}>
-            <Text
-              numberOfLines={2}
-              style={[
-                styles.untimedTask,
-                {
-                  color: task.done || task.skipped ? colors.inkMuted : colors.ink,
-                  textDecorationLine: task.done ? 'line-through' : 'none',
-                },
-              ]}>
-              {task.title}
-            </Text>
-            <Text
-              style={[
-                styles.untimedMeta,
-                { color: task.skipped ? colors.warning : colors.inkMuted },
-              ]}>
-              {dayLabel ? `${dayLabel} · ${status}` : status}
-            </Text>
-          </Pressable>
-        );
-      })}
+      {ordered.length === 0 ? (
+        <Text
+          style={[
+            styles.backlogEmpty,
+            { color: active ? colors.onPrimaryContainer : colors.inkFaint },
+          ]}>
+          任务池是空的。暂时不想排时间的任务，可以从任务详情放进来。
+        </Text>
+      ) : (
+        ordered.map((task, index) => {
+          const goal = task.goalId == null ? null : (goalById.get(task.goalId) ?? null);
+          return (
+            <BacklogRow
+              key={task.id}
+              task={task}
+              goal={goal}
+              divider={index > 0}
+              dragging={draggingTaskId === task.id}
+              dragDisabled={!canDrag || moving}
+              onSelectTask={onSelectTask}
+              onDragStart={onDragStart}
+              onDragMove={onDragMove}
+              onDragEnd={onDragEnd}
+              onDragCancel={onDragCancel}
+            />
+          );
+        })
+      )}
+    </View>
+  );
+}
+
+function BacklogRow({
+  task,
+  goal,
+  divider,
+  dragging,
+  dragDisabled,
+  onSelectTask,
+  onDragStart,
+  onDragMove,
+  onDragEnd,
+  onDragCancel,
+}: {
+  task: Task;
+  goal: Goal | null;
+  divider: boolean;
+  dragging: boolean;
+  dragDisabled: boolean;
+  onSelectTask: (task: Task) => void;
+  onDragStart: (task: Task, pageX: number, pageY: number) => void;
+  onDragMove: (pageX: number, pageY: number) => void;
+  onDragEnd: (pageX: number, pageY: number) => void;
+  onDragCancel: () => void;
+}) {
+  const { colors } = useTheme();
+  const { focused, hovered, handlers } = useInteraction();
+  const gesture = useTaskDrag({
+    dragDisabled,
+    onTap: () => onSelectTask(task),
+    onDragStart: (pageX, pageY) => onDragStart(task, pageX, pageY),
+    onDragMove,
+    onDragEnd,
+    onDragCancel,
+  });
+
+  const duration = task.estimatedMinutes ?? task.predictedDuration;
+  const meta = [
+    duration != null ? `${duration} 分钟` : '时长未设置',
+    goal?.title ?? '未归入目标',
+    goal?.deadline ? `截止 ${monthDay(goal.deadline)}` : null,
+    task.overdue === true ? '原已逾期' : null,
+  ]
+    .filter(Boolean)
+    .join(' · ');
+
+  return (
+    <View
+      {...gesture.responderProps}
+      accessible
+      accessibilityRole="button"
+      accessibilityLabel={`任务池：${task.title}，${meta}`}
+      accessibilityHint="点按查看任务详情，长按拖动到时间表"
+      focusable
+      {...handlers}
+      style={[
+        styles.backlogRow,
+        divider
+          ? { borderTopColor: colors.outlineVariant, borderTopWidth: 1 }
+          : null,
+        {
+          opacity: gesture.dragging || dragging ? 0.35 : gesture.pressed ? 0.72 : hovered ? 0.94 : 1,
+          boxShadow: focused ? `0 0 0 2px ${colors.focusRing}` : undefined,
+        },
+      ]}>
+      <Text numberOfLines={2} style={[styles.backlogTask, { color: colors.ink }]}>
+        {task.title}
+      </Text>
+      <Text style={[styles.backlogMeta, { color: colors.inkMuted }]}>{meta}</Text>
     </View>
   );
 }
@@ -473,11 +865,33 @@ function DesktopTimetable({
   dayBlocks,
   onSelectEvent,
   onSelectTask,
+  bodyRef,
+  canDrag,
+  dragActive,
+  draggingTaskId,
+  dragTargetIndex,
+  dragStartMinutes,
+  scrollEnabled,
+  onDragStart,
+  onDragMove,
+  onDragEnd,
+  onDragCancel,
 }: {
   days: string[];
   dayBlocks: Block[][];
   onSelectEvent: (event: ScheduleEventRead) => void;
   onSelectTask: (task: Task) => void;
+  bodyRef: React.RefObject<View | null>;
+  canDrag: boolean;
+  dragActive: boolean;
+  draggingTaskId: number | null;
+  dragTargetIndex: number;
+  dragStartMinutes: number | null;
+  scrollEnabled: boolean;
+  onDragStart: (task: Task, pageX: number, pageY: number) => void;
+  onDragMove: (pageX: number, pageY: number) => void;
+  onDragEnd: (pageX: number, pageY: number) => void;
+  onDragCancel: () => void;
 }) {
   const { colors } = useTheme();
   const [availableWidth, setAvailableWidth] = useState(0);
@@ -562,6 +976,7 @@ function DesktopTimetable({
         horizontal
         nestedScrollEnabled
         directionalLockEnabled
+        scrollEnabled={scrollEnabled}
         showsHorizontalScrollIndicator={false}
         style={styles.scroll}>
         <View style={{ width: daysWidth }}>
@@ -580,14 +995,16 @@ function DesktopTimetable({
                 <View
                   key={day}
                   accessibilityLabel={`${WEEKDAY_LABELS[index]}，${monthDay(day)}`}
-                  style={[
-                    styles.dayHeader,
-                    {
-                      width: dayWidth,
-                      borderRightColor: colors.outlineVariant,
-                      borderRightWidth: index === 6 ? 0 : 1,
-                    },
-                  ]}>
+                   style={[
+                     styles.dayHeader,
+                     {
+                       width: dayWidth,
+                       backgroundColor:
+                         index === dragTargetIndex ? colors.primaryContainer : 'transparent',
+                       borderRightColor: colors.outlineVariant,
+                       borderRightWidth: index === 6 ? 0 : 1,
+                     },
+                   ]}>
                   <Text
                     style={[
                       styles.weekday,
@@ -614,6 +1031,7 @@ function DesktopTimetable({
             {days.map((day, index) => (
               <View
                 key={day}
+                ref={index === 0 ? bodyRef : undefined}
                 style={[
                   styles.dayColumn,
                   {
@@ -628,16 +1046,45 @@ function DesktopTimetable({
                   lineColor={colors.outlineVariant}
                   strongColor={colors.outline}
                 />
+                {index === dragTargetIndex ? (
+                  <View
+                    pointerEvents="none"
+                    style={[styles.dropColumn, { backgroundColor: colors.primaryContainer }]}
+                  />
+                ) : null}
                 {dayBlocks[index].map((block) => (
                   <ScheduleBlock
                     key={`${block.kind}-${occurrenceId(block)}-${day}-${block.lane}`}
                     block={block}
                     day={day}
                     dayWidth={dayWidth}
+                    canDrag={canDrag}
+                    dragging={block.kind === 'task' && draggingTaskId === block.task.id}
                     onSelectEvent={onSelectEvent}
                     onSelectTask={onSelectTask}
+                    onDragStart={onDragStart}
+                    onDragMove={onDragMove}
+                    onDragEnd={onDragEnd}
+                    onDragCancel={onDragCancel}
                   />
                 ))}
+                {index === dragTargetIndex && dragStartMinutes != null ? (
+                  <View
+                    pointerEvents="none"
+                    style={[
+                      styles.dropSlot,
+                      {
+                        top: ((dragStartMinutes - DAY_START) / 60) * HOUR_HEIGHT,
+                        height: SLOT_HEIGHT,
+                        borderColor: colors.primary,
+                        backgroundColor: colors.primaryContainer,
+                      },
+                    ]}>
+                    <Text style={[styles.dropSlotLabel, { color: colors.onPrimaryContainer }]}>
+                      {minutesToTime(dragStartMinutes)}
+                    </Text>
+                  </View>
+                ) : null}
                 {showNow && index === todayIndex ? (
                   <NowMarker
                     top={((nowMinutes - DAY_START) / 60) * HOUR_HEIGHT}
@@ -650,188 +1097,6 @@ function DesktopTimetable({
         </View>
       </ScrollView>
     </View>
-  );
-}
-
-function MobileAgenda({
-  days,
-  dayBlocks,
-  onSelectEvent,
-  onSelectTask,
-}: {
-  days: string[];
-  dayBlocks: Block[][];
-  onSelectEvent: (event: ScheduleEventRead) => void;
-  onSelectTask: (task: Task) => void;
-}) {
-  const { colors } = useTheme();
-  const today = todayISO();
-  const filled = days
-    .map((day, index) => ({ day, index, blocks: dayBlocks[index] }))
-    .filter((entry) => entry.blocks.length > 0);
-  const emptyCount = days.length - filled.length;
-
-  return (
-    <View
-      style={[
-        styles.agenda,
-        {
-          borderColor: colors.outlineVariant,
-          backgroundColor: colors.surfaceContainerLowest,
-        },
-      ]}>
-      {filled.map((entry, position) => {
-        const isToday = entry.day === today;
-        return (
-          <View
-            key={entry.day}
-            style={[
-              styles.agendaDay,
-              position > 0
-                ? { borderTopColor: colors.outlineVariant, borderTopWidth: 1 }
-                : null,
-            ]}>
-            <View
-              style={[
-                styles.agendaDayHeader,
-                { borderBottomColor: colors.outlineVariant },
-              ]}>
-              <Text
-                style={[
-                  styles.agendaWeekday,
-                  { color: isToday ? colors.primary : colors.ink },
-                ]}>
-                {isToday ? `今天 · ${WEEKDAY_LABELS[entry.index]}` : WEEKDAY_LABELS[entry.index]}
-              </Text>
-              <Text
-                style={[
-                  styles.agendaDayDate,
-                  { color: isToday ? colors.primary : colors.inkMuted },
-                ]}>
-                {monthDay(entry.day)}
-              </Text>
-            </View>
-
-            <View style={styles.agendaItems}>
-              {entry.blocks.map((block) => (
-                <AgendaRow
-                  key={`${block.kind}-${occurrenceId(block)}-${entry.day}`}
-                  block={block}
-                  day={entry.day}
-                  onSelectEvent={onSelectEvent}
-                  onSelectTask={onSelectTask}
-                />
-              ))}
-            </View>
-          </View>
-        );
-      })}
-
-      {emptyCount > 0 ? (
-        <Text style={[styles.agendaEmpty, { color: colors.inkFaint }]}>
-          其余 {emptyCount} 天暂无安排
-        </Text>
-      ) : null}
-    </View>
-  );
-}
-
-function AgendaRow({
-  block,
-  day,
-  onSelectEvent,
-  onSelectTask,
-}: {
-  block: Block;
-  day: string;
-  onSelectEvent: (event: ScheduleEventRead) => void;
-  onSelectTask: (task: Task) => void;
-}) {
-  const { colors } = useTheme();
-  const { focused, hovered, handlers } = useInteraction();
-  const isEvent = block.kind === 'event';
-  const palette = isEvent
-    ? kindPalette(block.event.event_kind, colors)
-    : taskPalette(block.task, colors);
-  const done = !isEvent && block.task.done;
-  const skipped = !isEvent && block.task.skipped;
-  const title = isEvent ? block.event.title : block.task.title;
-  const location = isEvent ? (block.event.location ?? '').trim() : '';
-  const teacher = isEvent ? (block.event.teacher ?? '').trim() : '';
-  const weekday = WEEKDAY_LABELS[weekdayIndex(day)];
-  const timeRange = `${clockLabel(block.start)}–${clockLabel(block.end)}`;
-
-  const meta = isEvent
-    ? [location, teacher].filter(Boolean).join(' · ')
-    : ['任务', done ? '已完成' : skipped ? '已跳过' : block.task.estimatedMinutes ? `${block.task.estimatedMinutes} 分钟` : '']
-        .filter(Boolean)
-        .join(' · ');
-
-  const label = isEvent
-    ? `${block.event.title}，${weekday} ${monthDay(day)}，${eventTimeRange(block.event)}${
-        location ? `，地点 ${location}` : ''
-      }${teacher ? `，教师 ${teacher}` : ''}`
-    : `任务：${block.task.title}，${weekday} ${monthDay(day)}，${timeRange}${
-        done ? '，已完成' : skipped ? '，已跳过' : ''
-      }`;
-
-  return (
-    <Pressable
-      accessibilityRole="button"
-      accessibilityLabel={label}
-      accessibilityHint={isEvent ? '点按查看日程详情或删除' : '点按查看任务详情'}
-      onPress={() =>
-        isEvent ? onSelectEvent(block.event) : onSelectTask(block.task)
-      }
-      focusable
-      {...handlers}
-      style={({ pressed }) => [
-        styles.agendaRow,
-        { opacity: pressed ? 0.8 : hovered ? 0.94 : 1 },
-      ]}>
-      <View style={styles.agendaTime}>
-        <Text style={[styles.agendaStart, { color: colors.ink }]}>
-          {clockLabel(block.start)}
-        </Text>
-        <Text style={[styles.agendaEnd, { color: colors.inkFaint }]}>
-          {clockLabel(block.end)}
-        </Text>
-      </View>
-
-      <View
-        style={[
-          styles.agendaCard,
-          {
-            backgroundColor: palette.background,
-            borderLeftColor: palette.accent,
-            boxShadow: focused ? `inset 0 0 0 2px ${colors.focusRing}` : undefined,
-          },
-        ]}>
-        <Text
-          numberOfLines={2}
-          ellipsizeMode="tail"
-          style={[
-            styles.agendaTitle,
-            {
-              color: palette.foreground,
-              textDecorationLine: done ? 'line-through' : 'none',
-            },
-          ]}>
-          {done ? `✓ ${title}` : title}
-        </Text>
-        {meta ? (
-          <Text
-            numberOfLines={1}
-            ellipsizeMode="tail"
-            style={[
-              styles.agendaMeta,
-              { color: skipped ? colors.warning : palette.foreground },
-            ]}>
-            {meta}
-          </Text>
-        ) : null}
-      </View>
-    </Pressable>
   );
 }
 
@@ -907,18 +1172,31 @@ function ScheduleBlock({
   block,
   day,
   dayWidth,
+  canDrag,
+  dragging,
   onSelectEvent,
   onSelectTask,
+  onDragStart,
+  onDragMove,
+  onDragEnd,
+  onDragCancel,
 }: {
   block: Block;
   day: string;
   dayWidth: number;
+  canDrag: boolean;
+  dragging: boolean;
   onSelectEvent: (event: ScheduleEventRead) => void;
   onSelectTask: (task: Task) => void;
+  onDragStart: (task: Task, pageX: number, pageY: number) => void;
+  onDragMove: (pageX: number, pageY: number) => void;
+  onDragEnd: (pageX: number, pageY: number) => void;
+  onDragCancel: () => void;
 }) {
   const { colors } = useTheme();
   const { focused, hovered, handlers } = useInteraction();
   const isEvent = block.kind === 'event';
+  const task = block.kind === 'task' ? block.task : null;
   const palette = isEvent
     ? kindPalette(block.event.event_kind, colors)
     : taskPalette(block.task, colors);
@@ -927,6 +1205,20 @@ function ScheduleBlock({
   const title = isEvent ? block.event.title : block.task.title;
   const location = isEvent ? (block.event.location ?? '').trim() : '';
   const teacher = isEvent ? (block.event.teacher ?? '').trim() : '';
+
+  const gesture = useTaskDrag({
+    dragDisabled: isEvent || !canDrag || (task != null && isClosed(task)),
+    onTap: () => {
+      if (isEvent) onSelectEvent(block.event);
+      else if (task) onSelectTask(task);
+    },
+    onDragStart: (pageX, pageY) => {
+      if (task) onDragStart(task, pageX, pageY);
+    },
+    onDragMove,
+    onDragEnd,
+    onDragCancel,
+  });
 
   const gap = block.lanes > 1 ? LANE_GAP : 0;
   const laneWidth = (dayWidth - BLOCK_INSET * 2 - gap * (block.lanes - 1)) / block.lanes;
@@ -940,10 +1232,11 @@ function ScheduleBlock({
   const titleSize = laneWidth < 62 ? Type.labelSmall : Type.labelMedium;
   const weekday = WEEKDAY_LABELS[weekdayIndex(day)];
   const taskMeta =
-    !isEvent && (done || skipped || block.task.estimatedMinutes)
+    !isEvent && (done || skipped || block.task.estimatedMinutes || block.task.backlog)
       ? [
           done ? '已完成' : skipped ? '已跳过' : '',
           block.task.estimatedMinutes ? `${block.task.estimatedMinutes} 分钟` : '',
+          block.task.backlog ? '任务池' : '',
         ]
           .filter(Boolean)
           .join(' · ')
@@ -973,32 +1266,8 @@ function ScheduleBlock({
         done ? '，已完成' : skipped ? '，已跳过' : ''
       }`;
 
-  return (
-    <Pressable
-      accessibilityRole="button"
-      accessibilityLabel={label}
-      accessibilityHint={isEvent ? '点按查看日程详情或删除' : '点按查看任务详情'}
-      onPress={() =>
-        isEvent ? onSelectEvent(block.event) : onSelectTask(block.task)
-      }
-      hitSlop={8}
-      focusable
-      {...handlers}
-      style={({ pressed }) => [
-        styles.event,
-        {
-          top,
-          left,
-          width: laneWidth,
-          height,
-          backgroundColor: palette.background,
-          borderLeftColor: palette.accent,
-          opacity: pressed ? 0.84 : hovered ? 0.94 : 1,
-          boxShadow: focused
-            ? `inset 0 0 0 2px ${colors.focusRing}`
-            : Elevation.highlight,
-        },
-      ]}>
+  const content = (
+    <>
       <Text
         numberOfLines={titleLines}
         ellipsizeMode="tail"
@@ -1039,7 +1308,67 @@ function ScheduleBlock({
           {taskMeta}
         </Text>
       ) : null}
-    </Pressable>
+    </>
+  );
+
+  const blockStyle = {
+    top,
+    left,
+    width: laneWidth,
+    height,
+    backgroundColor: palette.background,
+    borderLeftColor: palette.accent,
+  };
+
+  if (isEvent) {
+    return (
+      <Pressable
+        accessibilityRole="button"
+        accessibilityLabel={label}
+        accessibilityHint="点按查看日程详情或删除"
+        onPress={() => onSelectEvent(block.event)}
+        hitSlop={8}
+        focusable
+        {...handlers}
+        style={({ pressed }) => [
+          styles.event,
+          blockStyle,
+          {
+            opacity: pressed ? 0.84 : hovered ? 0.94 : 1,
+            boxShadow: focused
+              ? `inset 0 0 0 2px ${colors.focusRing}`
+              : Elevation.highlight,
+          },
+        ]}>
+        {content}
+      </Pressable>
+    );
+  }
+
+  const active = gesture.dragging || dragging;
+  return (
+    <View
+      {...gesture.responderProps}
+      accessible
+      accessibilityRole="button"
+      accessibilityLabel={label}
+      accessibilityHint="点按查看任务详情，长按拖动可重新安排"
+      focusable
+      {...handlers}
+      style={[
+        styles.event,
+        blockStyle,
+        {
+          opacity: active ? 0.35 : gesture.pressed ? 0.84 : hovered ? 0.94 : 1,
+          boxShadow: active
+            ? `inset 0 0 0 2px ${colors.primary}`
+            : focused
+              ? `inset 0 0 0 2px ${colors.focusRing}`
+              : Elevation.highlight,
+        },
+      ]}>
+      {content}
+    </View>
   );
 }
 
@@ -1111,6 +1440,29 @@ const styles = StyleSheet.create({
     right: 0,
     height: 1,
   },
+  dropColumn: {
+    position: 'absolute',
+    top: 0,
+    bottom: 0,
+    left: 0,
+    right: 0,
+    opacity: 0.22,
+  },
+  dropSlot: {
+    position: 'absolute',
+    left: BLOCK_INSET,
+    right: BLOCK_INSET,
+    justifyContent: 'center',
+    borderWidth: 1,
+    borderRadius: Radius.xs,
+    paddingHorizontal: 4,
+    zIndex: 2,
+  },
+  dropSlotLabel: {
+    fontFamily: Fonts.mono,
+    fontSize: Type.micro,
+    lineHeight: 12,
+  },
   nowMarker: {
     position: 'absolute',
     left: 0,
@@ -1155,6 +1507,7 @@ const styles = StyleSheet.create({
     borderLeftWidth: 3,
     borderRadius: Radius.xs,
     overflow: 'hidden',
+    userSelect: 'none',
   },
   eventTitle: {
     fontWeight: '600',
@@ -1179,111 +1532,61 @@ const styles = StyleSheet.create({
     fontSize: Type.labelMedium,
     lineHeight: Type.labelMedium * 1.5,
   },
-  untimed: {
+  backlog: {
     borderWidth: 1,
     borderRadius: Radius.md,
     overflow: 'hidden',
   },
-  untimedHeader: {
+  backlogHeader: {
     flexDirection: 'row',
     alignItems: 'baseline',
     justifyContent: 'space-between',
+    flexWrap: 'wrap',
     gap: Space.md,
     paddingHorizontal: Space.md,
     paddingVertical: Space.sm,
   },
-  untimedTitle: {
+  backlogHeading: {
+    flexDirection: 'row',
+    alignItems: 'baseline',
+    gap: Space.sm,
+  },
+  backlogTitle: {
     fontSize: Type.labelLarge,
     fontWeight: '600',
   },
-  untimedCount: {
+  backlogCount: {
     fontFamily: Fonts.monoRegular,
     fontSize: Type.labelSmall,
   },
-  untimedRow: {
+  backlogHint: {
+    flexGrow: 1,
+    flexBasis: 180,
+    fontSize: Type.labelSmall,
+    lineHeight: Type.labelSmall * 1.4,
+    textAlign: 'right',
+  },
+  backlogEmpty: {
+    fontSize: Type.labelMedium,
+    lineHeight: Type.labelMedium * 1.5,
+    paddingHorizontal: Space.md,
+    paddingBottom: Space.md,
+  },
+  backlogRow: {
     paddingHorizontal: Space.md,
     paddingVertical: Space.sm,
     gap: 2,
+    borderRadius: Radius.sm,
+    userSelect: 'none',
   },
-  untimedTask: {
+  backlogTask: {
     fontSize: Type.bodyMedium,
     lineHeight: Type.bodyMedium * 1.4,
   },
-  untimedMeta: {
+  backlogMeta: {
+    fontFamily: Fonts.monoRegular,
     fontSize: Type.labelSmall,
     lineHeight: Type.labelSmall * 1.4,
-  },
-  agenda: {
-    borderWidth: 1,
-    borderRadius: Radius.md,
-    overflow: 'hidden',
-  },
-  agendaDay: {
-    paddingHorizontal: Space.md,
-    paddingTop: Space.md,
-    paddingBottom: Space.sm,
-  },
-  agendaDayHeader: {
-    flexDirection: 'row',
-    alignItems: 'baseline',
-    justifyContent: 'space-between',
-    gap: Space.md,
-    borderBottomWidth: 1,
-    paddingBottom: Space.xs,
-    marginBottom: Space.sm,
-  },
-  agendaWeekday: {
-    fontSize: Type.labelLarge,
-    fontWeight: '600',
-  },
-  agendaDayDate: {
-    fontFamily: Fonts.monoRegular,
-    fontSize: Type.labelSmall,
-  },
-  agendaItems: {
-    gap: Space.sm,
-  },
-  agendaRow: {
-    flexDirection: 'row',
-    alignItems: 'flex-start',
-    gap: Space.md,
-  },
-  agendaTime: {
-    width: 46,
-    alignItems: 'flex-end',
-    paddingTop: 3,
-    gap: 1,
-  },
-  agendaStart: {
-    fontFamily: Fonts.mono,
-    fontSize: Type.labelMedium,
-  },
-  agendaEnd: {
-    fontFamily: Fonts.monoRegular,
-    fontSize: Type.micro,
-  },
-  agendaCard: {
-    flex: 1,
-    minWidth: 0,
-    borderLeftWidth: 3,
-    borderRadius: Radius.sm,
-    paddingHorizontal: Space.sm,
-    paddingVertical: Space.xs + 1,
-    gap: 1,
-  },
-  agendaTitle: {
-    fontSize: Type.labelLarge,
-    fontWeight: '600',
-    lineHeight: Type.labelLarge * 1.3,
-  },
-  agendaMeta: {
-    fontSize: Type.labelSmall,
-    lineHeight: Type.labelSmall * 1.35,
-  },
-  agendaEmpty: {
-    fontSize: Type.labelSmall,
-    paddingHorizontal: Space.md,
-    paddingVertical: Space.md,
   },
   emptyWeek: {
     fontSize: Type.labelSmall,

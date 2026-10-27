@@ -7,6 +7,11 @@ import { Dialog } from '@/components/ui/dialog';
 import { Progress } from '@/components/ui/progress';
 import { Fonts, Line, Space, Type } from '@/constants/tokens';
 import { toISO } from '@/domain/date';
+import {
+  nextFeedbackObligation,
+  retrospectiveDebtLabel,
+  retrospectiveDayCount,
+} from '@/domain/feedback-obligation';
 import { normalizeClockTime } from '@/domain/preferences';
 import { usePlan } from '@/state/plan';
 import { useTheme } from '@/state/theme';
@@ -35,7 +40,15 @@ type Snooze = { date: string; count: number; until: number };
  */
 export function FeedbackGate() {
   const { colors } = useTheme();
-  const { preferences, tasks, stats, feedbackHistory, refreshFeedbackHistory } = usePlan();
+  const {
+    preferences,
+    tasks,
+    stats,
+    feedbackHistory,
+    refreshFeedbackHistory,
+    feedbackObligations,
+    refreshFeedbackObligations,
+  } = usePlan();
   const pathname = usePathname();
   const router = useRouter();
   const [now, setNow] = useState(() => Date.now());
@@ -79,16 +92,29 @@ export function FeedbackGate() {
     if (tasks.length === 0) return;
     refreshedRef.current = true;
     void refreshFeedbackHistory();
-  }, [preferences.feedbackEnabled, refreshFeedbackHistory, tasks.length]);
+    void refreshFeedbackObligations();
+  }, [
+    preferences.feedbackEnabled,
+    refreshFeedbackHistory,
+    refreshFeedbackObligations,
+    tasks.length,
+  ]);
+
+  const retrospectiveDays = retrospectiveDayCount(feedbackObligations, today);
+  const hasRetrospective = retrospectiveDays > 0;
+  const todayPending =
+    feedbackObligations.some((item) => item.execution_date === today) && !feedbackToday;
+  // Today still waits for the chosen reminder time; an existing historical debt
+  // surfaces immediately, because it already happened.
+  const todayDue =
+    todayPending && targetMinutes != null && nowMinutes >= targetMinutes;
 
   const onFeedbackScreen = pathname.replace(/\/+$/, '') === '/feedback';
   const visible =
     !onFeedbackScreen &&
     preferences.feedbackEnabled &&
-    targetMinutes != null &&
     tasks.length > 0 &&
-    !feedbackToday &&
-    nowMinutes >= targetMinutes &&
+    (hasRetrospective || todayDue) &&
     (snoozeUntil === 0 || now >= snoozeUntil);
 
   function snoozeForFifteen() {
@@ -104,14 +130,30 @@ export function FeedbackGate() {
   }
 
   function goToFeedback() {
+    const oldest = nextFeedbackObligation(feedbackObligations);
+    if (oldest && oldest.execution_date < today) {
+      router.push({ pathname: '/feedback', params: { date: oldest.execution_date } });
+      return;
+    }
     router.push('/feedback');
   }
+
+  const title = hasRetrospective
+    ? todayPending
+      ? '还有反馈没补完'
+      : '有几天的反馈没补'
+    : '今天的反馈还没写';
+  const description = hasRetrospective
+    ? todayPending
+      ? `${retrospectiveDebtLabel(retrospectiveDays)}，今天的也还没有写。`
+      : `${retrospectiveDebtLabel(retrospectiveDays)}，补上之后计划会更贴合当时的你。`
+    : '花一分钟记下今天的完成情况，计划会更贴合你现在的状态。';
 
   return (
     <Dialog
       visible={visible}
-      title="今天的反馈还没写"
-      description="花一分钟记下今天的完成情况，计划会更贴合你现在的状态。"
+      title={title}
+      description={description}
       closable={false}
       onRequestClose={() => undefined}
       width={440}
@@ -122,20 +164,30 @@ export function FeedbackGate() {
           disabled: snoozeCount >= MAX_SNOOZES,
           onPress: snoozeForFifteen,
         },
-        { label: '去写反馈', variant: 'filled', onPress: goToFeedback },
+        {
+          label: hasRetrospective ? '去补反馈' : '去写反馈',
+          variant: 'filled',
+          onPress: goToFeedback,
+        },
       ]}>
       <View style={styles.body}>
-        <View style={styles.progressRow}>
-          <Text style={[styles.progressLabel, { color: colors.inkMuted }]}>今日完成</Text>
-          <Text style={[styles.progressValue, { color: colors.ink }]}>
-            {stats.todayDone} / {stats.todayTotal}
-          </Text>
-        </View>
-        <Progress value={stats.todayRate} />
+        {todayDue ? (
+          <>
+            <View style={styles.progressRow}>
+              <Text style={[styles.progressLabel, { color: colors.inkMuted }]}>今日完成</Text>
+              <Text style={[styles.progressValue, { color: colors.ink }]}>
+                {stats.todayDone} / {stats.todayTotal}
+              </Text>
+            </View>
+            <Progress value={stats.todayRate} />
+          </>
+        ) : null}
         <Text style={[styles.helper, { color: colors.inkMuted }]}>
           {snoozeCount > 0
-            ? `今天已经稍后 ${snoozeCount} 次${snoozeCount >= MAX_SNOOZES ? '，这次就先写掉吧。' : '，还可以再稍后一次。'}`
-            : '提醒时间来自「基础档案 → 反馈提醒」。写完反馈后这个窗口会自动消失。'}
+            ? `已经稍后 ${snoozeCount} 次${snoozeCount >= MAX_SNOOZES ? '，这次就先写掉吧。' : '，还可以再稍后一次。'}`
+            : hasRetrospective
+              ? '补填只记录那一天的情况，不会触发重排。'
+              : '提醒时间来自「基础档案 → 反馈提醒」。写完反馈后这个窗口会自动消失。'}
         </Text>
       </View>
     </Dialog>

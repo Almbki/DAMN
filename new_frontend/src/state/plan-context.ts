@@ -2,6 +2,7 @@ import { createContext, useContext } from 'react';
 
 import type {
   ClarificationRead,
+  FeedbackObligationRead,
   FeedbackRead,
   InsightRead,
   UserRead,
@@ -33,10 +34,20 @@ export type FeedbackInput = {
   delayReason?: string;
   /** Per-task reasons (interrupted / not_enough_time / too_hard / ...). */
   taskReasons?: { taskId: number; reason: string; note?: string | null }[];
+  /** Day being reviewed (defaults to today); a past date is a retrospective check-in. */
+  date?: string;
+  /** Plan to submit against, e.g. the plan_id on a historical obligation. */
+  planId?: number;
 };
 
 /** Policy route returned by the feedback loop. */
 export type FeedbackRoute = 'none' | 'micro_adjust' | 'full_replan';
+
+/** Result of a deterministic scheduling action, with display-ready copy. */
+export type SchedulingActionResult = {
+  ok: boolean;
+  message: string | null;
+};
 
 export type FeedbackResult = {
   /** True only when a new plan was generated and adopted. */
@@ -134,6 +145,22 @@ export type PlanContextValue = {
   /** 当前计划的每日反馈历史（`GET /plans/{id}/feedback`）。 */
   feedbackHistory: FeedbackRead[];
   refreshFeedbackHistory: () => Promise<void>;
+  /** 后端权威的未提交反馈（含历史欠账），最早的一天在前。 */
+  feedbackObligations: FeedbackObligationRead[];
+  refreshFeedbackObligations: () => Promise<void>;
+
+  /** Explicit backend `backlog` tasks (never inferred from a null date). */
+  backlogTasks: Task[];
+  /** Deterministic MOVE to a date + `HH:MM` start (backend snaps to 30 min). */
+  moveTask: (
+    taskId: number,
+    targetDate: string,
+    targetStart: string,
+  ) => Promise<SchedulingActionResult>;
+  /** Move one task into the 任务池; clears its placement. */
+  moveTaskToBacklog: (taskId: number) => Promise<SchedulingActionResult>;
+  /** Shift this task and its later unfinished siblings, atomically. */
+  localReschedule: (taskId: number) => Promise<SchedulingActionResult>;
 
   /** Goals from the active plan — used only as group labels in 待办. */
   goals: Goal[];

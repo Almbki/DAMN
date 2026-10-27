@@ -6,7 +6,7 @@ from datetime import date, datetime
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
-from app.domain.models.enums import TimeOfDay
+from app.domain.models.enums import FeedbackObligationStatus, TimeOfDay
 from app.schemas.plan import FeedbackAdjustmentRead, ReplanEligibilityRead
 
 
@@ -52,6 +52,17 @@ class FeedbackRead(BaseModel):
     def _null_task_reasons(cls, value: object) -> object:
         """Older rows persisted before the column existed hold ``NULL``."""
         return [] if value is None else value
+
+
+class FeedbackObligationRead(BaseModel):
+    """One unresolved daily-feedback debt (user + execution date)."""
+
+    execution_date: date
+    status: FeedbackObligationStatus = FeedbackObligationStatus.PENDING
+    #: True when the obligation belongs to a day before "today".
+    is_retrospective: bool = False
+    #: Plan the client should submit the historical check-in against.
+    plan_id: int | None = None
 
 
 class FeedbackSubmitResponse(BaseModel):

@@ -1,4 +1,4 @@
-import { addDays, addMonths } from '@/domain/date';
+import { addDays, addMonths, todayISO } from '@/domain/date';
 
 /**
  * The frontend task model.
@@ -93,6 +93,12 @@ export interface Task {
   done: boolean;
   /** "今天先不做" — a soft defer, not a failure. */
   skipped: boolean;
+  /** Backend `overdue`: a past one-off task that is still open. */
+  overdue?: boolean;
+  /** Backend `missed`: a past recurring occurrence; closed but not completed. */
+  missed?: boolean;
+  /** Backend `backlog`: explicitly unscheduled and kept in the 任务池. */
+  backlog?: boolean;
   startDate: string | null;
   startTime: string | null;
   dueDate: string | null;
@@ -201,7 +207,24 @@ export function toApiStatus(task: Task): string {
 }
 
 export function isClosed(task: Task): boolean {
-  return task.done || task.skipped;
+  // A missed occurrence is a historical fact: it no longer belongs in open
+  // lists or actions, but it is NOT done and must not look completed.
+  return task.done || task.skipped || task.missed === true;
+}
+
+/** Only the explicit backend status counts; never infer from a null date. */
+export function isBacklog(task: Task): boolean {
+  return task.backlog === true;
+}
+
+/**
+ * A past task that still needs attention. The backend's `overdue` flag is
+ * authoritative; mock/legacy rows fall back to the scheduled date.
+ */
+export function isOverdue(task: Task, today: string = todayISO()): boolean {
+  if (isClosed(task) || isBacklog(task)) return false;
+  if (task.overdue === true) return true;
+  return task.dueDate != null && task.dueDate < today;
 }
 
 /**

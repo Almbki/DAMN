@@ -99,10 +99,14 @@ class CurrentPlanSnapshot(BaseModel):
     tasks: list[CurrentTaskSnapshot] = Field(default_factory=list)
 
     def pending_tasks(self) -> list[CurrentTaskSnapshot]:
+        # MISSED recurring occurrences are historical facts: they are never
+        # carried into a new plan version (no make-up scheduling / duration
+        # inflation). OVERDUE stays eligible for an explicit future move/replan.
         return [
             task
             for task in self.tasks
-            if task.status not in {TaskStatus.COMPLETED, TaskStatus.SKIPPED}
+            if task.status
+            not in {TaskStatus.COMPLETED, TaskStatus.SKIPPED, TaskStatus.MISSED}
         ]
 
 

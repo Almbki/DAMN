@@ -9,7 +9,13 @@ export type TaskStatus =
   | 'in_progress'
   | 'completed'
   | 'skipped'
-  | 'failed';
+  | 'failed'
+  /** Past unfinished one-off task (still counts as open). */
+  | 'overdue'
+  /** Past unfinished recurring occurrence (a historical fact, not "done"). */
+  | 'missed'
+  /** Explicitly unscheduled task in the 任务池 tray. */
+  | 'backlog';
 
 /** Backend `TaskKind`: how a task instance behaves. */
 export type TaskKind = 'one_off' | 'long_term' | 'routine';
@@ -392,6 +398,13 @@ export interface InsightRead {
   drivers?: string[] | null;
 }
 
+/** Body for `POST /plans/{plan_id}/tasks/{task_id}/move`. */
+export interface TaskMoveRequest {
+  target_date: string;
+  /** `HH:MM`; the backend snaps it to the nearest 30-minute slot. */
+  target_start: string;
+}
+
 export interface TaskUpdateRequest {
   status?: TaskStatus;
   completed?: boolean;
@@ -555,6 +568,20 @@ export interface FeedbackRead extends FeedbackCreate {
   completion_rate: number;
   task_reasons: TaskReason[];
   created_at: string;
+}
+
+/**
+ * `GET /feedback/obligations`: one unresolved feedback debt per execution day,
+ * oldest first. The backend is authoritative; do not infer this from tasks.
+ */
+export interface FeedbackObligationRead {
+  /** Local calendar day (`YYYY-MM-DD`) the check-in belongs to. */
+  execution_date: string;
+  status: 'pending_feedback';
+  /** True when `execution_date` is before today. */
+  is_retrospective: boolean;
+  /** Plan to submit the historical check-in against. */
+  plan_id: number | null;
 }
 
 export interface ReplanEligibilityRead {

@@ -33,6 +33,10 @@ class Settings(BaseSettings):
     debug: bool = True
     api_v1_prefix: str = "/api/v1"
     cors_origins: str = "*"
+    #: Product "user local date" used by execution reconciliation and feedback
+    #: obligations. There is exactly one server-side product timezone in v1;
+    #: per-user timezones are not persisted yet.
+    app_timezone: str = "Asia/Shanghai"
 
     # --- Database ----------------------------------------------------------
     database_url: str = "sqlite:///./dev.db"

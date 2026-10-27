@@ -45,6 +45,7 @@ from app.application.exceptions import (
     NotFoundError,
     PermissionDeniedError,
 )
+from app.application.services.task_scheduling_service import TaskSchedulingService
 from app.application.services.user_model_service import UserModelService
 from app.core.config import get_settings
 from app.domain.date_constraints import DateConstraintError, resolve_earliest_start
@@ -674,7 +675,12 @@ class PlanService:
             ):
                 active_starts.setdefault(execution.task_id, execution.started_at)
         for task in tasks:
-            if task.status in {TaskStatus.COMPLETED, TaskStatus.SKIPPED}:
+            if task.status in {
+                TaskStatus.COMPLETED,
+                TaskStatus.SKIPPED,
+                TaskStatus.OVERDUE,
+                TaskStatus.MISSED,
+            }:
                 continue
             task.started_at = active_starts.get(task.id or 0)
         standards = self._standards.list_by_plan(plan_id)
@@ -712,6 +718,51 @@ class PlanService:
             self._validate_task_schedule_date(
                 task, changes["scheduled_date"], reference=detail.plan.start_date
             )
+
+        requested_status = changes.get("status")
+        if requested_status is not None:
+            parsed_status = (
+                requested_status
+                if isinstance(requested_status, TaskStatus)
+                else TaskStatus(requested_status)
+            )
+            # Lifecycle statuses are owned by reconciliation/backlog commands.
+            if parsed_status in {
+                TaskStatus.BACKLOG,
+                TaskStatus.OVERDUE,
+                TaskStatus.MISSED,
+            }:
+                raise DomainValidationError(
+                    "use the backlog or move operation for this lifecycle status"
+                )
+            if (
+                task.status == TaskStatus.BACKLOG
+                and parsed_status != TaskStatus.COMPLETED
+            ):
+                raise DomainValidationError(
+                    "use the move operation to schedule a backlog task"
+                )
+
+        # Drag/detail parity: every placement edit goes through the same
+        # deterministic RuleEngine validation as the MOVE endpoint.
+        placement_fields = {"scheduled_date", "start_time", "end_time"} & set(changes)
+        if placement_fields:
+            target_date = changes.get("scheduled_date", task.scheduled_date)
+            target_start = changes.get("start_time", task.start_time)
+            if target_date is not None and target_start is not None:
+                start, end = TaskSchedulingService(self._session).validate_placement(
+                    user_id,
+                    plan_id,
+                    task_id,
+                    target_date=target_date,
+                    start=target_start,
+                    end=changes.get("end_time") if "end_time" in changes else None,
+                    enforce_now=False,
+                )
+                changes["start_time"] = start
+                changes["end_time"] = end
+                if task.status == TaskStatus.BACKLOG:
+                    changes.setdefault("status", TaskStatus.SCHEDULED)
 
         completed = changes.pop("completed", None)
         # Execution-only fields are not Task columns. They used to be silently

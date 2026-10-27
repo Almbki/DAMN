@@ -236,6 +236,153 @@ class Scheduler:
             unscheduled_reasons=unscheduled_reasons,
         )
 
+    def schedule_sequence(
+        self,
+        tasks: list[Task],
+        context: RuleContext,
+        *,
+        occupied: CandidateSchedule | None = None,
+    ) -> CandidateSchedule:
+        """Place an ordered work-unit sequence, preserving input order.
+
+        Used by execution-time LOCAL_RESCHEDULE: the semantic order is fixed by
+        the caller (``work_unit`` / chunk order), unrelated plan tasks are passed
+        as ``occupied`` busy intervals, and each task may only be placed on or
+        after the previous sequence task's day. All hard-constraint math is the
+        same ``_first_feasible`` / ``_best_slot`` path as a full plan.
+        """
+        start_date, end_date = self.default_horizon(
+            tasks, context, today=context.today or date.today()
+        )
+
+        placements: dict[date, list[ScheduledTask]] = {}
+        day_minutes: dict[date, int] = {}
+        day_high_count: dict[date, int] = {}
+        goal_day_minutes: dict[tuple[int, date], int] = {}
+        series_time: dict[str, time] = {}
+        for item in (occupied.tasks if occupied is not None else []):
+            placements.setdefault(item.scheduled_date, []).append(item)
+            day_minutes[item.scheduled_date] = (
+                day_minutes.get(item.scheduled_date, 0) + item.duration_minutes
+            )
+            if item.goal_id is not None:
+                key = (item.goal_id, item.scheduled_date)
+                goal_day_minutes[key] = (
+                    goal_day_minutes.get(key, 0) + item.duration_minutes
+                )
+            if item.cognitive_load == CognitiveLoad.HIGH:
+                day_high_count[item.scheduled_date] = (
+                    day_high_count.get(item.scheduled_date, 0) + 1
+                )
+            if item.series_id is not None and item.series_id not in series_time:
+                series_time[item.series_id] = item.start_time
+
+        scheduled: list[ScheduledTask] = []
+        unscheduled: list[int] = []
+        unscheduled_reasons: dict[int, SchedulingFailure] = {}
+        cursor = start_date
+
+        for index, task in enumerate(tasks):
+            if task.id is None:
+                continue
+            duration = task.predicted_duration or task.estimated_duration
+            base_earliest = context.task_earliest_dates.get(task.id, start_date)
+            # Minimal-repair rule: never pull a later sequence task earlier than
+            # its current placement, and never place it before the previous
+            # sequence task. Overdue/backlog dates are already in the past, so
+            # the cursor wins; future rhythm is preserved.
+            original_day = task.scheduled_date or start_date
+            earliest = max(base_earliest, cursor, original_day)
+            local_context = context.model_copy(
+                update={
+                    "task_earliest_dates": {
+                        **context.task_earliest_dates,
+                        task.id: earliest,
+                    }
+                }
+            )
+            day, slot_start = self._first_feasible(
+                task,
+                duration,
+                local_context,
+                start_date,
+                end_date,
+                placements,
+                day_minutes,
+                day_high_count,
+                goal_day_minutes,
+                series_time,
+            )
+            if day is None:
+                reason = self._diagnose(
+                    task,
+                    duration,
+                    local_context,
+                    start_date,
+                    end_date,
+                    placements,
+                    day_minutes,
+                    day_high_count,
+                    goal_day_minutes,
+                )
+                unscheduled.append(task.id)
+                unscheduled_reasons[task.id] = reason
+                # The sequence is atomic: a blocked task also blocks everything
+                # after it, so the caller can report one deterministic failure and
+                # leave the persisted plan untouched.
+                for leftover in tasks[index + 1 :]:
+                    if leftover.id is None:
+                        continue
+                    unscheduled.append(leftover.id)
+                    unscheduled_reasons[leftover.id] = SchedulingFailure(
+                        code="SEQUENCE_BLOCKED",
+                        message=(
+                            f"Blocked by the unscheduled earlier sequence task "
+                            f"{task.id}."
+                        ),
+                    )
+                break
+
+            start_min = _to_minutes(slot_start)
+            placed = ScheduledTask(
+                task_id=task.id,
+                title=task.title,
+                goal_id=task.goal_id,
+                scheduled_date=day,
+                start_time=slot_start,
+                end_time=_from_minutes(start_min + duration),
+                duration_minutes=duration,
+                cognitive_load=task.cognitive_load,
+                priority=task.priority,
+                completion_probability=(
+                    task.completion_probability
+                    if task.completion_probability is not None
+                    else 1.0
+                ),
+                is_flexible=task.is_flexible,
+                series_id=task.series_id,
+                occurrence_date=task.occurrence_date,
+            )
+            placements.setdefault(day, []).append(placed)
+            day_minutes[day] = day_minutes.get(day, 0) + duration
+            if task.goal_id is not None:
+                key = (task.goal_id, day)
+                goal_day_minutes[key] = goal_day_minutes.get(key, 0) + duration
+            if task.cognitive_load == CognitiveLoad.HIGH:
+                day_high_count[day] = day_high_count.get(day, 0) + 1
+            if task.series_id is not None and task.series_id not in series_time:
+                series_time[task.series_id] = slot_start
+            scheduled.append(placed)
+            cursor = day
+
+        return CandidateSchedule(
+            start_date=start_date,
+            end_date=end_date,
+            tasks=sorted(scheduled, key=lambda t: (t.scheduled_date, t.start_time)),
+            unscheduled_task_ids=unscheduled,
+            unscheduled_reasons=unscheduled_reasons,
+        )
+
     # -- internals ---------------------------------------------------------
 
     def _sort_key_for(

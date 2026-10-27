@@ -17,6 +17,8 @@ export type TimelineItem = {
   done: boolean;
   /** Soft defer; drawn as a neutral tag, not as completion. */
   skipped?: boolean;
+  /** Explicit backend backlog task, shown with a neutral 任务池 tag. */
+  backlog?: boolean;
   startTime: string | null;
   endTime: string | null;
   estimatedMinutes: number | null;
@@ -225,6 +227,9 @@ function TimelineRow({
               {skipped ? (
                 <Text style={[styles.skipped, { color: colors.warning }]}>已跳过</Text>
               ) : null}
+              {item.backlog === true ? (
+                <Text style={[styles.backlog, { color: colors.inkMuted }]}>任务池</Text>
+              ) : null}
               <PriorityFlag priority={item.priority} />
             </View>
           </Pressable>
@@ -341,6 +346,10 @@ const styles = StyleSheet.create({
     fontSize: Type.labelMedium,
   },
   skipped: {
+    fontSize: Type.labelMedium,
+    fontWeight: '600',
+  },
+  backlog: {
     fontSize: Type.labelMedium,
     fontWeight: '600',
   },

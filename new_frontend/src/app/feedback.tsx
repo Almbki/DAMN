@@ -1,4 +1,4 @@
-import { useRouter } from 'expo-router';
+import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import {
   KeyboardAvoidingView,
@@ -26,7 +26,11 @@ import { Surface } from '@/components/ui/surface';
 import { TextField } from '@/components/ui/text-field';
 import { Fonts, Line, Radius, Space, Type } from '@/constants/tokens';
 import { parseISO, todayISO } from '@/domain/date';
-import type { Task } from '@/domain/task';
+import {
+  feedbackObligationForDate,
+  retrospectiveObligations,
+} from '@/domain/feedback-obligation';
+import { isClosed, type Task } from '@/domain/task';
 import { useReducedMotion } from '@/hooks/use-reduced-motion';
 import { usePlan } from '@/state/plan';
 import type { FeedbackResult } from '@/state/plan-context';
@@ -34,6 +38,11 @@ import { useProfile } from '@/state/profile';
 import { useTheme } from '@/state/theme';
 
 const WEEKDAY = ['周日', '周一', '周二', '周三', '周四', '周五', '周六'];
+
+function formatDay(date: string): string {
+  const day = parseISO(date);
+  return `${day.getMonth() + 1} 月 ${day.getDate()} 日 · ${WEEKDAY[day.getDay()]}`;
+}
 
 type ReasonState = { reason: string; note: string };
 
@@ -55,24 +64,48 @@ export default function FeedbackScreen() {
   const profile = useProfile();
   const {
     tasks,
-    stats,
     assessment,
     setAssessment,
     submitFeedback,
     feedbackHistory,
     refreshFeedbackHistory,
+    feedbackObligations,
+    refreshFeedbackObligations,
     refresh,
     actionError,
     clearActionError,
   } = usePlan();
+  const params = useLocalSearchParams();
 
   const today = todayISO();
-  const todayTasks = useMemo(() => tasks.filter((task) => task.dueDate === today), [tasks, today]);
-  const doneTasks = useMemo(() => todayTasks.filter((task) => task.done), [todayTasks]);
-  const unfinished = useMemo(() => todayTasks.filter((task) => !task.done), [todayTasks]);
+  const rawDate = params.date;
+  const paramDate =
+    typeof rawDate === 'string' ? rawDate : Array.isArray(rawDate) ? rawDate[0] : undefined;
+  const selectedDate =
+    paramDate && /^\d{4}-\d{2}-\d{2}$/.test(paramDate) ? paramDate : today;
+  const isRetrospective = selectedDate < today;
+
+  const dayTasks = useMemo(
+    () => tasks.filter((task) => task.dueDate === selectedDate),
+    [tasks, selectedDate],
+  );
+  const doneTasks = useMemo(() => dayTasks.filter((task) => task.done), [dayTasks]);
+  const unfinished = useMemo(() => dayTasks.filter((task) => !task.done), [dayTasks]);
   const skippedCount = useMemo(
-    () => todayTasks.filter((task) => task.skipped).length,
-    [todayTasks],
+    () => dayTasks.filter((task) => task.skipped).length,
+    [dayTasks],
+  );
+  const openCount = useMemo(() => dayTasks.filter((task) => !isClosed(task)).length, [dayTasks]);
+  const dayTotal = doneTasks.length + openCount;
+  const dayRate = dayTotal === 0 ? 0 : doneTasks.length / dayTotal;
+
+  const obligation = useMemo(
+    () => feedbackObligationForDate(feedbackObligations, selectedDate),
+    [feedbackObligations, selectedDate],
+  );
+  const backfill = useMemo(
+    () => retrospectiveObligations(feedbackObligations, today),
+    [feedbackObligations, today],
   );
 
   const [reasonByTask, setReasonByTask] = useState<Record<number, ReasonState>>({});
@@ -80,13 +113,14 @@ export default function FeedbackScreen() {
   const [submitting, setSubmitting] = useState(false);
   const [result, setResult] = useState<FeedbackResult | null>(null);
   const [submitError, setSubmitError] = useState<string | null>(null);
-  const [justSaved, setJustSaved] = useState(false);
+  const [savedDate, setSavedDate] = useState<string | null>(null);
   const scrollRef = useRef<ScrollView>(null);
   const reducedMotion = useReducedMotion();
 
   useEffect(() => {
     void refreshFeedbackHistory();
-  }, [refreshFeedbackHistory]);
+    void refreshFeedbackObligations();
+  }, [refreshFeedbackHistory, refreshFeedbackObligations]);
 
   // Skipped tasks default to the "今天先不做" reason without needing a tap. The
   // fallback lives in render so new tasks (e.g. after a replan) appear too.
@@ -95,10 +129,10 @@ export default function FeedbackScreen() {
   }
 
   const missingCount = unfinished.filter((task) => !reasonFor(task).reason).length;
-  const hasFeedbackToday =
-    justSaved ||
-    getLastFeedbackDate() === today ||
-    feedbackHistory.some((item) => item.date.slice(0, 10) === today);
+  const hasFeedbackForDate =
+    savedDate === selectedDate ||
+    getLastFeedbackDate() === selectedDate ||
+    feedbackHistory.some((item) => item.date.slice(0, 10) === selectedDate);
 
   function setReason(task: Task, reason: string) {
     setReasonByTask((prev) => {
@@ -130,9 +164,11 @@ export default function FeedbackScreen() {
 
     try {
       const response = await submitFeedback({
-        // Today's rate is automatic: done / (done + open). Skipped work is not
-        // counted, matching the plan stats.
-        completionRate: stats.todayRate,
+        // This day's rate is automatic: done / (done + open). Skipped work is
+        // not counted, matching the plan stats.
+        completionRate: dayRate,
+        date: selectedDate,
+        planId: obligation?.plan_id ?? undefined,
         taskReasons: unfinished.map((task) => {
           const state = reasonFor(task);
           return {
@@ -146,8 +182,10 @@ export default function FeedbackScreen() {
       setResult(response);
       revealResult();
       if (feedbackSaved(response)) {
-        markFeedbackSubmitted(today);
-        setJustSaved(true);
+        setSavedDate(selectedDate);
+        // The local marker only protects today's gate; a backfill is tracked by
+        // the backend obligations instead.
+        if (selectedDate === today) markFeedbackSubmitted(selectedDate);
         // The backend updates Level 2 during the feedback request. Refresh the
         // profile + plan so the state cards and trend reflect the new observation.
         profile.refresh();
@@ -175,9 +213,8 @@ export default function FeedbackScreen() {
     );
   }
 
-  const date = parseISO(today);
-  const dateLabel = `${date.getMonth() + 1} 月 ${date.getDate()} 日 · ${WEEKDAY[date.getDay()]}`;
-  const hasTasksToday = todayTasks.length > 0;
+  const dateLabel = formatDay(selectedDate);
+  const hasTasksForDate = dayTasks.length > 0;
 
   return (
     <KeyboardAvoidingView
@@ -191,9 +228,11 @@ export default function FeedbackScreen() {
         keyboardDismissMode="on-drag">
         <View style={styles.intro}>
           <Text style={[styles.eyebrow, { color: colors.primary }]}>DAILY REVIEW</Text>
-          <Text style={[styles.introTitle, { color: colors.ink }]}>把今天收个尾</Text>
+          <Text style={[styles.introTitle, { color: colors.ink }]}>
+            {isRetrospective ? '补一份那天的反馈' : '把今天收个尾'}
+          </Text>
           <Text style={[styles.introBody, { color: colors.inkMuted }]}>
-            {dateLabel}。完成率自动计算，你只需要给没做完的事选个原因。
+            {dateLabel}。完成率按这一天的任务自动计算，你只需要给没做完的事选个原因。
           </Text>
         </View>
 
@@ -219,36 +258,79 @@ export default function FeedbackScreen() {
           />
         ) : null}
 
+        {backfill.length > 0 ? (
+          <Surface level="level0" radius="lg" bordered>
+            <View style={styles.backfill}>
+              <View style={styles.cardHead}>
+                <Text style={[styles.cardTitle, { color: colors.ink }]}>待补填</Text>
+                <Text style={[styles.helper, { color: colors.inkFaint }]}>
+                  {backfill.length} 天没有提交反馈
+                </Text>
+              </View>
+              {backfill.map((item) => (
+                <View
+                  key={item.execution_date}
+                  style={[styles.backfillRow, { borderTopColor: colors.outlineVariant }]}>
+                  <Text style={[styles.backfillDate, { color: colors.ink }]}>
+                    {formatDay(item.execution_date)}
+                  </Text>
+                  {selectedDate === item.execution_date ? (
+                    <Text style={[styles.helper, { color: colors.inkFaint }]}>正在补填</Text>
+                  ) : (
+                    <Button
+                      label="补填"
+                      variant="text"
+                      size="sm"
+                      onPress={() => router.setParams({ date: item.execution_date })}
+                    />
+                  )}
+                </View>
+              ))}
+            </View>
+          </Surface>
+        ) : null}
+
+        {isRetrospective ? (
+          <InlineNotice
+            tone="info"
+            message="这是补填历史日期。补填只记录当天的情况，不会触发重排。"
+          />
+        ) : null}
+
         <Surface level="level1" radius="lg">
           <View style={styles.statsCard}>
             <View style={styles.statsTop}>
               <View style={styles.rateBlock}>
                 <Text style={[styles.cardLabel, { color: colors.inkMuted }]}>自动完成率</Text>
                 <Text style={[styles.rateValue, { color: colors.ink }]}>
-                  {Math.round(stats.todayRate * 100)}
+                  {Math.round(dayRate * 100)}
                   <Text style={[styles.rateUnit, { color: colors.inkFaint }]}>%</Text>
                 </Text>
               </View>
               <View style={styles.doneBlock}>
                 <Text style={[styles.doneValue, { color: colors.ink }]}>
-                  {stats.todayDone} / {stats.todayTotal}
+                  {doneTasks.length} / {dayTotal}
                 </Text>
-                <Text style={[styles.doneLabel, { color: colors.inkMuted }]}>今日完成</Text>
+                <Text style={[styles.doneLabel, { color: colors.inkMuted }]}>
+                  {isRetrospective ? '当日完成' : '今日完成'}
+                </Text>
               </View>
             </View>
 
-            <Progress value={stats.todayRate} />
+            <Progress value={dayRate} />
 
             <View style={styles.statsFoot}>
               <Text style={[styles.helper, { color: colors.inkMuted }]}>
-                {stats.todayTotal === 0
-                  ? '今天还没有排任务，完成率会记为 0%。'
-                  : `按今天已完成 / 已排任务自动计算${skippedCount > 0 ? `，跳过的 ${skippedCount} 件不计入` : ''}。`}
+                {dayTotal === 0
+                  ? isRetrospective
+                    ? '这一天没有排任务，完成率会记为 0%。'
+                    : '今天还没有排任务，完成率会记为 0%。'
+                  : `按${isRetrospective ? '当天' : '今天'}已完成 / 已排任务自动计算${skippedCount > 0 ? `，跳过的 ${skippedCount} 件不计入` : ''}。`}
               </Text>
-              {hasFeedbackToday ? (
+              {hasFeedbackForDate ? (
                 <View style={[styles.savedBadge, { backgroundColor: colors.primaryContainer }]}>
                   <Text style={[styles.savedBadgeText, { color: colors.onPrimaryContainer }]}>
-                    今日已提交
+                    {isRetrospective ? '当日已提交' : '今日已提交'}
                   </Text>
                 </View>
               ) : null}
@@ -259,7 +341,9 @@ export default function FeedbackScreen() {
         <Surface level="level1" radius="lg">
           <View style={styles.card}>
             <View style={styles.cardHead}>
-              <Text style={[styles.cardTitle, { color: colors.ink }]}>今天的状态</Text>
+              <Text style={[styles.cardTitle, { color: colors.ink }]}>
+                {isRetrospective ? '这一天的状态' : '今天的状态'}
+              </Text>
               <Text style={[styles.helper, { color: colors.inkFaint }]}>
                 会一起影响要不要重排
               </Text>
@@ -283,14 +367,18 @@ export default function FeedbackScreen() {
           </View>
         </Surface>
 
-        {!hasTasksToday ? (
+        {!hasTasksForDate ? (
           <InlineNotice
             tone="info"
-            message="今天没有排任务。完成率会显示为 0 / 0，但你仍然可以记录精力和压力，这份反馈会保存下来。"
+            message={
+              isRetrospective
+                ? '这一天没有排任务。完成率会显示为 0 / 0，但你仍然可以提交一条补填记录。'
+                : '今天没有排任务。完成率会显示为 0 / 0，但你仍然可以记录精力和压力，这份反馈会保存下来。'
+            }
           />
         ) : null}
 
-        {hasTasksToday ? (
+        {hasTasksForDate ? (
           <View style={styles.section}>
             <View style={styles.sectionHead}>
               <Text style={[styles.sectionTitle, { color: colors.ink }]}>
@@ -301,7 +389,7 @@ export default function FeedbackScreen() {
 
             {doneTasks.length === 0 ? (
               <Text style={[styles.quiet, { color: colors.inkFaint }]}>
-                今天还没有完成的任务。
+                {isRetrospective ? '这一天没有已完成的任务。' : '今天还没有完成的任务。'}
               </Text>
             ) : (
               doneTasks.map((task) => {
@@ -332,7 +420,7 @@ export default function FeedbackScreen() {
           </View>
         ) : null}
 
-        {hasTasksToday ? (
+        {hasTasksForDate ? (
           <View style={styles.section}>
             <View style={styles.sectionHead}>
               <Text style={[styles.sectionTitle, { color: colors.ink }]}>
@@ -345,7 +433,7 @@ export default function FeedbackScreen() {
 
             {unfinished.length === 0 ? (
               <Text style={[styles.quiet, { color: colors.inkFaint }]}>
-                今天的任务都完成了。
+                {isRetrospective ? '这一天的任务都完成了。' : '今天的任务都完成了。'}
               </Text>
             ) : (
               unfinished.map((task) => {
@@ -370,10 +458,14 @@ export default function FeedbackScreen() {
           <View style={styles.card}>
             <Text style={[styles.cardTitle, { color: colors.ink }]}>想补充的</Text>
             <TextField
-              label="今天还有什么想说的（可选）"
+              label={isRetrospective ? '这一天还有什么想说的（可选）' : '今天还有什么想说的（可选）'}
               value={freeText}
               onChangeText={setFreeText}
-              placeholder="比如：下午状态突然变差、任务拆分得太粗…"
+              placeholder={
+                isRetrospective
+                  ? '比如：那天下午状态突然变差、任务拆分得太粗…'
+                  : '比如：下午状态突然变差、任务拆分得太粗…'
+              }
               multiline
               background={colors.surfaceContainerLowest}
             />
@@ -402,7 +494,7 @@ export default function FeedbackScreen() {
                 : '只记录状态也可以提交。'}
           </Text>
           <Text style={[styles.footerMeta, { color: colors.inkFaint }]}>
-            自动完成率 {Math.round(stats.todayRate * 100)}%
+            自动完成率 {Math.round(dayRate * 100)}%
           </Text>
         </View>
         <Button
@@ -524,6 +616,24 @@ const styles = StyleSheet.create({
   cardTitle: {
     fontSize: Type.titleMedium,
     fontWeight: '600',
+  },
+  backfill: {
+    padding: Space.lg,
+    gap: Space.sm,
+  },
+  backfillRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: Space.md,
+    borderTopWidth: 1,
+    paddingTop: Space.sm,
+  },
+  backfillDate: {
+    flex: 1,
+    minWidth: 0,
+    fontFamily: Fonts.mono,
+    fontSize: Type.labelMedium,
   },
   sliderRow: {
     flexDirection: 'row',

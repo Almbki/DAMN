@@ -43,6 +43,37 @@ describe('task mapper', () => {
     expect(task.completionProbability).toBeNull();
   });
 
+  it('maps overdue and missed lifecycle statuses to flags only', () => {
+    const overdue = taskFromApi({ ...base, status: 'overdue' });
+    expect(overdue.overdue).toBe(true);
+    expect(overdue.missed).toBe(false);
+    expect(overdue.done).toBe(false);
+    expect(overdue.skipped).toBe(false);
+
+    const missed = taskFromApi({ ...base, status: 'missed' });
+    expect(missed.missed).toBe(true);
+    expect(missed.overdue).toBe(false);
+    expect(missed.done).toBe(false);
+    expect(missed.skipped).toBe(false);
+  });
+
+  it('keeps both lifecycle flags false for other statuses', () => {
+    const scheduled = taskFromApi({ ...base, status: 'scheduled' });
+    expect(scheduled.overdue).toBe(false);
+    expect(scheduled.missed).toBe(false);
+  });
+
+  it('maps the explicit backlog status without inferring it from a date', () => {
+    const backlog = taskFromApi({ ...base, status: 'backlog', scheduled_date: null });
+    expect(backlog.backlog).toBe(true);
+    expect(backlog.done).toBe(false);
+    expect(backlog.missed).toBe(false);
+    expect(backlog.overdue).toBe(false);
+
+    const scheduledNoDate = taskFromApi({ ...base, scheduled_date: null });
+    expect(scheduledNoDate.backlog).toBe(false);
+  });
+
   it('maps production provenance fields', () => {
     const task = taskFromApi(base);
     expect(task.predictionSource).toBe('deterministic:workload_estimate');

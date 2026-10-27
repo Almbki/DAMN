@@ -6,16 +6,30 @@ from fastapi import APIRouter, Depends, status
 
 from app.api.deps import (
     get_current_user,
+    get_execution_reconciliation_service,
     get_feedback_service,
     get_generation_service,
 )
-from app.application.services import FeedbackService, GenerationService, PlanService
+from app.application.services import (
+    ExecutionReconciliationService,
+    FeedbackService,
+    GenerationService,
+    PlanService,
+)
 from app.domain.models import Feedback, User
 from app.schemas.common import ErrorResponse
-from app.schemas.feedback import FeedbackCreate, FeedbackRead, FeedbackSubmitResponse
+from app.schemas.feedback import (
+    FeedbackCreate,
+    FeedbackObligationRead,
+    FeedbackRead,
+    FeedbackSubmitResponse,
+)
 from app.schemas.plan import FeedbackAdjustmentRead, ReplanEligibilityRead
 
 router = APIRouter()
+#: `/feedback/obligations` lives outside the `/plans` prefix on purpose: a path
+#: under `/plans` would collide with `GET /plans/{plan_id}`.
+obligations_router = APIRouter()
 
 _AUTH = {401: {"model": ErrorResponse, "description": "Not authenticated"}}
 _NOT_FOUND = {404: {"model": ErrorResponse, "description": "Plan not found"}}
@@ -137,3 +151,36 @@ def list_feedback(
 ) -> list[FeedbackRead]:
     items = service.list_feedback(current_user.id or 0, plan_id)
     return [FeedbackRead.model_validate(item) for item in items]
+
+
+@obligations_router.get(
+    "/obligations",
+    response_model=list[FeedbackObligationRead],
+    summary="List unresolved daily-feedback obligations",
+    description=(
+        "Backend-authoritative list of `user + execution_date` feedback debts. "
+        "A day appears only when it already contains observed execution behaviour "
+        "and no check-in was submitted. Older days stay pending across day "
+        "boundaries (`is_retrospective=true`) instead of disappearing."
+    ),
+    responses={**_AUTH},
+)
+def list_feedback_obligations(
+    current_user: User = Depends(get_current_user),
+    reconciliation: ExecutionReconciliationService = Depends(
+        get_execution_reconciliation_service
+    ),
+) -> list[FeedbackObligationRead]:
+    user_id = current_user.id or 0
+    # Settle past task/occurrence states on the same deterministic read, then
+    # derive the outstanding debt from persisted behaviour.
+    reconciliation.reconcile_user_execution_state(user_id)
+    return [
+        FeedbackObligationRead(
+            execution_date=obligation.execution_date,
+            status=obligation.status,
+            is_retrospective=obligation.is_retrospective,
+            plan_id=obligation.plan_id,
+        )
+        for obligation in reconciliation.list_feedback_obligations(user_id)
+    ]

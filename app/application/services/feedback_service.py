@@ -20,6 +20,7 @@ from sqlalchemy.orm import Session
 
 from app.application.dto.feedback import FeedbackSubmitResult
 from app.application.exceptions import NotFoundError, PermissionDeniedError
+from app.core.clock import local_today
 from app.core.config import get_settings
 from app.domain.feedback.policy import (
     FeedbackReplanDecision,
@@ -85,11 +86,24 @@ class FeedbackService:
         # ... and refresh the real Level 2 dynamic state from the new check-in.
         self._refresh_user_model(user_id)
 
+        # A check-in for a past day is evidence, not a control signal: it is
+        # recorded (and refreshes the user model) but never rewrites today's
+        # plan. Retrospective feedback may be submitted indefinitely in v1.
+        is_retrospective = saved.date < local_today()
+
         eligibility = None
         if self._replan_service is not None:
             eligibility = self._replan_service.check_eligibility(user_id, plan_id)
 
-        decision = self._decide_replan(user_id, saved)
+        if is_retrospective:
+            decision = FeedbackReplanDecision(
+                route="none",
+                reason="retrospective check-in recorded without replanning",
+                pressure="none",
+                signals={"retrospective": True, "date": saved.date.isoformat()},
+            )
+        else:
+            decision = self._decide_replan(user_id, saved)
 
         adjustment = None
         if (

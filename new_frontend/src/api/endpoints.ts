@@ -4,6 +4,7 @@ import { deleteTaskQuery, type DeleteTaskOptions } from '@/api/delete-task-query
 import type {
   ConfirmPlanResponse,
   FeedbackCreate,
+  FeedbackObligationRead,
   FeedbackRead,
   FeedbackSubmitResponse,
   GoalCreateRequest,
@@ -39,6 +40,7 @@ import type {
   SyntheticResetSummary,
   SyntheticScenarioList,
   SyntheticStatus,
+  TaskMoveRequest,
   TaskRead,
   TaskUpdateRequest,
   TokenResponse,
@@ -262,8 +264,49 @@ export function listFeedback(planId: number) {
   return apiRequest<FeedbackRead[]>(`/plans/${planId}/feedback`);
 }
 
+/** Unresolved feedback debts for the signed-in user, oldest day first. */
+export function listFeedbackObligations() {
+  return apiRequest<FeedbackObligationRead[]>('/feedback/obligations');
+}
+
 export function patchTask(planId: number, taskId: number, body: TaskUpdateRequest) {
   return apiRequest<TaskRead>(`/plans/${planId}/tasks/${taskId}`, { method: 'PATCH', body });
+}
+
+/** Deterministic drag MOVE; the backend snaps the start to 30 minutes. */
+export function moveTask(
+  planId: number,
+  taskId: number,
+  targetDate: string,
+  targetStart: string,
+) {
+  const body: TaskMoveRequest = {
+    target_date: targetDate,
+    target_start: targetStart,
+  };
+  return apiRequest<TaskRead>(`/plans/${planId}/tasks/${taskId}/move`, {
+    method: 'POST',
+    body,
+  });
+}
+
+/** Move a task into the explicit 任务池 (idempotent). */
+export function moveTaskToBacklog(planId: number, taskId: number) {
+  return apiRequest<TaskRead>(`/plans/${planId}/tasks/${taskId}/backlog`, {
+    method: 'POST',
+  });
+}
+
+/** Atomically shift this task and its later unfinished siblings. */
+export function localReschedule(planId: number, taskId: number) {
+  return apiRequest<TaskRead[]>(`/plans/${planId}/tasks/${taskId}/local-reschedule`, {
+    method: 'POST',
+  });
+}
+
+/** Backend-authoritative 任务池 list (`status=backlog` only). */
+export function listBacklog(planId: number) {
+  return apiRequest<TaskRead[]>(`/plans/${planId}/backlog`);
 }
 
 /**

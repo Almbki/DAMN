@@ -12,6 +12,7 @@ from sqlalchemy.orm import Session
 from app.application.exceptions import AuthenticationError
 from app.application.services import (
     AuthService,
+    ExecutionReconciliationService,
     FeedbackService,
     GenerationService,
     GoalService,
@@ -23,6 +24,7 @@ from app.application.services import (
     ScheduleEventService,
     SituationService,
     SyntheticScenarioService,
+    TaskSchedulingService,
     TraitAssessmentService,
 )
 from app.core.security import InvalidTokenError, decode_access_token
@@ -86,6 +88,12 @@ def get_replan_service(db: Session = Depends(get_db)) -> ReplanService:
     return ReplanService(db)
 
 
+def get_execution_reconciliation_service(
+    db: Session = Depends(get_db),
+) -> ExecutionReconciliationService:
+    return ExecutionReconciliationService(db)
+
+
 def get_feedback_service(
     db: Session = Depends(get_db),
     replan_service: ReplanService = Depends(get_replan_service),
@@ -98,6 +106,12 @@ def get_schedule_event_service(
     db: Session = Depends(get_db),
 ) -> ScheduleEventService:
     return ScheduleEventService(db)
+
+
+def get_task_scheduling_service(
+    db: Session = Depends(get_db),
+) -> TaskSchedulingService:
+    return TaskSchedulingService(db)
 
 
 def get_insight_service(db: Session = Depends(get_db)) -> InsightService:
