@@ -10,6 +10,7 @@ from datetime import date, time
 from app.application.dto.insight import InsightReport
 from app.application.dto.plan import PlanChange, PlanDetail
 from app.domain.models import Plan
+from app.domain.models.enums import TaskStatus
 from app.schemas.common import ViolationRead
 from app.schemas.plan import (
     DailyCompletionRead,
@@ -116,6 +117,11 @@ def preview_read(payload) -> PreviewRead:
                 target_amount=task.target_amount,
                 target_unit=task.target_unit,
                 is_flexible=task.is_flexible,
+                work_unit_key=task.work_unit_key,
+                parent_key=task.parent_key,
+                chunk_index=task.chunk_index,
+                scheduling_reason=task.scheduling_reason,
+                scheduling_detail=task.scheduling_detail,
             )
             for task in payload.tasks
         ],
@@ -127,15 +133,38 @@ def preview_read(payload) -> PreviewRead:
     )
 
 
-def task_read(task_with_standards) -> TaskRead:
+def task_read(task_with_standards, group=None) -> TaskRead:
     schema = TaskRead.model_validate(task_with_standards.task)
     schema.standards = [
         TaskStandardRead.model_validate(standard) for standard in task_with_standards.standards
     ]
+    members = [task_with_standards.task] if group is None else list(group)
+    schema.chunk_count = len(members)
+    schema.completed_chunks = sum(
+        1 for member in members if member.status == TaskStatus.COMPLETED
+    )
+    schema.work_unit_completed = bool(members) and all(
+        member.status == TaskStatus.COMPLETED for member in members
+    )
     return schema
 
 
 def plan_read(detail: PlanDetail) -> PlanRead:
+    # Only tasks with a chunk_index participate in execution-group aggregation;
+    # an ordinary parent_task_id/subtask relationship keeps its old semantics.
+    chunk_groups: dict[int, list] = {}
+    for item in detail.tasks:
+        task = item.task
+        if task.chunk_index is None:
+            continue
+        root = task.parent_task_id or task.id
+        chunk_groups.setdefault(root, []).append(task)
+
+    def group_for(task):
+        if task.chunk_index is None:
+            return None
+        return chunk_groups.get(task.parent_task_id or task.id)
+
     return PlanRead(
         id=detail.plan.id,
         user_id=detail.plan.user_id,
@@ -147,7 +176,7 @@ def plan_read(detail: PlanDetail) -> PlanRead:
         parent_plan_id=detail.plan.parent_plan_id,
         confidence=detail.plan.confidence,
         created_at=detail.plan.created_at,
-        tasks=[task_read(item) for item in detail.tasks],
+        tasks=[task_read(item, group_for(item.task)) for item in detail.tasks],
         goals=[GoalRead.model_validate(goal) for goal in detail.goals],
     )
 

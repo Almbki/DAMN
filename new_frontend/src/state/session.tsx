@@ -5,6 +5,7 @@ import { dataSource, demoEmail, demoLoginEnabled, demoPassword } from '@/api/con
 import { getMe, login as loginRequest, register as registerRequest } from '@/api/endpoints';
 import type { RegisterRequest, UserRead } from '@/api/types';
 import type { SessionStatus } from '@/domain/auth';
+import { clearUserScopedCaches } from '@/state/user-cache';
 
 export type { SessionStatus };
 
@@ -47,6 +48,13 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
   const [user, setUserState] = useState<UserRead | null>(null);
   const [error, setError] = useState<string | null>(null);
   const busyRef = useRef(false);
+  // Mirrors the signed-in user so the stable unauthorized handler can clean up
+  // the right user's local caches without re-registering.
+  const userIdRef = useRef<number | null>(null);
+
+  useEffect(() => {
+    userIdRef.current = user?.id ?? null;
+  }, [user]);
 
   const login = useCallback(async (email: string, password: string) => {
     const token = await loginRequest(email, password);
@@ -71,6 +79,10 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
   );
 
   const logout = useCallback(() => {
+    // Drop this user's browser-side caches before the provider unmounts; the
+    // server remains the source of truth and nothing here is server data.
+    clearUserScopedCaches(userIdRef.current);
+    userIdRef.current = null;
     setAuthToken(null);
     setUserState(null);
     setStatus('unauthenticated');
@@ -121,6 +133,9 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
 
   useEffect(() => {
     setUnauthorizedHandler(() => {
+      // A 401 must not leave the previous user's caches for the next account.
+      clearUserScopedCaches(userIdRef.current);
+      userIdRef.current = null;
       setAuthToken(null);
       setUserState(null);
       setStatus('unauthenticated');

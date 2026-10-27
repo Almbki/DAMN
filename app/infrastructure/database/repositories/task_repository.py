@@ -7,6 +7,7 @@ from datetime import UTC, date, datetime
 from sqlalchemy import delete, select, update
 
 from app.domain.models import Task
+from app.domain.models.enums import TaskStatus
 from app.infrastructure.database.models.plan import Plan as PlanORM
 from app.infrastructure.database.models.task import Task as TaskORM
 from app.infrastructure.database.repositories.base import RepositoryBase
@@ -47,6 +48,10 @@ class TaskRepository(RepositoryBase):
                 occurrence_date=t.occurrence_date,
                 target_amount=t.target_amount,
                 target_unit=t.target_unit,
+                work_unit_key=t.work_unit_key,
+                chunk_index=t.chunk_index,
+                scheduling_reason=t.scheduling_reason,
+                scheduling_detail=t.scheduling_detail,
                 order_index=t.order_index,
                 deleted_at=t.deleted_at,
                 deleted_reason=t.deleted_reason,
@@ -128,6 +133,72 @@ class TaskRepository(RepositoryBase):
             .order_by(TaskORM.id)
         )
         return [self._to_domain(orm) for orm in self._session.scalars(stmt).all()]
+
+    def list_by_series(
+        self, plan_id: int, series_id: str, *, include_deleted: bool = False
+    ) -> list[Task]:
+        """Occurrences of one series inside one plan version."""
+        stmt = select(TaskORM).where(
+            TaskORM.plan_id == plan_id, TaskORM.series_id == series_id
+        )
+        if not include_deleted:
+            stmt = stmt.where(TaskORM.deleted_at.is_(None))
+        stmt = stmt.order_by(TaskORM.order_index, TaskORM.id)
+        return [self._to_domain(orm) for orm in self._session.scalars(stmt).all()]
+
+    def soft_delete_incomplete_for_goal(
+        self, plan_id: int, goal_id: int, reason: str
+    ) -> int:
+        """Soft-delete only unfinished tasks of one goal in one plan version.
+
+        Completed/skipped occurrences are never touched; executions and
+        standards survive because the task row is not removed.
+        """
+        self._session.flush()
+        result = self._session.execute(
+            update(TaskORM)
+            .where(
+                TaskORM.plan_id == plan_id,
+                TaskORM.goal_id == goal_id,
+                TaskORM.deleted_at.is_(None),
+                TaskORM.status.not_in([TaskStatus.COMPLETED, TaskStatus.SKIPPED]),
+            )
+            .values(deleted_at=datetime.now(UTC), deleted_reason=reason)
+        )
+        return result.rowcount or 0
+
+    def restore_for_goal(self, plan_id: int, goal_id: int, reason_prefix: str) -> int:
+        """Undo :meth:`soft_delete_incomplete_for_goal` (exact archive reason)."""
+        self._session.flush()
+        result = self._session.execute(
+            update(TaskORM)
+            .where(
+                TaskORM.plan_id == plan_id,
+                TaskORM.goal_id == goal_id,
+                TaskORM.deleted_at.is_not(None),
+                TaskORM.deleted_reason == reason_prefix,
+            )
+            .values(deleted_at=None, deleted_reason=None)
+        )
+        return result.rowcount or 0
+
+    def soft_delete_series(self, plan_id: int, series_id: str, reason: str | None) -> int:
+        """Soft-delete every unfinished occurrence of a series in one plan.
+
+        Completed occurrences are preserved (their executions are ML data).
+        """
+        self._session.flush()
+        result = self._session.execute(
+            update(TaskORM)
+            .where(
+                TaskORM.plan_id == plan_id,
+                TaskORM.series_id == series_id,
+                TaskORM.deleted_at.is_(None),
+                TaskORM.status != TaskStatus.COMPLETED,
+            )
+            .values(deleted_at=datetime.now(UTC), deleted_reason=reason)
+        )
+        return result.rowcount or 0
 
     def soft_delete(self, task_id: int, reason: str | None = None) -> bool:
         """Mark a task deleted without removing its row.

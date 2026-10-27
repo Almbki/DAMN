@@ -10,12 +10,14 @@ from app.domain.models.enums import (
     CognitiveLoad,
     GoalStatus,
     GoalType,
+    PlanningMode,
     PlanStatus,
     Priority,
     ReplanTriggerType,
     TaskKind,
     TimeOfDay,
 )
+from app.domain.recurrence import RecurrenceFrequency
 from app.schemas.common import ViolationRead
 from app.schemas.task import TaskRead
 from app.schemas.user import DataSufficiency
@@ -39,16 +41,23 @@ class PlanGoalCreate(BaseModel):
     # Repetition contract (optional: omission keeps the one-off behaviour).
     start_date: date | None = None
     task_kind: TaskKind | None = None
+    planning_mode: PlanningMode | None = None
+    recurrence_frequency: RecurrenceFrequency | None = None
+    recurrence_interval: int | None = Field(default=None, ge=1)
     daily_target_minutes: int | None = Field(default=None, ge=1)
     recurrence_weekdays: list[int] | None = None
     target_amount: int | None = Field(default=None, ge=0)
     target_unit: str | None = Field(default=None, max_length=64)
+    #: User answers to a previous clarification request (request-level, not
+    #: concatenated into title/description).
+    clarifications: dict[str, str] = Field(default_factory=dict)
 
 
 class GoalRead(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
     id: int
+    goal_set_id: int | None = None
     title: str
     description: str | None = None
     goal_type: GoalType
@@ -58,6 +67,9 @@ class GoalRead(BaseModel):
     estimated_minutes: int | None = None
     start_date: date | None = None
     task_kind: TaskKind | None = None
+    planning_mode: PlanningMode | None = None
+    recurrence_frequency: RecurrenceFrequency | None = None
+    recurrence_interval: int | None = None
     daily_target_minutes: int | None = None
     recurrence_weekdays: list[int] | None = None
     target_amount: int | None = None
@@ -85,6 +97,10 @@ class PlanGenerateRequest(BaseModel):
     execution_weight: float | None = Field(default=None, ge=0.0, le=1.0)
     #: IANA timezone from the browser, used for "today"/"now" scheduling.
     timezone: str | None = Field(default=None, max_length=64)
+    #: Attach the newly created goals to this existing goal set (目标集).
+    goal_set_id: int | None = None
+    #: Create a new goal set with this name instead of attaching to an existing one.
+    goal_set_name: str | None = Field(default=None, max_length=255)
 
 
 class PreviewTaskRead(BaseModel):
@@ -112,6 +128,13 @@ class PreviewTaskRead(BaseModel):
     target_amount: int | None = None
     target_unit: str | None = None
     is_flexible: bool = True
+    #: Stable cross-version work-unit identity.
+    work_unit_key: str | None = None
+    #: Execution-chunk grouping and deterministic failure reason.
+    parent_key: str | None = None
+    chunk_index: int | None = None
+    scheduling_reason: str | None = None
+    scheduling_detail: str | None = None
 
 
 class PreviewRead(BaseModel):
@@ -129,11 +152,27 @@ class PreviewRead(BaseModel):
     violations: list[ViolationRead] = Field(default_factory=list)
 
 
+class ClarificationQuestionRead(BaseModel):
+    goal_id: int
+    field: str
+    question: str
+    required: bool = True
+
+
+class ClarificationRead(BaseModel):
+    status: str = "needs_clarification"
+    questions: list[ClarificationQuestionRead] = Field(default_factory=list)
+
+
 class PreviewResponse(BaseModel):
     thread_id: str
-    preview: PreviewRead
+    preview: PreviewRead | None = None
+    #: Set when the request-level atomic gate stopped before planning.
+    clarification: ClarificationRead | None = None
     plan_id: int | None = None
     goals_persisted: int = 0
+    #: Goal set (目标集) the persisted goals belong to.
+    goal_set_id: int | None = None
     #: True when the run continued with a fallback (no history, LLM unavailable,
     #: context build failure). `warnings` says why - never silent.
     degraded: bool = False
@@ -185,14 +224,19 @@ class DecomposeGoal(BaseModel):
 
     title: str = Field(min_length=1, max_length=255)
     priority: int = Field(default=2, ge=1, le=3)
+    goal_type: GoalType | None = None
     deadline: date | None = None
     notes: str | None = Field(default=None, max_length=1000)
     start_date: date | None = None
     task_kind: TaskKind | None = None
+    planning_mode: PlanningMode | None = None
+    recurrence_frequency: RecurrenceFrequency | None = None
+    recurrence_interval: int | None = Field(default=None, ge=1)
     daily_target_minutes: int | None = Field(default=None, ge=1)
     recurrence_weekdays: list[int] | None = None
     target_amount: int | None = Field(default=None, ge=0)
     target_unit: str | None = Field(default=None, max_length=64)
+    clarifications: dict[str, str] = Field(default_factory=dict)
 
 
 class DecomposeRequest(BaseModel):
@@ -206,6 +250,10 @@ class DecomposeRequest(BaseModel):
     draft_id: str | None = None
     feedback: str | None = None
     timezone: str | None = Field(default=None, max_length=64)
+    #: Attach the newly created goals to this existing goal set (目标集).
+    goal_set_id: int | None = None
+    #: Create a new goal set with this name instead of attaching to an existing one.
+    goal_set_name: str | None = Field(default=None, max_length=255)
 
 
 class DecomposeDraftTask(BaseModel):

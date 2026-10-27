@@ -1,6 +1,11 @@
 import { createContext, useContext } from 'react';
 
-import type { FeedbackRead, InsightRead, UserRead } from '@/api/types';
+import type {
+  ClarificationRead,
+  FeedbackRead,
+  InsightRead,
+  UserRead,
+} from '@/api/types';
 import type { DraftTask, PendingTask } from '@/domain/decompose';
 import type { Goal } from '@/domain/goal';
 import type { PlanChange } from '@/domain/plan-change';
@@ -9,7 +14,12 @@ import type { RulerSegmentState, SmartListKey } from '@/domain/selectors';
 import type { Situation } from '@/domain/situation';
 import type { Completion } from '@/domain/stats';
 import type { NewTaskInput, StoreState } from '@/domain/task-ops';
-import type { Task, TaskKind } from '@/domain/task';
+import type {
+  PlanningMode,
+  RecurrenceFrequency,
+  Task,
+  TaskKind,
+} from '@/domain/task';
 
 export type { SmartListKey };
 
@@ -52,12 +62,17 @@ export type PendingTaskInput = {
   dueDate: string | null;
   notes: string;
   taskKind?: TaskKind;
+  planningMode?: PlanningMode;
+  recurrenceFrequency?: RecurrenceFrequency | null;
+  recurrenceInterval?: number | null;
   startDate?: string | null;
   dailyTargetMinutes?: number | null;
   /** 0 = Monday … 6 = Sunday. */
   recurrenceWeekdays?: number[] | null;
   targetAmount?: number | null;
   targetUnit?: string | null;
+  /** User answers to a previous clarification request (separate provenance). */
+  clarifications?: Record<string, string>;
 };
 
 export type PlanContextValue = {
@@ -129,7 +144,13 @@ export type PlanContextValue = {
   updatePendingTask: (id: number, patch: Partial<PendingTask>) => void;
   removePendingTask: (id: number) => void;
   /** 拆解：请求后端出一版**不落库**的草稿（mock 模式本地算）。 */
-  decomposePreview: () => Promise<DraftTask[]>;
+  decomposePreview: (tasksOverride?: PendingTask[]) => Promise<DraftTask[]>;
+  /** Set when goal_analysis needs high-impact user input before planning. */
+  clarification: ClarificationRead | null;
+  submitClarifications: (
+    answers: { goalId: number; field: string; answer: string }[],
+  ) => void;
+  dismissClarification: () => void;
   /**
    * 「重新生成」：带反馈再拆一版。
    * `applied` 为真表示后端预算耗尽、已直接落库（`final_plan`），前端应关闭预览。
@@ -138,7 +159,7 @@ export type PlanContextValue = {
     feedback: string,
   ) => Promise<{ drafts: DraftTask[] | null; applied: boolean; message: string | null }>;
   /** 「就先这样」：把当前草稿落库（mock 模式本地写入）。 */
-  confirmPreview: () => Promise<void>;
+  confirmPreview: () => Promise<number | null>;
   previewTasks: DraftTask[] | null;
   previewBusy: boolean;
   dismissPreview: () => void;
@@ -170,6 +191,8 @@ export type PlanContextValue = {
   /** Toggle one checklist standard on a task (`standard_updates`). */
   updateStandard: (taskId: number, standardId: number, completed: boolean) => Promise<void>;
   deleteTask: (id: number) => void;
+  /** Remove every unfinished occurrence of a repeating series in this plan. */
+  deleteTaskSeries: (taskId: number) => Promise<void>;
   setDone: (id: number, done: boolean) => void;
   /** Record the real start of a task (`started_at` on the backend). */
   startTask: (id: number) => void;

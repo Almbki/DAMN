@@ -4,6 +4,7 @@ from app.application.services.auth_service import AuthService
 from app.application.services.feedback_service import FeedbackService
 from app.application.services.generation_service import GenerationService
 from app.application.services.goal_service import GoalService
+from app.application.services.goal_set_service import GoalSetService
 from app.application.services.insight_service import InsightService
 from app.application.services.memory_service import MemoryService
 from app.application.services.plan_service import PlanService
@@ -19,6 +20,7 @@ __all__ = [
     "FeedbackService",
     "GenerationService",
     "GoalService",
+    "GoalSetService",
     "InsightService",
     "MemoryService",
     "PlanService",

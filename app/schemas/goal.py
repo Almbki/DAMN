@@ -6,7 +6,8 @@ from datetime import date, datetime
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
-from app.domain.models.enums import GoalStatus, GoalType, TaskKind
+from app.domain.models.enums import GoalStatus, GoalType, PlanningMode, TaskKind
+from app.domain.recurrence import RecurrenceFrequency
 
 
 class GoalDetailRead(BaseModel):
@@ -15,6 +16,7 @@ class GoalDetailRead(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
     id: int
+    goal_set_id: int | None = None
     title: str
     description: str | None = None
     goal_type: str = GoalType.OTHER.value
@@ -25,6 +27,9 @@ class GoalDetailRead(BaseModel):
     estimated_minutes: int | None = None
     start_date: date | None = None
     task_kind: TaskKind | None = None
+    planning_mode: PlanningMode | None = None
+    recurrence_frequency: RecurrenceFrequency | None = None
+    recurrence_interval: int | None = None
     daily_target_minutes: int | None = None
     recurrence_weekdays: list[int] | None = None
     target_amount: int | None = None
@@ -43,6 +48,7 @@ class GoalDetailRead(BaseModel):
 class GoalCreate(BaseModel):
     title: str = Field(min_length=1, max_length=255)
     description: str | None = Field(default=None, max_length=1000)
+    goal_set_id: int | None = None
     goal_type: GoalType = GoalType.OTHER
     deadline: datetime | None = None
     priority: int = Field(default=2, ge=1, le=4)
@@ -53,6 +59,9 @@ class GoalCreate(BaseModel):
     status: GoalStatus = GoalStatus.ACTIVE
     start_date: date | None = None
     task_kind: TaskKind | None = None
+    planning_mode: PlanningMode | None = None
+    recurrence_frequency: RecurrenceFrequency | None = None
+    recurrence_interval: int | None = Field(default=None, ge=1)
     daily_target_minutes: int | None = Field(default=None, ge=1)
     recurrence_weekdays: list[int] | None = None
     target_amount: int | None = Field(default=None, ge=0)
@@ -64,6 +73,7 @@ class GoalUpdate(BaseModel):
 
     title: str | None = Field(default=None, min_length=1, max_length=255)
     description: str | None = Field(default=None, max_length=1000)
+    goal_set_id: int | None = None
     status: GoalStatus | None = None
     deadline: datetime | None = None
     priority: int | None = Field(default=None, ge=1, le=4)
@@ -72,10 +82,30 @@ class GoalUpdate(BaseModel):
     task_type: str | None = None
     start_date: date | None = None
     task_kind: TaskKind | None = None
+    planning_mode: PlanningMode | None = None
+    recurrence_frequency: RecurrenceFrequency | None = None
+    recurrence_interval: int | None = Field(default=None, ge=1)
     daily_target_minutes: int | None = Field(default=None, ge=1)
     recurrence_weekdays: list[int] | None = None
     target_amount: int | None = Field(default=None, ge=0)
     target_unit: str | None = Field(default=None, max_length=64)
 
 
-__all__ = ["GoalCreate", "GoalDetailRead", "GoalUpdate"]
+class GoalLifecycleImpact(BaseModel):
+    """Effect of a goal archive/restore operation (frontend contract).
+
+    ``restored_tasks`` is only meaningful on restore; archive omits it.
+    """
+
+    goal_id: int
+    removed_tasks: int = 0
+    preserved_completed_tasks: int = 0
+    restored_tasks: int | None = None
+
+
+__all__ = [
+    "GoalCreate",
+    "GoalDetailRead",
+    "GoalLifecycleImpact",
+    "GoalUpdate",
+]

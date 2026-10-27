@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from typing import Literal
+
 from fastapi import APIRouter, Depends, Query
 from fastapi import status as http_status
 
@@ -52,23 +54,37 @@ def update_task(
         changes=changes,
         standard_updates=standard_updates,
     )
-    # Re-read with standards for a complete response.
+    # Re-read with standards and chunk-group aggregation for the response.
     detail = plan_service.get_plan(current_user.id or 0, plan_id)
+    chunk_groups: dict[int, list] = {}
+    for item in detail.tasks:
+        if item.task.chunk_index is None:
+            continue
+        root = item.task.parent_task_id or item.task.id
+        chunk_groups.setdefault(root, []).append(item.task)
     for item in detail.tasks:
         if item.task.id == task.id:
-            return task_read(item)
+            group = (
+                chunk_groups.get(item.task.parent_task_id or item.task.id)
+                if item.task.chunk_index is not None
+                else None
+            )
+            return task_read(item, group)
     return TaskRead.model_validate(task)
 
 
 @router.delete(
     "/{plan_id}/tasks/{task_id}",
     status_code=http_status.HTTP_204_NO_CONTENT,
-    summary="Soft-delete a task",
+    summary="Soft-delete a task (or a whole recurring series)",
     description=(
         "Marks the task as deleted without removing the row, so its "
         "TaskExecution history (ML training data) and TaskStandard rows are "
         "preserved. Deleted tasks disappear from plan reads, insights and plan "
-        "change diffs. Idempotent: deleting it again still returns 204."
+        "change diffs. Idempotent: deleting it again still returns 204. "
+        "`?scope=series` soft-deletes every unfinished occurrence of the same "
+        "series in this plan version; completed occurrences survive. A "
+        "non-series task rejects `scope=series` with 422."
     ),
     responses={**_AUTH, **_NOT_FOUND, 403: {"model": ErrorResponse}},
 )
@@ -76,9 +92,15 @@ def delete_task(
     plan_id: int,
     task_id: int,
     reason: str | None = Query(default=None, max_length=255),
+    scope: Literal["single", "series"] = Query(default="single"),
     current_user: User = Depends(get_current_user),
     plan_service: PlanService = Depends(get_plan_service),
 ) -> None:
+    if scope == "series":
+        plan_service.delete_task_series(
+            current_user.id or 0, plan_id, task_id, reason=reason
+        )
+        return
     plan_service.delete_task(
         current_user.id or 0, plan_id, task_id, reason=reason
     )

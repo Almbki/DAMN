@@ -294,3 +294,21 @@ def test_reset_does_not_affect_another_user(
     assert client.post("/api/v1/dev/scenarios/reset", headers=auth_headers).status_code == 200
     other_status = client.get("/api/v1/dev/scenarios/status", headers=other_headers)
     assert other_status.json()["synthetic_present"] is True
+
+def test_showcase_account_rejects_synthetic_import_and_reset(
+    client: TestClient, auth_headers: dict, synthetic_enabled
+) -> None:
+    marked = client.patch(
+        "/api/v1/users/me",
+        json={"profile": {"showcase_seed": "showcase-v1"}},
+        headers=auth_headers,
+    )
+    assert marked.status_code == 200, marked.text
+
+    imported = _import(client, auth_headers)
+    assert imported.status_code == 409, imported.text
+
+    reset = client.post("/api/v1/dev/scenarios/reset", headers=auth_headers)
+    assert reset.status_code == 409, reset.text
+    assert "protected" in reset.text.lower()
+

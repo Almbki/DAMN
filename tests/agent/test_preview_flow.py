@@ -68,7 +68,8 @@ def test_long_term_goal_persists_daily_occurrences(
 ) -> None:
     """A dated long-term goal becomes one task per day (series), not one giant task."""
     override_plan_service(client)
-    start = date.today()
+    # Start tomorrow so the current-time no-past-slot rule cannot remove today.
+    start = date.today() + timedelta(days=1)
     end = start + timedelta(days=6)
     payload = {
         "goals": [

@@ -1,4 +1,5 @@
-import { Link, usePathname, useRouter } from 'expo-router';
+import { Link, useNavigation, usePathname, useRouter } from 'expo-router';
+import { useEffect, useRef } from 'react';
 import { Pressable, ScrollView, StyleSheet, Text, useWindowDimensions, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
@@ -19,13 +20,36 @@ function useWide() {
 
 export function AppShell({ children }: { children: React.ReactNode }) {
   const { colors } = useTheme();
-  const { actionError, clearActionError } = usePlan();
+  const { actionError, clearActionError, previewBusy } = usePlan();
   const { demoMode } = useSession();
   const insets = useSafeAreaInsets();
   const wide = useWide();
   const pathname = usePathname();
   const router = useRouter();
+  const navigation = useNavigation();
   const meta = routeMetaFor(pathname);
+
+  // Leaving the goal screen mid-generate/confirm would drop the in-flight UI;
+  // the ref keeps the listener stable while still reading the latest value.
+  const previewLockedRef = useRef(previewBusy);
+  useEffect(() => {
+    previewLockedRef.current = previewBusy;
+  }, [previewBusy]);
+
+  useEffect(() => {
+    const target = navigation as unknown as {
+      addListener?: (
+        event: 'beforeRemove',
+        callback: (event: { preventDefault: () => void }) => void,
+      ) => () => void;
+    };
+    const unsubscribe = target.addListener?.('beforeRemove', (event) => {
+      if (previewLockedRef.current) event.preventDefault();
+    });
+    return () => {
+      unsubscribe?.();
+    };
+  }, [navigation]);
 
   function goBack() {
     if (router.canGoBack()) router.back();
@@ -64,6 +88,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
           activeHref={meta.navHref}
           topInset={insets.top}
           bottomInset={insets.bottom}
+          locked={previewBusy}
         />
       ) : null}
 
@@ -81,7 +106,13 @@ export function AppShell({ children }: { children: React.ReactNode }) {
           ]}>
           <View style={styles.headerLeft}>
             {meta.back ? (
-              <IconButton name="arrowLeft" label="返回" size={44} onPress={goBack} />
+              <IconButton
+                name="arrowLeft"
+                label="返回"
+                size={44}
+                onPress={goBack}
+                disabled={previewBusy}
+              />
             ) : null}
             <Text
               accessibilityRole="header"
@@ -98,6 +129,25 @@ export function AppShell({ children }: { children: React.ReactNode }) {
             ) : null}
           </View>
         </View>
+
+        {previewBusy ? (
+          <View
+            accessibilityRole="alert"
+            accessibilityLiveRegion="polite"
+            style={[
+              styles.previewBanner,
+              {
+                backgroundColor: colors.secondaryContainer,
+                borderBottomColor: colors.outlineVariant,
+                paddingHorizontal: wide ? Layout.padWide : Layout.padNarrow,
+              },
+            ]}>
+            <Icon name="target" size={16} color={colors.onSecondaryContainer} />
+            <Text style={[styles.previewText, { color: colors.onSecondaryContainer }]}>
+              正在生成/确认计划，完成前请勿切换页面。
+            </Text>
+          </View>
+        ) : null}
 
         {actionError ? (
           <View
@@ -136,7 +186,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
       </View>
 
       {wide ? null : (
-        <BottomNav activeHref={meta.navHref} bottomInset={insets.bottom} />
+        <BottomNav activeHref={meta.navHref} bottomInset={insets.bottom} locked={previewBusy} />
       )}
     </View>
   );
@@ -146,14 +196,17 @@ function NavigationRail({
   activeHref,
   topInset,
   bottomInset,
+  locked,
 }: {
   activeHref: string | null;
   topInset: number;
   bottomInset: number;
+  locked: boolean;
 }) {
   const { colors } = useTheme();
   return (
     <View
+      pointerEvents={locked ? 'none' : 'auto'}
       style={[
         styles.rail,
         {
@@ -183,13 +236,16 @@ function NavigationRail({
 function BottomNav({
   activeHref,
   bottomInset,
+  locked,
 }: {
   activeHref: string | null;
   bottomInset: number;
+  locked: boolean;
 }) {
   const { colors } = useTheme();
   return (
     <View
+      pointerEvents={locked ? 'none' : 'auto'}
       style={[
         styles.bottomNav,
         {
@@ -318,6 +374,18 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     borderRadius: Radius.pill,
+  },
+  previewBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Space.md,
+    borderBottomWidth: 1,
+    paddingVertical: Space.sm,
+  },
+  previewText: {
+    flex: 1,
+    fontSize: Type.labelLarge,
+    lineHeight: Type.labelLarge * Line.normal,
   },
   scroll: {
     flex: 1,

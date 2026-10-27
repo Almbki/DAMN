@@ -42,7 +42,8 @@ export default function DeveloperScreen() {
   const { colors } = useTheme();
   const { mode } = usePlan();
   const profile = useProfile();
-  const { setUser } = useSession();
+  const { setUser, user } = useSession();
+  const showcaseLocked = Boolean(user?.profile?.showcase_seed);
   const [data, setData] = useState<ModelRuntimeRead | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -81,6 +82,10 @@ export default function DeveloperScreen() {
   }
 
   async function importScenario(name: string) {
+    if (showcaseLocked) {
+      setScenarioError('受保护的演示账号：Synthetic 导入已禁用。');
+      return;
+    }
     setScenarioBusy(name);
     setScenarioError(null);
     setScenarioSummary(null);
@@ -102,6 +107,10 @@ export default function DeveloperScreen() {
   }
 
   async function resetSynthetic() {
+    if (showcaseLocked) {
+      setScenarioError('受保护的演示账号：Synthetic 重置已禁用。');
+      return;
+    }
     setScenarioBusy('reset');
     setScenarioError(null);
     setScenarioSummary(null);
@@ -291,6 +300,12 @@ export default function DeveloperScreen() {
                 ))}
               </View>
             ) : null}
+            {showcaseLocked ? (
+              <Text style={[styles.note, { color: colors.warning }]}>
+                受保护的展示账号：Synthetic 导入/重置已禁用。需要重建时运行
+                scripts/seed_showcase_account.py。
+              </Text>
+            ) : null}
             <View style={styles.scenarioGrid}>
               {scenarios.map((scenario) => (
                 <Button
@@ -300,7 +315,7 @@ export default function DeveloperScreen() {
                   }
                   variant="tonal"
                   size="sm"
-                  disabled={scenarioBusy != null}
+                  disabled={scenarioBusy != null || showcaseLocked}
                   onPress={() => void importScenario(scenario.name)}
                 />
               ))}
@@ -310,7 +325,7 @@ export default function DeveloperScreen() {
                 label={scenarioBusy === 'reset' ? '重置中…' : '重置 synthetic 数据'}
                 variant="outlined"
                 size="sm"
-                disabled={scenarioBusy != null}
+                disabled={scenarioBusy != null || showcaseLocked}
                 onPress={() => void resetSynthetic()}
               />
               <Text style={[styles.note, { color: colors.inkFaint }]}>

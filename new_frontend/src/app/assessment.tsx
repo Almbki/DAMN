@@ -20,7 +20,7 @@ import { useTheme } from '@/state/theme';
 export default function AssessmentScreen() {
   const { colors } = useTheme();
   const router = useRouter();
-  const { setUser } = useSession();
+  const { setUser, logout } = useSession();
   const { refresh: refreshProfile } = useProfile();
   const [assessment, setAssessment] = useState<TraitAssessmentRead | null>(null);
   const [loading, setLoading] = useState(true);
@@ -146,7 +146,16 @@ export default function AssessmentScreen() {
   return (
     <View style={styles.page}>
       <View style={styles.intro}>
-        <Text style={[styles.title, { color: colors.ink }]}>初始画像</Text>
+        <View style={styles.introHead}>
+          <Text style={[styles.title, { color: colors.ink }]}>初始画像</Text>
+          <Button
+            label="退出登录"
+            variant="tonal"
+            size="sm"
+            disabled={submitting}
+            onPress={logout}
+          />
+        </View>
         <Text style={[styles.body, { color: colors.inkMuted }]}>
           用于帮助系统了解比较稳定的个人特征，并改善后续计划分析。题目会按你的回答自适应选择，通常不需要做完固定 120 题。
         </Text>
@@ -199,6 +208,12 @@ export default function AssessmentScreen() {
 const styles = StyleSheet.create({
   page: { gap: Space.xl },
   intro: { gap: Space.sm },
+  introHead: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: Space.md,
+  },
   title: { fontSize: Type.headlineSmall, fontWeight: '600' },
   body: {
     fontSize: Type.bodyMedium,

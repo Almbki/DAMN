@@ -29,12 +29,14 @@ from app.application.exceptions import (
 from app.application.services import GenerationService, PlanService, ReplanService
 from app.core.config import get_settings
 from app.domain.models import User
-from app.domain.models.enums import Priority
+from app.domain.models.enums import GoalType, Priority
 from app.domain.scheduling.constants import DEFAULT_HORIZON_DAYS
 from app.schemas.common import ErrorResponse
 from app.schemas.plan import (
     AdjustRequest,
     AdjustResponse,
+    ClarificationQuestionRead,
+    ClarificationRead,
     ConfirmDraftRequest,
     ConfirmResponse,
     DecomposeRequest,
@@ -98,8 +100,12 @@ def _to_generation_request(user: User, payload: PlanGenerateRequest) -> Generati
                 task_type=goal.task_type,
                 start_date=goal.start_date,
                 task_kind=goal.task_kind,
+                planning_mode=goal.planning_mode,
+                recurrence_frequency=goal.recurrence_frequency,
+                recurrence_interval=goal.recurrence_interval,
                 daily_target_minutes=goal.daily_target_minutes,
                 recurrence_weekdays=goal.recurrence_weekdays,
+                clarifications=dict(goal.clarifications or {}),
                 target_amount=goal.target_amount,
                 target_unit=goal.target_unit,
             )
@@ -108,6 +114,8 @@ def _to_generation_request(user: User, payload: PlanGenerateRequest) -> Generati
         start_date=start,
         end_date=end,
         plan_title=payload.plan_title,
+        goal_set_id=payload.goal_set_id,
+        goal_set_name=payload.goal_set_name,
         preferences=overrides if has_overrides else None,
         profile=dict(payload.user_profile or {}),
         execution_weight=(
@@ -137,10 +145,15 @@ def _decompose_request(user: User, payload: DecomposeRequest) -> GenerationReque
                     datetime.combine(goal.deadline, time.min) if goal.deadline else None
                 ),
                 priority=Priority(goal.priority),
+                goal_type=goal.goal_type or GoalType.SHORT_TERM,
                 start_date=goal.start_date,
                 task_kind=goal.task_kind,
+                planning_mode=goal.planning_mode,
+                recurrence_frequency=goal.recurrence_frequency,
+                recurrence_interval=goal.recurrence_interval,
                 daily_target_minutes=goal.daily_target_minutes,
                 recurrence_weekdays=goal.recurrence_weekdays,
+                clarifications=dict(goal.clarifications or {}),
                 target_amount=goal.target_amount,
                 target_unit=goal.target_unit,
             )
@@ -149,6 +162,8 @@ def _decompose_request(user: User, payload: DecomposeRequest) -> GenerationReque
         start_date=start,
         end_date=end,
         plan_title=None,
+        goal_set_id=payload.goal_set_id,
+        goal_set_name=payload.goal_set_name,
         preferences=None,
         profile={},
         execution_weight=user.execution_weight,
@@ -174,11 +189,27 @@ def _job_accepted(job) -> JobAcceptedResponse:
 
 def preview_response_dict(result) -> dict:
     """JSON-able job result matching :class:`PreviewResponse`."""
+    clarification = None
+    if getattr(result, "clarification", None) is not None:
+        clarification = ClarificationRead(
+            status=result.clarification.status,
+            questions=[
+                ClarificationQuestionRead(
+                    goal_id=q.goal_id,
+                    field=q.field,
+                    question=q.question,
+                    required=q.required,
+                )
+                for q in result.clarification.questions
+            ],
+        )
     return PreviewResponse(
         thread_id=result.thread_id,
-        preview=preview_read(result.preview),
+        preview=preview_read(result.preview) if result.preview is not None else None,
+        clarification=clarification,
         plan_id=None,
         goals_persisted=result.goals_persisted,
+        goal_set_id=result.goal_set_id,
         degraded=result.degraded,
         warnings=result.warnings,
     ).model_dump(mode="json")

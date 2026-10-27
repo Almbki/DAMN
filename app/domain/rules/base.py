@@ -18,6 +18,7 @@ from typing import TYPE_CHECKING
 from pydantic import BaseModel, Field
 
 from app.domain.models.enums import ViolationSeverity
+from app.domain.recurrence import SeriesSpec
 from app.domain.scheduling.schedule_result import FixedEvent
 
 if TYPE_CHECKING:  # pragma: no cover
@@ -53,6 +54,8 @@ class RuleContext(BaseModel):
     daily_limit_minutes: int = Field(default=300, ge=1)
     buffer_minutes: int = Field(default=15, ge=0)
     high_cognitive_max_per_day: int = Field(default=2, ge=1)
+    #: HARD cap for one goal's total scheduled minutes on a single day.
+    max_daily_minutes_per_goal: int = Field(default=120, ge=1)
     # Hard cap of usable minutes per single day.
     available_minutes_per_day: int = Field(default=480, ge=1)
     day_start: time = time(8, 0)
@@ -62,6 +65,19 @@ class RuleContext(BaseModel):
     not_before: dict[date, time] = Field(default_factory=dict)
     #: User-local date. None keeps the legacy server-date behaviour for tests.
     today: date | None = None
+    #: Soft time-window preferences (Level 2 or explicit profile), keyed by
+    #: cognitive load (``high``/``medium``/``low``/``restorative``) with a
+    #: TimeOfDay value (``morning``/``afternoon``/``evening``/``night``) or an
+    #: explicit ``HH:MM-HH:MM`` window. Never a hard constraint.
+    preferred_time_slots: dict[str, str] = Field(default_factory=dict)
+    #: Explicit planning horizon. When set, the scheduler uses it instead of
+    #: ``today + DEFAULT_HORIZON_DAYS`` (still extended by task deadlines).
+    schedule_start: date | None = None
+    schedule_end: date | None = None
+    #: Deterministic recurrence metadata, keyed by series id.
+    series_specs: dict[str, SeriesSpec] = Field(default_factory=dict)
+    #: Every materialized occurrence date per series (scheduled or not).
+    series_occurrences: dict[str, set[date]] = Field(default_factory=dict)
     # task_id -> normalised subject tag (e.g. "math", "algorithm").
     task_subjects: dict[int, str] = Field(default_factory=dict)
     # task_id -> hard deadline (exclusive upper bound: cannot be scheduled after).
@@ -152,6 +168,8 @@ def default_rules() -> list[Rule]:
     from app.domain.rules.deadline import DeadlineRule
     from app.domain.rules.earliest_start import EarliestStartRule
     from app.domain.rules.fixed_event_overlap import FixedEventOverlapRule
+    from app.domain.rules.goal_daily_capacity import GoalDailyCapacityRule
+    from app.domain.rules.recurrence_consistency import RecurrenceConsistencyRule
     from app.domain.rules.same_day_conflict import SameDayConflictRule
 
     return [
@@ -159,9 +177,11 @@ def default_rules() -> list[Rule]:
         SameDayConflictRule(),
         DailyLimitRule(),
         AvailableTimeRule(),
+        GoalDailyCapacityRule(),
         BufferTimeRule(),
         DeadlineRule(),
         EarliestStartRule(),
         CompletedTaskRule(),
         FixedEventOverlapRule(),
+        RecurrenceConsistencyRule(),
     ]

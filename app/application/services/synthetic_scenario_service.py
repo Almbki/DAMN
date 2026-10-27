@@ -23,7 +23,7 @@ from app.application.dto.synthetic import (
     SyntheticScenarioInfo,
     SyntheticStatus,
 )
-from app.application.exceptions import DomainValidationError, NotFoundError
+from app.application.exceptions import ConflictError, DomainValidationError, NotFoundError
 from app.application.services.model_runtime import get_user_model_runtime
 from app.application.services.user_model_service import UserModelService
 from app.core.config import get_settings
@@ -71,6 +71,22 @@ class SyntheticScenarioService:
         if not self.enabled:
             raise NotFoundError("synthetic import is disabled")
 
+    def _reject_showcase(self, user_id: int) -> None:
+        """Protect the curated showcase account from synthetic reset/import.
+
+        The showcase dataset is deliberately marked synthetic, so the normal
+        developer reset would delete its plans, tasks, feedback and Level 2
+        state. Rebuild it only through ``scripts/seed_showcase_account.py``.
+        """
+        user = self._users.get_by_id(user_id)
+        if user is None:
+            raise NotFoundError("user not found")
+        if (user.profile or {}).get("showcase_seed"):
+            raise ConflictError(
+                "showcase demo account data is protected; "
+                "rebuild it with scripts/seed_showcase_account.py"
+            )
+
     def list_scenarios(self) -> list[SyntheticScenarioInfo]:
         self.require_enabled()
         result: list[SyntheticScenarioInfo] = []
@@ -110,7 +126,7 @@ class SyntheticScenarioService:
         scenario: SyntheticScenario | None = None,
     ) -> SyntheticImportSummary:
         self.require_enabled()
-        self._require_user(user_id)
+        self._reject_showcase(user_id)
         resolved = self._resolve_scenario(scenario_name, scenario)
         days = sorted(resolved.days, key=lambda day: day.date)
         if not days:
@@ -271,7 +287,7 @@ class SyntheticScenarioService:
 
     def reset(self, user_id: int) -> SyntheticResetSummary:
         self.require_enabled()
-        self._require_user(user_id)
+        self._reject_showcase(user_id)
         try:
             deleted = self._synthetic.delete_for_user(user_id)
             self._session.flush()

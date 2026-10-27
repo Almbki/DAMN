@@ -9,6 +9,8 @@ export interface SchedulingPreferences {
   dailyLimitMinutes: number;
   bufferMinutes: number;
   highCognitiveMaxPerDay: number;
+  /** HARD cap for one goal's total scheduled minutes on one day. */
+  maxDailyMinutesPerGoal: number;
   /** Local clock, `HH:MM`. */
   sleepStart: string;
   sleepEnd: string;
@@ -23,6 +25,7 @@ export const DEFAULT_PREFERENCES: SchedulingPreferences = {
   dailyLimitMinutes: 300,
   bufferMinutes: 15,
   highCognitiveMaxPerDay: 2,
+  maxDailyMinutesPerGoal: 120,
   sleepStart: '23:30',
   sleepEnd: '07:30',
   feedbackTime: null,

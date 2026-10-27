@@ -5,6 +5,7 @@ from app.domain.models.agent_run import AgentRun
 from app.domain.models.base import DomainModel, utcnow
 from app.domain.models.enums import (
     CognitiveLoad,
+    GoalSetStatus,
     GoalStatus,
     GoalType,
     LoadLevel,
@@ -20,6 +21,7 @@ from app.domain.models.execution import TaskExecution
 from app.domain.models.feedback import Feedback
 from app.domain.models.generation_job import GenerationJobRecord
 from app.domain.models.goal import Goal
+from app.domain.models.goal_set import GoalSet
 from app.domain.models.plan import Plan
 from app.domain.models.prediction_log import PredictionLog
 from app.domain.models.replan_event import ReplanEvent
@@ -37,6 +39,8 @@ __all__ = [
     "Feedback",
     "GenerationJobRecord",
     "Goal",
+    "GoalSet",
+    "GoalSetStatus",
     "GoalStatus",
     "GoalType",
     "LoadLevel",

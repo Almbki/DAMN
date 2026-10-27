@@ -6,15 +6,19 @@ lives in exactly one place.
 
 from __future__ import annotations
 
-from datetime import date, datetime, time
+from datetime import date, datetime, time, timedelta
 from zoneinfo import ZoneInfo
 
 from app.agent.context import PlanningContext, UserPreferences
+from app.agent.goal_identity import goal_index_for_ref
 from app.agent.schemas import GeneratedTaskDraft
 from app.agent.state import PlannerContext, PlannerState
 from app.domain.models import Task
 from app.domain.models.enums import TaskStatus
+from app.domain.recurrence import SeriesSpec
 from app.domain.rules.base import RuleContext
+from app.domain.scheduling.constants import DEFAULT_HORIZON_DAYS
+from app.domain.scheduling.schedule_result import FixedEvent
 
 DEFAULT_CONFLICTING_SUBJECTS: list[tuple[str, str]] = [("math", "algorithm")]
 
@@ -167,6 +171,15 @@ def build_rule_context(
     """
     preferences = resolve_preferences(state)
     drafts = drafts if drafts is not None else current_drafts(state)
+    request = state.get("request")
+    goals = list(state.get("goals") or [])
+    # 1-based goal index -> the goal's own start date (recurring/project tasks
+    # must never be pulled before the goal starts).
+    goal_starts = {
+        index: goal.start_date
+        for index, goal in enumerate(goals, start=1)
+        if goal.start_date is not None
+    }
 
     task_subjects: dict[int, str] = {}
     task_deadlines: dict[int, date] = {}
@@ -177,10 +190,33 @@ def build_rule_context(
             task_subjects[task_id] = draft.subject
         if draft.deadline is not None:
             task_deadlines[task_id] = draft.deadline.date()
+        elif draft.occurrence_date is not None:
+            # Recurring occurrences are day-locked even when a carried draft
+            # (micro-adjust / replan snapshot) did not retain ``deadline``.
+            task_deadlines[task_id] = draft.occurrence_date
         if draft.occurrence_date is not None:
             task_earliest_dates[task_id] = draft.occurrence_date
+        elif draft.earliest_start_date is not None:
+            task_earliest_dates[task_id] = draft.earliest_start_date
+        elif draft.goal_id is not None:
+            index = goal_index_for_ref(draft.goal_id, goals)
+            if index is not None and index in goal_starts:
+                task_earliest_dates[task_id] = goal_starts[index]
 
-    request = state.get("request")
+    # Series metadata is produced deterministically by the plan drafter.
+    series_specs: dict[str, SeriesSpec] = {}
+    plan_draft = state.get("plan_draft")
+    if plan_draft is not None:
+        series_specs = {
+            spec.series_id: spec
+            for spec in getattr(plan_draft, "series_specs", []) or []
+        }
+    series_occurrences: dict[str, set[date]] = {}
+    for draft in drafts:
+        if draft.series_id and draft.occurrence_date is not None:
+            series_occurrences.setdefault(draft.series_id, set()).add(
+                draft.occurrence_date
+            )
     tz_name = getattr(request, "timezone", None) if request is not None else None
     try:
         tz = ZoneInfo(tz_name) if tz_name else None
@@ -203,14 +239,64 @@ def build_rule_context(
             if task.status == TaskStatus.COMPLETED
         }
 
+    fixed_events = list(context.fixed_events) if context is not None else []
+    # Adding goals to an existing active plan: keep old scheduled tasks as
+    # immovable busy intervals so the new preview cannot overlap them.
+    if (
+        request is not None
+        and getattr(request, "plan_id", None) is None
+        and plan is not None
+    ):
+        for task in plan.tasks:
+            if (
+                task.status in {TaskStatus.COMPLETED, TaskStatus.SKIPPED}
+                or task.scheduled_date is None
+                or task.start_time is None
+                or task.end_time is None
+            ):
+                continue
+            fixed_events.append(
+                FixedEvent(
+                    date=task.scheduled_date,
+                    start_time=task.start_time,
+                    end_time=task.end_time,
+                    title=task.title,
+                )
+            )
+
+    # Explicit planning horizon: the request window extended by every goal end
+    # and task occurrence. The scheduler must not silently stop at today + 13.
+    schedule_start = request.start_date if request is not None else local_today
+    schedule_end = (
+        request.end_date
+        if request is not None
+        else local_today + timedelta(days=DEFAULT_HORIZON_DAYS)
+    )
+    for goal in goals:
+        if goal.start_date is not None and goal.start_date < schedule_start:
+            schedule_start = goal.start_date
+        if goal.deadline is not None:
+            schedule_end = max(schedule_end, goal.deadline.date())
+    for draft in drafts:
+        if draft.occurrence_date is not None:
+            schedule_end = max(schedule_end, draft.occurrence_date)
+        if draft.deadline is not None:
+            schedule_end = max(schedule_end, draft.deadline.date())
+
     return RuleContext(
-        fixed_events=list(context.fixed_events) if context is not None else [],
+        fixed_events=fixed_events,
+        schedule_start=schedule_start,
+        schedule_end=schedule_end,
+        series_specs=series_specs,
+        series_occurrences=series_occurrences,
         daily_limit_minutes=preferences.daily_limit_minutes,
         buffer_minutes=preferences.buffer_minutes,
         high_cognitive_max_per_day=preferences.high_cognitive_max_per_day,
+        max_daily_minutes_per_goal=preferences.max_daily_minutes_per_goal,
         available_minutes_per_day=preferences.available_minutes_per_day,
         day_start=preferences.day_start,
         day_end=preferences.day_end,
+        preferred_time_slots=dict(preferences.preferred_time_slots),
         # A plan confirmed at 15:10 must not put tasks at 08:00 today. Use the
         # client's timezone so the server locale cannot shift "today".
         not_before={

@@ -120,6 +120,7 @@ def test_default_rules_has_seven_constraints() -> None:
         "same_day_conflict",
         "daily_limit",
         "available_time",
+        "goal_daily_capacity",
         "buffer_time",
         "deadline",
         "completed_task_rescheduled",

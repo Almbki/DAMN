@@ -84,6 +84,13 @@ class Task(Base):
     occurrence_date: Mapped[date | None] = mapped_column(Date, nullable=True)
     target_amount: Mapped[int | None] = mapped_column(Integer, nullable=True)
     target_unit: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    #: Cross-version semantic work-unit identity (stable across plan versions).
+    work_unit_key: Mapped[str | None] = mapped_column(String(128), nullable=True, index=True)
+    #: Execution chunk order inside its work unit (None for non-chunk tasks).
+    chunk_index: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    #: Final deterministic scheduling failure (only for unscheduled tasks).
+    scheduling_reason: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    scheduling_detail: Mapped[str | None] = mapped_column(String(255), nullable=True)
     order_index: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     # Soft delete: rows stay so TaskExecution / TaskStandard (ML data) survive.
     deleted_at: Mapped[datetime | None] = mapped_column(

@@ -193,3 +193,26 @@ def test_insights(client: TestClient, auth_headers: dict) -> None:
 
 def test_plan_requires_auth(client: TestClient) -> None:
     assert client.get("/api/v1/plans").status_code == 401
+
+
+def test_adding_a_goal_keeps_existing_plan_tasks(
+    client: TestClient, auth_headers: dict
+) -> None:
+    first = generate_and_wait(
+        client,
+        auth_headers,
+        {"goals": [{"title": "first goal", "priority": 2}]},
+    )
+    first_plan_id = first["plan_id"]
+    first_task_ids = {task["id"] for task in first["plan"]["tasks"]}
+    assert first_task_ids
+
+    second = generate_and_wait(
+        client,
+        auth_headers,
+        {"goals": [{"title": "second goal", "priority": 2}]},
+    )
+    assert second["plan_id"] == first_plan_id
+    second_ids = {task["id"] for task in second["plan"]["tasks"]}
+    assert first_task_ids <= second_ids
+    assert len(second_ids) > len(first_task_ids)

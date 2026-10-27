@@ -11,6 +11,7 @@ from app.infrastructure.database.models.execution import TaskExecution
 from app.infrastructure.database.models.feedback import Feedback
 from app.infrastructure.database.models.generation_job import GenerationJobModel
 from app.infrastructure.database.models.goal import Goal
+from app.infrastructure.database.models.goal_set import GoalSet
 from app.infrastructure.database.models.plan import Plan
 from app.infrastructure.database.models.prediction_log import PredictionLog
 from app.infrastructure.database.models.replan_event import ReplanEvent
@@ -28,6 +29,7 @@ __all__ = [
     "Feedback",
     "GenerationJobModel",
     "Goal",
+    "GoalSet",
     "Plan",
     "PredictionLog",
     "ReplanEvent",

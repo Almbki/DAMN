@@ -16,12 +16,14 @@ from __future__ import annotations
 
 from typing import Any
 
-#: The four caps the contract exposes, with their defaults.
+#: The per-user scheduling caps exposed by the contract, with their defaults.
 NUMERIC_DEFAULTS: dict[str, int] = {
     "available_minutes_per_day": 480,
     "daily_limit_minutes": 300,
     "buffer_minutes": 15,
     "high_cognitive_max_per_day": 2,
+    #: Hard cap for one goal's total scheduled minutes on a single day.
+    "max_daily_minutes_per_goal": 120,
 }
 
 #: UI-only sleep window ("HH:MM"); the scheduler does not consume these yet.

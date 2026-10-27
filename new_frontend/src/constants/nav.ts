@@ -32,6 +32,7 @@ export const ROUTES: Record<string, RouteMeta> = {
   '/profile': { title: '画像', navHref: '/profile' },
   '/goal': { title: '目标', navHref: '/goal', selfScroll: true },
   '/settings': { title: '设置', navHref: '/settings' },
+  '/goal-sets': { title: '目标集', navHref: '/goal', back: true, selfScroll: true },
   '/profile-details': { title: '基础档案', navHref: '/profile', back: true },
   '/assessment': { title: '初始画像', navHref: '/profile', back: true },
   '/developer': { title: '模型运行时', navHref: '/settings', back: true },

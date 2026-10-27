@@ -15,6 +15,7 @@ from app.application.services import (
     FeedbackService,
     GenerationService,
     GoalService,
+    GoalSetService,
     InsightService,
     PlanService,
     ProfileService,
@@ -105,6 +106,10 @@ def get_insight_service(db: Session = Depends(get_db)) -> InsightService:
 
 def get_goal_service(db: Session = Depends(get_db)) -> GoalService:
     return GoalService(db)
+
+
+def get_goal_set_service(db: Session = Depends(get_db)) -> GoalSetService:
+    return GoalSetService(db)
 
 
 def get_situation_service(db: Session = Depends(get_db)) -> SituationService:

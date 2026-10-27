@@ -32,6 +32,7 @@ def test_preferences_defaults_then_roundtrip(client: TestClient, auth_headers: d
         "daily_limit_minutes": 300,
         "buffer_minutes": 15,
         "high_cognitive_max_per_day": 2,
+        "max_daily_minutes_per_goal": 120,
         "sleep_start": None,
         "sleep_end": None,
         "feedback_time": None,
@@ -45,6 +46,7 @@ def test_preferences_defaults_then_roundtrip(client: TestClient, auth_headers: d
             "daily_limit_minutes": 120,
             "buffer_minutes": 20,
             "high_cognitive_max_per_day": 1,
+            "max_daily_minutes_per_goal": 90,
             "sleep_start": "23:30",
             "sleep_end": "07:00",
             "feedback_time": "20:15",
@@ -54,11 +56,13 @@ def test_preferences_defaults_then_roundtrip(client: TestClient, auth_headers: d
     )
     assert updated.status_code == 200, updated.text
     assert updated.json()["daily_limit_minutes"] == 120
+    assert updated.json()["max_daily_minutes_per_goal"] == 90
     assert updated.json()["feedback_time"] == "20:15"
     assert updated.json()["feedback_enabled"] is True
 
     reread = client.get("/api/v1/users/me/preferences", headers=auth_headers)
     assert reread.json()["daily_limit_minutes"] == 120
+    assert reread.json()["max_daily_minutes_per_goal"] == 90
     assert reread.json()["sleep_start"] == "23:30"
     assert reread.json()["feedback_time"] == "20:15"
     assert reread.json()["feedback_enabled"] is True
@@ -133,7 +137,7 @@ def _dated_minutes(plan: dict) -> dict[str, int]:
 def test_generate_falls_back_to_stored_preferences(
     client: TestClient, auth_headers: dict
 ) -> None:
-    """A 60-minute day cannot host a 120-minute task -> it stays unscheduled."""
+    """Stored 60-minute/day cap is respected; the 120-minute task is chunked."""
     client.put(
         "/api/v1/users/me/preferences",
         json={
@@ -148,7 +152,10 @@ def test_generate_falls_back_to_stored_preferences(
         client, auth_headers, {"goals": _ONE_GOAL}
     )
     plan = generated["plan"]
-    assert _dated_minutes(plan) == {}
+    totals = _dated_minutes(plan)
+    assert totals, "a 120-minute task should be chunked, not dropped"
+    assert max(totals.values()) <= 60
+    assert sum(totals.values()) == 120
 
 
 def test_generate_request_overrides_stored_preferences(

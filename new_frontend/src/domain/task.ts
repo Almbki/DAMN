@@ -12,14 +12,40 @@ export type RepeatFreq = 'none' | 'daily' | 'weekly' | 'monthly' | 'custom';
 export type RepeatEnd = 'never' | 'until' | 'count';
 export type CognitiveLoad = 'low' | 'medium' | 'high';
 
-/** Mirrors the backend `TaskKind` (how a goal/task repeats over time). */
+/** Mirrors the backend `TaskKind` (how a task *instance* behaves). */
 export type TaskKind = 'one_off' | 'long_term' | 'routine';
+
+/** Product-level four-way goal planning mode (backend `PlanningMode`). */
+export type PlanningMode = 'one_off' | 'recurring' | 'project' | 'project_recurring';
+export type RecurrenceFrequency = 'daily' | 'weekly';
 
 export const TASK_KIND_LABEL: Record<TaskKind, string> = {
   one_off: '一次性',
   long_term: '长期',
   routine: '常规',
 };
+
+export const PLANNING_MODE_LABEL: Record<PlanningMode, string> = {
+  one_off: '一次性',
+  recurring: '重复习惯',
+  project: '项目/课程',
+  project_recurring: '项目 + 节奏',
+};
+
+/** Legacy fallback only: new payloads carry `planning_mode` explicitly. */
+export function planningModeFromTaskKind(
+  kind: TaskKind | null | undefined,
+): PlanningMode {
+  if (kind === 'routine' || kind === 'long_term') return 'recurring';
+  return 'one_off';
+}
+
+/** Legacy field kept in sync for older backend paths. */
+export function taskKindFromPlanningMode(mode: PlanningMode): TaskKind {
+  if (mode === 'one_off') return 'one_off';
+  if (mode === 'recurring') return 'routine';
+  return 'long_term';
+}
 
 /** Backend goal types use different names than task kinds. */
 export function taskKindFromGoalType(goalType: string | null | undefined): TaskKind {
@@ -176,4 +202,36 @@ export function toApiStatus(task: Task): string {
 
 export function isClosed(task: Task): boolean {
   return task.done || task.skipped;
+}
+
+/**
+ * A task belongs to a repeating series when the backend tagged it with a
+ * `series_id`, or when its kind is anything other than one-off (legacy rows
+ * that predate `series_id`).
+ */
+export function isRecurringSeriesTask(
+  task: Pick<Task, 'seriesId' | 'taskKind'>,
+): boolean {
+  return task.seriesId != null || task.taskKind !== 'one_off';
+}
+
+/**
+ * Every task that shares a series with `task`. The backend's `series_id` is the
+ * identity; legacy rows without one fall back to the same goal + task kind.
+ * A non-series task resolves to itself.
+ */
+export function seriesTasks(
+  tasks: Task[],
+  task: Pick<Task, 'id' | 'seriesId' | 'taskKind' | 'goalId'>,
+): Task[] {
+  if (!isRecurringSeriesTask(task)) return tasks.filter((item) => item.id === task.id);
+  if (task.seriesId != null) {
+    return tasks.filter((item) => item.seriesId === task.seriesId);
+  }
+  if (task.goalId != null) {
+    return tasks.filter(
+      (item) => item.goalId === task.goalId && item.taskKind === task.taskKind,
+    );
+  }
+  return tasks.filter((item) => item.id === task.id);
 }

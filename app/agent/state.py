@@ -30,6 +30,7 @@ from pydantic import BaseModel, Field
 from app.agent.context import ContextBuilderProtocol, CurrentPlanSnapshot, PlanningContext
 from app.agent.schemas import (
     AgentError,
+    ClarificationRequest,
     FinalPlanPayload,
     GoalAnalysisResult,
     PlanGenerationResult,
@@ -41,7 +42,8 @@ from app.agent.schemas import (
     UserSituationResult,
 )
 from app.domain.feedback.models import AdjustmentDecision, AdjustmentRoute
-from app.domain.models.enums import GoalType, Priority, TaskKind
+from app.domain.models.enums import GoalType, PlanningMode, Priority, TaskKind
+from app.domain.recurrence import RecurrenceFrequency
 from app.domain.rules.base import RuleEngine, RuleViolation
 from app.domain.scheduling.schedule_result import CandidateSchedule
 from app.domain.scheduling.scheduler import Scheduler
@@ -112,6 +114,8 @@ class GoalInput(BaseModel):
 
     title: str
     description: str | None = None
+    #: Persisted goal id when this input came from an existing plan.
+    existing_goal_id: int | None = None
     goal_type: GoalType = GoalType.SHORT_TERM
     deadline: datetime | None = None
     priority: Priority = Priority.MEDIUM
@@ -121,8 +125,15 @@ class GoalInput(BaseModel):
     # Repetition contract (all optional: omission keeps the one-off default).
     start_date: date | None = None
     task_kind: TaskKind | None = None
+    # Product-level mode (4 values). None -> derive from legacy fields.
+    planning_mode: PlanningMode | None = None
+    recurrence_frequency: RecurrenceFrequency | None = None
+    recurrence_interval: int | None = Field(default=None, ge=1)
     daily_target_minutes: int | None = Field(default=None, ge=1)
     recurrence_weekdays: list[int] | None = None
+    #: User answers to a previous clarification request (never concatenated into
+    #: title/description; kept as separate provenance).
+    clarifications: dict[str, str] = Field(default_factory=dict)
     target_amount: int | None = Field(default=None, ge=0)
     target_unit: str | None = None
 
@@ -164,6 +175,10 @@ class PlannerRequest(BaseModel):
     #: `full_replan`). When present, the graph must not re-derive a different one.
     feedback_route: str | None = None
     plan_title: str | None = None
+    #: Goal set (目标集) to attach newly persisted goals to. When omitted the
+    #: service resolves/creates a set from ``goal_set_name`` / ``plan_title``.
+    goal_set_id: int | None = None
+    goal_set_name: str | None = None
     start_date: date
     end_date: date
     timezone: str | None = None
@@ -218,6 +233,9 @@ class PlannerState(TypedDict, total=False):
 
     # --- analysis ---
     goal_analysis: GoalAnalysisResult
+    #: Set by the deterministic gate after goal_analysis; if present the graph
+    #: ends before theoretical_analysis / plan_generation.
+    clarification: ClarificationRequest | None
     theoretical_analysis: TheoreticalAnalysisResult
     user_situation: UserSituationResult
 

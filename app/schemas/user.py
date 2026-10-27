@@ -54,6 +54,8 @@ class SchedulingPreferences(BaseModel):
     daily_limit_minutes: int = Field(default=300, ge=30, le=1440)
     buffer_minutes: int = Field(default=15, ge=0, le=120)
     high_cognitive_max_per_day: int = Field(default=2, ge=1, le=10)
+    #: HARD cap for one goal's total scheduled minutes on one day.
+    max_daily_minutes_per_goal: int = Field(default=120, ge=15, le=600)
     sleep_start: str | None = Field(default=None, examples=["23:30"])
     sleep_end: str | None = Field(default=None, examples=["07:00"])
     #: Daily feedback reminder ("HH:MM", 24h). ``None`` = no reminder time set.

@@ -53,7 +53,12 @@ from app.agent.nodes import (
     theoretical_analysis_node,
     user_situation_analysis_node,
 )
-from app.agent.router import route_after_adjustment, route_after_preview, should_repair
+from app.agent.router import (
+    route_after_adjustment,
+    route_after_goal_analysis,
+    route_after_preview,
+    should_repair,
+)
 from app.agent.schemas import PreviewPayload, RequestIntent
 from app.agent.state import PlannerContext, PlannerRequest, PlannerState
 
@@ -107,9 +112,27 @@ def _require_langgraph():
     return START, END, StateGraph
 
 
-def _add_generation_chain(builder, *, exit_node: str) -> None:
-    """Add the shared analysis -> generation -> validation chain."""
-    builder.add_edge("goal_analysis", "theoretical_analysis")
+def _add_generation_chain(
+    builder,
+    *,
+    exit_node: str,
+    end_node: Any = None,
+    clarification_gate: bool = False,
+) -> None:
+    """Add the shared analysis -> generation -> validation chain.
+
+    ``clarification_gate`` enables the request-level atomic gate for the
+    initial preview: any ``needs_clarification`` goal ends the graph before
+    theoretical_analysis / plan_generation.
+    """
+    if clarification_gate:
+        builder.add_conditional_edges(
+            "goal_analysis",
+            route_after_goal_analysis,
+            {"clarify": end_node, "continue": "theoretical_analysis"},
+        )
+    else:
+        builder.add_edge("goal_analysis", "theoretical_analysis")
     builder.add_edge("theoretical_analysis", "user_situation_analysis")
     builder.add_edge("user_situation_analysis", "plan_generation")
     builder.add_edge("plan_generation", "rule_validation")
@@ -140,7 +163,12 @@ def build_initial_plan_graph(checkpointer: Any):
 
     builder.add_edge(START, "load_context")
     builder.add_edge("load_context", "goal_analysis")
-    _add_generation_chain(builder, exit_node="preview")
+    _add_generation_chain(
+        builder,
+        exit_node="preview",
+        end_node=END,
+        clarification_gate=True,
+    )
     builder.add_conditional_edges(
         "preview",
         route_after_preview,
@@ -247,11 +275,19 @@ class PlannerRuntime:
         user_adjustment: str | None = None,
     ) -> PlannerState:
         config = self.context.config
+        # Every workflow must carry the same explicit index -> persisted-id
+        # contract. Initial planning receives it from the persisted goals;
+        # FULL_REPLAN rebuilds it from the request's existing goals so draft
+        # indices can still be mapped back to real ids at persistence time.
+        if goal_id_map is None:
+            from app.agent.goal_identity import goal_id_map_for
+
+            goal_id_map = goal_id_map_for(request.goals)
         return {
             "request": request,
             "user_id": request.user_id,
             "goals": list(request.goals),
-            "goal_id_map": dict(goal_id_map or {}),
+            "goal_id_map": dict(goal_id_map),
             "workflow": workflow,
             "run_id": run_id,
             "thread_id": thread_id,

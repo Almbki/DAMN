@@ -15,6 +15,7 @@ import type { PlanChange } from '@/domain/plan-change';
 import type { Situation, SituationPoint } from '@/domain/situation';
 import {
   NO_REPEAT,
+  planningModeFromTaskKind,
   type CognitiveLoad,
   type Task,
   type TaskStandard,
@@ -196,6 +197,10 @@ export function pendingTaskFromGoal(goal: GoalDetailRead): PendingTask {
     dueDate: goal.deadline ? goal.deadline.slice(0, 10) : null,
     notes: goal.description ?? '',
     taskKind: goal.task_kind ?? 'one_off',
+    planningMode:
+      goal.planning_mode ?? planningModeFromTaskKind(goal.task_kind),
+    recurrenceFrequency: goal.recurrence_frequency ?? null,
+    recurrenceInterval: goal.recurrence_interval ?? null,
     startDate: goal.start_date ? goal.start_date.slice(0, 10) : null,
     dailyTargetMinutes: goal.daily_target_minutes ?? null,
     recurrenceWeekdays: goal.recurrence_weekdays ?? null,
@@ -223,6 +228,9 @@ export function goalFromApi(raw: GoalRead): Goal {
     priority: Math.min(3, Math.max(1, raw.priority ?? 2)),
     createdAt: '',
     taskKind: raw.task_kind ?? 'one_off',
+    planningMode: raw.planning_mode ?? planningModeFromTaskKind(raw.task_kind),
+    recurrenceFrequency: raw.recurrence_frequency ?? null,
+    recurrenceInterval: raw.recurrence_interval ?? null,
     startDate: raw.start_date ? raw.start_date.slice(0, 10) : null,
     dailyTargetMinutes: raw.daily_target_minutes ?? null,
     recurrenceWeekdays: raw.recurrence_weekdays ?? null,

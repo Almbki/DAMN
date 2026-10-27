@@ -11,8 +11,12 @@ export type TaskStatus =
   | 'skipped'
   | 'failed';
 
-/** Backend `TaskKind`: how a goal/task repeats over time. */
+/** Backend `TaskKind`: how a task instance behaves. */
 export type TaskKind = 'one_off' | 'long_term' | 'routine';
+
+/** Backend `PlanningMode`: the four product-level goal types. */
+export type PlanningMode = 'one_off' | 'recurring' | 'project' | 'project_recurring';
+export type RecurrenceFrequency = 'daily' | 'weekly';
 
 /** Backend feedback policy route. */
 export type ReplanDecision = 'none' | 'micro_adjust' | 'full_replan';
@@ -59,6 +63,13 @@ export interface TaskRead {
   occurrence_date?: string | null;
   target_amount?: number | null;
   target_unit?: string | null;
+  work_unit_key?: string | null;
+  chunk_index?: number | null;
+  scheduling_reason?: string | null;
+  scheduling_detail?: string | null;
+  chunk_count?: number;
+  completed_chunks?: number;
+  work_unit_completed?: boolean;
   order_index: number;
   standards: StandardRead[];
 }
@@ -74,6 +85,9 @@ export interface GoalRead {
   estimated_minutes: number | null;
   start_date?: string | null;
   task_kind?: TaskKind | null;
+  planning_mode?: PlanningMode | null;
+  recurrence_frequency?: RecurrenceFrequency | null;
+  recurrence_interval?: number | null;
   daily_target_minutes?: number | null;
   recurrence_weekdays?: number[] | null;
   target_amount?: number | null;
@@ -444,10 +458,14 @@ export interface GoalCreate {
   task_type?: string | null;
   start_date?: string | null;
   task_kind?: TaskKind | null;
+  planning_mode?: PlanningMode | null;
+  recurrence_frequency?: RecurrenceFrequency | null;
+  recurrence_interval?: number | null;
   daily_target_minutes?: number | null;
   recurrence_weekdays?: number[] | null;
   target_amount?: number | null;
   target_unit?: string | null;
+  clarifications?: Record<string, string>;
 }
 
 /** Body for `POST /goals` (backend `GoalCreate`). */
@@ -462,6 +480,9 @@ export interface GoalCreateRequest {
   task_type?: string | null;
   start_date?: string | null;
   task_kind?: TaskKind | null;
+  planning_mode?: PlanningMode | null;
+  recurrence_frequency?: RecurrenceFrequency | null;
+  recurrence_interval?: number | null;
   daily_target_minutes?: number | null;
   recurrence_weekdays?: number[] | null;
   target_amount?: number | null;
@@ -482,6 +503,9 @@ export interface UpdateGoalRequest {
   task_type?: string | null;
   start_date?: string | null;
   task_kind?: TaskKind | null;
+  planning_mode?: PlanningMode | null;
+  recurrence_frequency?: RecurrenceFrequency | null;
+  recurrence_interval?: number | null;
   daily_target_minutes?: number | null;
   recurrence_weekdays?: number[] | null;
   target_amount?: number | null;
@@ -500,6 +524,9 @@ export interface PlanGenerateRequest {
   user_profile?: Record<string, unknown>;
   execution_weight?: number | null;
   timezone?: string | null;
+  /** Optional group of existing goals to generate from. */
+  goal_set_id?: number | null;
+  goal_set_name?: string | null;
 }
 
 /** Per-task reason attached to a daily feedback submission. */
@@ -608,11 +635,78 @@ export interface GoalDetailRead {
   estimated_minutes: number | null;
   start_date?: string | null;
   task_kind?: TaskKind | null;
+  planning_mode?: PlanningMode | null;
+  recurrence_frequency?: RecurrenceFrequency | null;
+  recurrence_interval?: number | null;
   daily_target_minutes?: number | null;
   recurrence_weekdays?: number[] | null;
   target_amount?: number | null;
   target_unit?: string | null;
+  /** Owning goal set, or null when the goal is ungrouped. */
+  goal_set_id: number | null;
   created_at: string;
+}
+
+export type GoalSetStatus = 'active' | 'archived';
+
+export interface GoalSetRead {
+  id: number;
+  user_id: number;
+  name: string;
+  description: string | null;
+  status: GoalSetStatus;
+  archived_at: string | null;
+  created_at: string;
+  goal_count: number;
+  incomplete_goal_count: number;
+}
+
+/** `GET /goal-sets/{id}`: the set plus its goals. */
+export interface GoalSetDetailRead extends GoalSetRead {
+  goals: GoalDetailRead[];
+}
+
+export interface GoalSetCreateRequest {
+  name: string;
+  description?: string | null;
+}
+
+export interface GoalSetUpdateRequest {
+  name?: string;
+  description?: string | null;
+}
+
+/** `POST /goal-sets/{id}/archive`. */
+export interface GoalSetArchiveImpact {
+  goal_set_id: number;
+  archived_goals: number;
+  removed_tasks: number;
+  preserved_completed_tasks: number;
+}
+
+/** `POST /goal-sets/{id}/restore`. */
+export interface GoalSetRestoreImpact {
+  restored_goals: number;
+  restored_tasks: number;
+}
+
+/** `POST /goal-sets/{id}/goals`. */
+export interface GoalSetAttachResponse {
+  attached_goals: number;
+}
+
+/**
+ * Lifecycle impact for one goal (`POST /goals/{id}/archive|restore`). The
+ * backend returns the same family of counters as the set-level endpoints; the
+ * optional shape keeps this tolerant of either response variant.
+ */
+export interface GoalLifecycleImpact {
+  goal_id?: number;
+  archived_goals?: number;
+  restored_goals?: number;
+  removed_tasks?: number;
+  restored_tasks?: number;
+  preserved_completed_tasks?: number;
 }
 
 export interface SituationTrendPoint {
@@ -655,6 +749,7 @@ export interface SchedulingPreferences {
   daily_limit_minutes: number;
   buffer_minutes: number;
   high_cognitive_max_per_day: number;
+  max_daily_minutes_per_goal?: number;
   sleep_start?: string | null;
   sleep_end?: string | null;
   /** Local `HH:MM` at which the daily feedback reminder fires. */
@@ -685,6 +780,11 @@ export interface PreviewTaskRead {
   occurrence_date?: string | null;
   target_amount?: number | null;
   target_unit?: string | null;
+  work_unit_key?: string | null;
+  parent_key?: string | null;
+  chunk_index?: number | null;
+  scheduling_reason?: string | null;
+  scheduling_detail?: string | null;
 }
 
 export interface PreviewViolationRead {
@@ -707,9 +807,22 @@ export interface PreviewRead {
   violations: PreviewViolationRead[];
 }
 
+export interface ClarificationQuestionRead {
+  goal_id: number;
+  field: string;
+  question: string;
+  required: boolean;
+}
+
+export interface ClarificationRead {
+  status: 'needs_clarification';
+  questions: ClarificationQuestionRead[];
+}
+
 export interface PreviewResponse {
   thread_id: string;
-  preview: PreviewRead;
+  preview: PreviewRead | null;
+  clarification?: ClarificationRead | null;
   plan_id: number | null;
   goals_persisted: number;
   degraded: boolean;

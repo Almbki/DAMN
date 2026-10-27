@@ -1,0 +1,217 @@
+{
+  "email": "smoke_1793012839@example.com",
+  "started_at": "2026-10-26T19:07:19",
+  "health": {
+    "status": 200,
+    "body": {
+      "status": "ok",
+      "app": "DAMN",
+      "version": "0.1.0",
+      "environment": "development"
+    }
+  },
+  "register": {
+    "status": 201,
+    "body": "{\"id\":23,\"email\":\"smoke_1793012839@example.com\",\"display_name\":\"Smoke Test\",\"execution_weight\":0.5,\"profile\":{},\"identity\":null,\"trait_profile\":null,\"created_at\":\"2026-10-26T19:07:20.233055+08:00\"}"
+  },
+  "login": {
+    "status": 200
+  },
+  "me": {
+    "status": 200,
+    "email": "smoke_1793012839@example.com"
+  },
+  "goal_set_create": {
+    "status": 201,
+    "body": "{\"id\":3,\"user_id\":23,\"name\":\"Smoke Set 1793012839\",\"description\":\"temporary smoke set\",\"status\":\"active\",\"goal_count\":0,\"incomplete_goal_count\":0,\"archived_at\":null,\"created_at\":\"2026-10-26T19:07:20.564269+08:00\"}"
+  },
+  "goal_create": {
+    "status": 201,
+    "body": "{\"id\":192,\"goal_set_id\":3,\"title\":\"Smoke Goal 1793012839\",\"description\":\"temporary smoke goal\",\"goal_type\":\"short_term\",\"status\":\"active\",\"deadline\":\"2026-10-27\",\"priority\":2,\"estimated_minutes\":30,\"start_date\":null,\"task_kind\":null,\"planning_mode\":\"one_off\",\"recurrence_frequency\":null,\"recurrence_interval\":null,\"daily_target_minutes\":null,\"recurrence_weekdays\":null,\"target_amount\":null,\"target_unit\":null,\"created_at\":\"2026-10-26T19:07:20.575436+08:00\"}"
+  },
+  "preview_submit": {
+    "status": 202,
+    "body": "{\"job_id\":\"d59bb839c76c41379434ecac53b2648d\",\"status\":\"running\",\"events_url\":\"/api/v1/plans/generation/d59bb839c76c41379434ecac53b2648d/events\",\"status_url\":\"/api/v1/plans/generation/d59bb839c76c41379434ecac53b2648d\"}"
+  },
+  "preview_job": {
+    "status": "completed",
+    "error": null,
+    "result": {
+      "thread_id": "c5af053a65434455981551eabd15a24d",
+      "preview": {
+        "thread_id": "c5af053a65434455981551eabd15a24d",
+        "title": "Smoke Preview Goal 1793012839",
+        "start_date": "2026-10-26",
+        "end_date": "2026-10-27",
+        "tasks": [
+          {
+            "order_index": 0,
+            "title": "Smoke Preview Goal 1793012839",
+            "description": "temporary preview goal",
+            "goal_id": 1,
+            "subject": null,
+            "cognitive_load": "low",
+            "priority": 2,
+            "estimated_duration": 30,
+            "predicted_duration": 30,
+            "completion_probability": null,
+            "recommended_time_slot": null,
+            "standards": [],
+            "scheduled_date": "2026-10-26",
+            "start_time": "19:15:00",
+            "end_time": "19:45:00",
+            "task_kind": "one_off",
+            "series_id": null,
+            "series_index": null,
+            "occurrence_date": null,
+            "target_amount": null,
+            "target_unit": null,
+            "is_flexible": true,
+            "work_unit_key": "wg-193-one_off",
+            "parent_key": null,
+            "chunk_index": null,
+            "scheduling_reason": null,
+            "scheduling_detail": null
+          }
+        ],
+        "confidence": 0.575,
+        "adjustment_count": 0,
+        "max_adjustments": 3,
+        "can_adjust": true,
+        "violations": []
+      },
+      "clarification": null,
+      "plan_id": null,
+      "goals_persisted": 1,
+      "goal_set_id": 3,
+      "degraded": false,
+      "warnings": []
+    }
+  },
+  "preview_result": {
+    "thread_id": "c5af053a65434455981551eabd15a24d",
+    "goal_set_id": 3,
+    "title": "Smoke Preview Goal 1793012839",
+    "start_date": "2026-10-26",
+    "end_date": "2026-10-27",
+    "task_count": 1,
+    "degraded": false,
+    "warnings": [],
+    "tasks": [
+      {
+        "order_index": 0,
+        "title": "Smoke Preview Goal 1793012839",
+        "goal_id": 1,
+        "scheduled_date": "2026-10-26",
+        "work_unit_key": "wg-193-one_off",
+        "chunk_index": null
+      }
+    ]
+  },
+  "confirm": {
+    "status": 201,
+    "body": "{\"plan\":{\"id\":43,\"user_id\":23,\"version\":1,\"status\":\"active\",\"title\":\"Smoke Preview Goal 1793012839\",\"start_date\":\"2026-10-26\",\"end_date\":\"2026-10-27\",\"parent_plan_id\":null,\"confidence\":0.575,\"created_at\":\"2026-10-26T19:07:30.843848+08:00\",\"tasks\":[{\"id\":812,\"plan_id\":43,\"goal_id\":193,\"parent_task_id\":null,\"title\":\"Smoke Preview Goal 1793012839\",\"description\":\"temporary preview goal\",\"estimated_duration\":30,\"predicted_duration\":30,\"cognitive_load\":\"low\",\"priority\":2,\"scheduled_date\":\"2026-10-26\","
+  },
+  "plan": {
+    "id": 43,
+    "version": 1,
+    "goal_ids": [
+      193
+    ],
+    "goal_set_ids": [
+      3
+    ],
+    "task_count": 1,
+    "tasks": [
+      {
+        "id": 812,
+        "goal_id": 193,
+        "work_unit_key": "wg-193-one_off",
+        "chunk_index": null,
+        "scheduled_date": "2026-10-26"
+      }
+    ]
+  },
+  "goal_set_detail": {
+    "status": 200,
+    "id": 3,
+    "goal_count": 2,
+    "incomplete_goal_count": 2,
+    "goal_ids": [
+      192,
+      193
+    ]
+  },
+  "goal_set_id": 3,
+  "goal_id": 192,
+  "user_id": 23,
+  "agent_runs": [
+    {
+      "id": 119,
+      "status": "completed",
+      "llm_calls": 4,
+      "error": null,
+      "result_summary": {
+        "stage": "preview",
+        "draft_id": "c5af053a65434455981551eabd15a24d"
+      },
+      "started_at": "2026-10-26 19:07:20.621330+08:00",
+      "finished_at": "2026-10-26 19:07:29.968558+08:00"
+    },
+    {
+      "id": 120,
+      "status": "completed",
+      "llm_calls": 0,
+      "error": null,
+      "result_summary": {
+        "stage": "confirm",
+        "thread_id": "c5af053a65434455981551eabd15a24d",
+        "plan_id": 43,
+        "version": 1,
+        "tasks": 1,
+        "confidence": 0.575,
+        "degraded": false
+      },
+      "started_at": "2026-10-26 19:07:30.701613+08:00",
+      "finished_at": "2026-10-26 19:07:30.818775+08:00"
+    }
+  ],
+  "db_check": {
+    "goal_sets": [
+      [
+        3,
+        "Smoke Set 1793012839",
+        "active"
+      ]
+    ],
+    "goals": [
+      [
+        192,
+        "Smoke Goal 1793012839",
+        3
+      ],
+      [
+        193,
+        "Smoke Preview Goal 1793012839",
+        3
+      ]
+    ],
+    "plans": [
+      [
+        43,
+        1,
+        "active"
+      ]
+    ],
+    "tasks": [
+      [
+        812,
+        43,
+        193,
+        "wg-193-one_off",
+        null
+      ]
+    ]
+  },
+  "finished_at": "2026-10-26T19:07:31"
+}

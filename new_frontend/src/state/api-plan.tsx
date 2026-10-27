@@ -41,6 +41,7 @@ import {
 } from '@/api/mapper';
 import type {
   AdjustResponse,
+  ClarificationRead,
   FeedbackRead,
   FeedbackReplanJobResult,
   FeedbackSubmitResponse,
@@ -65,6 +66,8 @@ import { completedToday } from '@/domain/stats';
 import {
   goalTypeFromTaskKind,
   isClosed,
+  planningModeFromTaskKind,
+  seriesTasks,
   taskKindFromGoalType,
   type Task,
 } from '@/domain/task';
@@ -83,6 +86,7 @@ import {
   loadPreferencesRemote,
   savePreferencesRemote,
 } from '@/state/preferences-store';
+import { shouldRestorePreview } from '@/state/preview-lifecycle';
 import { useSession } from '@/state/session';
 
 /** SSE stage name → human label for the generation progress line. */
@@ -584,6 +588,10 @@ export function ApiPlanProvider({ children }: { children: React.ReactNode }) {
           dueDate: input.dueDate,
           notes: input.notes,
           taskKind: input.taskKind ?? 'one_off',
+          planningMode: input.planningMode ?? planningModeFromTaskKind(input.taskKind),
+          recurrenceFrequency: input.recurrenceFrequency ?? null,
+          recurrenceInterval: input.recurrenceInterval ?? null,
+          clarifications: input.clarifications ?? {},
           startDate: input.startDate ?? null,
           dailyTargetMinutes: input.dailyTargetMinutes ?? null,
           recurrenceWeekdays: input.recurrenceWeekdays ?? null,
@@ -602,6 +610,9 @@ export function ApiPlanProvider({ children }: { children: React.ReactNode }) {
         priority: input.priority,
         goal_type: goalTypeFromTaskKind(input.taskKind),
         task_kind: input.taskKind,
+        planning_mode: input.planningMode ?? planningModeFromTaskKind(input.taskKind),
+        recurrence_frequency: input.recurrenceFrequency ?? null,
+        recurrence_interval: input.recurrenceInterval ?? null,
         start_date: input.startDate ?? null,
         daily_target_minutes: input.dailyTargetMinutes ?? null,
         recurrence_weekdays: input.recurrenceWeekdays ?? null,
@@ -635,6 +646,13 @@ export function ApiPlanProvider({ children }: { children: React.ReactNode }) {
       body.deadline = patch.dueDate ? `${patch.dueDate}T00:00:00` : null;
     }
     if (patch.taskKind !== undefined) body.task_kind = patch.taskKind;
+    if (patch.planningMode !== undefined) body.planning_mode = patch.planningMode;
+    if (patch.recurrenceFrequency !== undefined) {
+      body.recurrence_frequency = patch.recurrenceFrequency;
+    }
+    if (patch.recurrenceInterval !== undefined) {
+      body.recurrence_interval = patch.recurrenceInterval;
+    }
     if (patch.startDate !== undefined) body.start_date = patch.startDate;
     if (patch.dailyTargetMinutes !== undefined) {
       body.daily_target_minutes = patch.dailyTargetMinutes;
@@ -666,8 +684,13 @@ export function ApiPlanProvider({ children }: { children: React.ReactNode }) {
   // Provider-owned so an in-flight or completed preview survives route changes.
   const [previewTasks, setPreviewTasks] = useState<DraftTask[] | null>(null);
   const [previewBusy, setPreviewBusy] = useState(false);
+  const [clarification, setClarification] = useState<ClarificationRead | null>(null);
   const previewUserId = session.user?.id ?? null;
   const previewHydratedFor = useRef<number | null>(null);
+  // Guards against double submits/regenerations racing each other; they are
+  // refs (not state) so two taps in the same frame both see the lock.
+  const confirmInFlightRef = useRef(false);
+  const previewOpRef = useRef(false);
 
   // While a generation job is streaming, `previewStage` carries the current
   // stage label; fold it into `previewMeta` so consumers only read one field.
@@ -689,7 +712,7 @@ export function ApiPlanProvider({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     if (previewUserId == null) return;
     const stored = readStoredPreview(previewUserId);
-    if (stored) {
+    if (stored && shouldRestorePreview(stored.threadId, readDismissedPreview(previewUserId))) {
       // Hydrating from persisted external state is the intended effect.
       // eslint-disable-next-line react-hooks/set-state-in-effect
       setPreviewTasks(stored.tasks);
@@ -698,12 +721,22 @@ export function ApiPlanProvider({ children }: { children: React.ReactNode }) {
       previewHydratedFor.current = previewUserId;
       return;
     }
+    // The stored preview was already consumed/dismissed: drop it instead of
+    // resurrecting it on the next mount.
+    if (stored) clearStoredPreview(previewUserId);
 
     let cancelled = false;
     void (async () => {
       try {
         const latest = await getLatestPreview();
-        if (cancelled || latest.thread_id === readDismissedPreview(previewUserId)) return;
+        if (cancelled) return;
+        if (!shouldRestorePreview(latest.thread_id, readDismissedPreview(previewUserId))) {
+          return;
+        }
+        if (!latest.preview) {
+          if (latest.clarification) setClarification(latest.clarification);
+          return;
+        }
         setPreviewThread(latest.thread_id);
         setPreviewMeta(
           previewMetaFrom(
@@ -739,25 +772,29 @@ export function ApiPlanProvider({ children }: { children: React.ReactNode }) {
   }, [previewUserId, previewTasks, previewMeta]);
 
   const buildGenerateRequest = useCallback(
-    (): PlanGenerateRequest => ({
+    (tasks: PendingTask[] = pendingTasks): PlanGenerateRequest => ({
       timezone:
         typeof Intl !== 'undefined'
           ? Intl.DateTimeFormat().resolvedOptions().timeZone
           : undefined,
-      goals: pendingTasks.map((item) => ({
+      goals: tasks.map((item) => ({
         title: item.title,
         description: item.notes || undefined,
         priority: item.priority,
         deadline: item.dueDate ? `${item.dueDate}T00:00:00` : null,
         goal_type: goalTypeFromTaskKind(item.taskKind),
         task_kind: item.taskKind,
+        planning_mode: item.planningMode,
+        recurrence_frequency: item.recurrenceFrequency ?? null,
+        recurrence_interval: item.recurrenceInterval ?? null,
         start_date: item.startDate,
         daily_target_minutes: item.dailyTargetMinutes,
         recurrence_weekdays: item.recurrenceWeekdays,
+        clarifications: item.clarifications ?? {},
         target_amount: item.targetAmount,
         target_unit: item.targetUnit,
       })),
-      plan_title: pendingTasks[0]?.title ?? '新计划',
+      plan_title: tasks[0]?.title ?? '新计划',
       available_minutes_per_day: preferences.availableMinutesPerDay,
       daily_limit_minutes: preferences.dailyLimitMinutes,
       buffer_minutes: preferences.bufferMinutes,
@@ -772,9 +809,11 @@ export function ApiPlanProvider({ children }: { children: React.ReactNode }) {
     setPreviewStage(previewStageLabel(stage));
   }, []);
 
-  const decomposePreview = useCallback(async () => {
+  const decomposePreview = useCallback(async (tasksOverride?: PendingTask[]) => {
     // NOTE: do NOT toggle the global `loading` here. `_layout` renders a
     // full-screen loading state while it is true, which unmounts the goal screen.
+    if (previewOpRef.current) return [];
+    previewOpRef.current = true;
     setActionError(null);
     if (previewUserId != null) writeDismissedPreview(previewUserId, null);
     setPreviewBusy(true);
@@ -783,13 +822,26 @@ export function ApiPlanProvider({ children }: { children: React.ReactNode }) {
     setPreviewThread(null);
     setPreviewMeta(null);
     try {
-      const job = await submitPreview(buildGenerateRequest());
+      const job = await submitPreview(buildGenerateRequest(tasksOverride));
       const status = await runJob(job, onPreviewStage);
       const response = status.result as unknown as PreviewResponse | null;
-      if (status.status === 'failed' || !response?.preview) {
+      if (status.status === 'failed') {
+        setActionError(status.error ?? 'plan generation failed');
+        return [];
+      }
+      if (response?.clarification) {
+        // Request-level atomic gate: no partial plan, no preview.
+        setClarification(response.clarification);
+        setPreviewTasks(null);
+        setPreviewThread(null);
+        setPreviewMeta(null);
+        return [];
+      }
+      if (!response?.preview) {
         setActionError(status.error ?? 'plan generation returned no preview');
         return [];
       }
+      setClarification(null);
       setPreviewThread(response.thread_id);
       setPreviewMeta(
         previewMetaFrom(
@@ -806,6 +858,7 @@ export function ApiPlanProvider({ children }: { children: React.ReactNode }) {
       setActionError(errorMessage(caught, 'decompose failed'));
       return [];
     } finally {
+      previewOpRef.current = false;
       setPreviewBusy(false);
       setPreviewStage(null);
     }
@@ -822,11 +875,35 @@ export function ApiPlanProvider({ children }: { children: React.ReactNode }) {
     setPreviewStage(null);
   }, [previewUserId, previewThread]);
 
+  const dismissClarification = useCallback(() => setClarification(null), []);
+
+  const submitClarifications = useCallback(
+    (answers: { goalId: number; field: string; answer: string }[]) => {
+      const updated = pendingTasks.map((item, index) => {
+        const goalAnswers = answers.filter((answer) => answer.goalId === index + 1);
+        if (goalAnswers.length === 0) return item;
+        const clarifications = { ...(item.clarifications ?? {}) };
+        for (const answer of goalAnswers) {
+          clarifications[answer.field] = answer.answer;
+        }
+        return { ...item, clarifications };
+      });
+      setPendingTasks(updated);
+      setClarification(null);
+      void decomposePreview(updated);
+    },
+    [pendingTasks, decomposePreview],
+  );
+
   const adjustPreview = useCallback(
     async (feedback: string) => {
       if (!previewThread) {
         return { drafts: null, applied: false, message: 'Preview expired; generate again.' };
       }
+      if (previewOpRef.current) {
+        return { drafts: null, applied: false, message: '正在处理，请稍候。' };
+      }
+      previewOpRef.current = true;
       setActionError(null);
       setPreviewBusy(true);
       try {
@@ -838,13 +915,28 @@ export function ApiPlanProvider({ children }: { children: React.ReactNode }) {
         const response = status.result as unknown as AdjustResponse;
         // 预算耗尽时后端会直接给最终计划：应用它并关掉预览。
         if (response.final_plan) {
+          const finalizedThread = response.thread_id ?? previewThread;
           discardDraftGoals(pendingTasks.map((item) => item.id));
-          await adoptPlan(response.final_plan.id);
-          setLastConfirmedPlanId(response.final_plan.id);
+          // The preview is consumed even if refreshing the plan fails; tombstone
+          // it before adopting so a refresh error cannot resurrect it.
+          if (previewUserId != null) {
+            clearStoredPreview(previewUserId);
+            writeDismissedPreview(previewUserId, finalizedThread);
+          }
           setPendingTasks([]);
           setPreviewTasks(null);
           setPreviewThread(null);
           setPreviewMeta(null);
+          setPreviewStage(null);
+          setClarification(null);
+          setLastConfirmedPlanId(response.final_plan.id);
+          try {
+            await adoptPlan(response.final_plan.id);
+          } catch (caught) {
+            setActionError(
+              errorMessage(caught, '计划已生成，但刷新计划详情失败。'),
+            );
+          }
           return { drafts: null, applied: true, message: '调整次数已用完，已直接生成计划。' };
         }
         if (response.preview) {
@@ -869,6 +961,7 @@ export function ApiPlanProvider({ children }: { children: React.ReactNode }) {
         setActionError(errorMessage(caught, '重新生成失败'));
         return { drafts: null, applied: false, message: errorMessage(caught, '重新生成失败。') };
       } finally {
+        previewOpRef.current = false;
         setPreviewBusy(false);
         setPreviewStage(null);
       }
@@ -880,31 +973,47 @@ export function ApiPlanProvider({ children }: { children: React.ReactNode }) {
       pendingTasks,
       discardDraftGoals,
       preferences.dailyLimitMinutes,
+      previewUserId,
     ],
   );
 
-  const confirmPreview = useCallback(async () => {
-    if (!previewThread) return;
+  const confirmPreview = useCallback(async (): Promise<number | null> => {
+    if (!previewThread) return null;
+    if (confirmInFlightRef.current) return null;
+    confirmInFlightRef.current = true;
+    const confirmedThread = previewThread;
     setActionError(null);
     setPreviewBusy(true);
     try {
-      const response = await confirmPreviewApi(previewThread);
+      const response = await confirmPreviewApi(confirmedThread);
       discardDraftGoals(pendingTasks.map((item) => item.id));
-      // Confirm returns the plan synchronously; adopt it fully so the todo page
-      // immediately has its insight, feedback history and change notice.
-      await adoptPlan(response.plan.id);
-      setLastConfirmedPlanId(response.plan.id);
-      setPendingTasks([]);
+      // The plan exists server-side from here on. Consume the preview locally
+      // and tombstone the confirmed thread BEFORE adopting, so a failed detail
+      // refresh can never bring the (already confirmed) preview back.
       if (previewUserId != null) {
         clearStoredPreview(previewUserId);
-        writeDismissedPreview(previewUserId, null);
+        writeDismissedPreview(previewUserId, confirmedThread);
       }
+      setPendingTasks([]);
       setPreviewTasks(null);
       setPreviewThread(null);
       setPreviewMeta(null);
+      setPreviewStage(null);
+      setClarification(null);
+      setLastConfirmedPlanId(response.plan.id);
+      try {
+        // Confirm returns the plan synchronously; adopt it fully so the todo
+        // page immediately has its insight, feedback history and change notice.
+        await adoptPlan(response.plan.id);
+      } catch (caught) {
+        setActionError(errorMessage(caught, '计划已生成，但刷新计划详情失败。'));
+      }
+      return response.plan.id;
     } catch (caught) {
       setActionError(errorMessage(caught, 'confirm failed'));
+      return null;
     } finally {
+      confirmInFlightRef.current = false;
       setPreviewBusy(false);
     }
   }, [previewThread, pendingTasks, discardDraftGoals, adoptPlan, previewUserId]);
@@ -1168,7 +1277,7 @@ export function ApiPlanProvider({ children }: { children: React.ReactNode }) {
       setActionError(null);
       updateStore((prev) => ops.deleteTask(prev, id));
       if (planId == null) return;
-      void deleteTaskApi(planId, id)
+      void deleteTaskApi(planId, id, { scope: 'single' })
         .then(async () => {
           await Promise.all([refreshInsights(), refreshFeedbackHistory()]);
         })
@@ -1176,6 +1285,33 @@ export function ApiPlanProvider({ children }: { children: React.ReactNode }) {
           updateStore(() => snapshot);
           if (mountedRef.current) setActionError(errorMessage(caught, '删除任务失败'));
         });
+    },
+    [planId, refreshInsights, refreshFeedbackHistory, updateStore],
+  );
+
+  /**
+   * Delete a whole repeating series: remove every unfinished occurrence
+   * optimistically, then ask the backend for `scope=series`. Completed
+   * occurrences stay (and their execution history is untouched).
+   */
+  const deleteTaskSeries = useCallback(
+    async (taskId: number) => {
+      const task = storeRef.current.tasks.find((item) => item.id === taskId) ?? null;
+      if (!task) return;
+      const targets = seriesTasks(storeRef.current.tasks, task).filter((item) => !item.done);
+      if (targets.length === 0) return;
+      const ids = targets.map((item) => item.id);
+      const snapshot = storeRef.current;
+      setActionError(null);
+      updateStore((prev) => ops.batchDelete(prev, ids));
+      if (planId == null) return;
+      try {
+        await deleteTaskApi(planId, taskId, { scope: 'series' });
+        await Promise.all([refreshInsights(), refreshFeedbackHistory()]);
+      } catch (caught) {
+        updateStore(() => snapshot);
+        if (mountedRef.current) setActionError(errorMessage(caught, '删除系列失败'));
+      }
     },
     [planId, refreshInsights, refreshFeedbackHistory, updateStore],
   );
@@ -1351,6 +1487,9 @@ export function ApiPlanProvider({ children }: { children: React.ReactNode }) {
       previewTasks,
       previewBusy,
       dismissPreview,
+      clarification,
+      submitClarifications,
+      dismissClarification,
       assessment,
       setAssessment,
       submitFeedback,
@@ -1360,6 +1499,7 @@ export function ApiPlanProvider({ children }: { children: React.ReactNode }) {
       updateTask,
       updateStandard,
       deleteTask,
+      deleteTaskSeries,
       setDone,
       startTask,
       completeTask,
@@ -1411,12 +1551,16 @@ export function ApiPlanProvider({ children }: { children: React.ReactNode }) {
     previewTasks,
     previewBusy,
     dismissPreview,
+    clarification,
+    submitClarifications,
+    dismissClarification,
     assessment,
     submitFeedback,
     updateWeight,
     updateTask,
     updateStandard,
     deleteTask,
+    deleteTaskSeries,
     setDone,
     startTask,
     completeTask,

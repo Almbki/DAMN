@@ -14,6 +14,7 @@ from app.agent.schemas import (
     PreviewTask,
 )
 from app.agent.state import PlannerState
+from app.domain.models.enums import TaskKind
 
 NODE = "preview"
 
@@ -33,6 +34,15 @@ def build_preview_payload(state: PlannerState, max_adjustments: int) -> PreviewP
     tasks: list[PreviewTask] = []
     for draft in drafts:
         slot = placed.get(draft.order_index + 1)  # PROVISIONAL TASK ID CONTRACT
+        # A recurring occurrence that cannot fit its own day is skipped instead
+        # of surfacing as an "untimed" task. The next feedback/replan can move it.
+        if slot is None and draft.task_kind is not TaskKind.ONE_OFF:
+            continue
+        failure = (
+            schedule.unscheduled_reasons.get(draft.order_index + 1)
+            if schedule is not None
+            else None
+        )
         tasks.append(
             PreviewTask(
                 order_index=draft.order_index,
@@ -57,6 +67,11 @@ def build_preview_payload(state: PlannerState, max_adjustments: int) -> PreviewP
                 target_amount=draft.target_amount,
                 target_unit=draft.target_unit,
                 is_flexible=draft.is_flexible,
+                work_unit_key=draft.work_unit_key,
+                parent_key=draft.parent_key,
+                chunk_index=draft.chunk_index,
+                scheduling_reason=failure.code if failure is not None else None,
+                scheduling_detail=failure.message if failure is not None else None,
             )
         )
 

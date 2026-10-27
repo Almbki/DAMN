@@ -17,13 +17,14 @@ import { EmptyState } from '@/components/ui/states';
 import { Fonts, Layout, Line, Radius, Space, Type } from '@/constants/tokens';
 import { formatShort, parseISO, todayISO } from '@/domain/date';
 import { groupByGoal, weekDates } from '@/domain/selectors';
-import { isClosed, type Task } from '@/domain/task';
+import { isClosed, seriesTasks, type Task } from '@/domain/task';
 import { useListKeys } from '@/hooks/use-list-keys';
 import { usePlan } from '@/state/plan';
 import { useSchedule } from '@/state/schedule';
 import { useTheme } from '@/state/theme';
 
 type FilterKey = 'all' | 'open' | 'done';
+type DeleteScope = 'single' | 'series';
 
 const VIEWS = ['今日', '本周', '每月'];
 const FILTERS: { key: FilterKey; label: string }[] = [
@@ -85,6 +86,7 @@ export default function TodoScreen() {
     replanNow,
     createTask,
     deleteTask,
+    deleteTaskSeries,
   } = usePlan();
   const { showSchedule } = useSchedule();
   const isApi = mode === 'api';
@@ -100,7 +102,13 @@ export default function TodoScreen() {
   const [detailId, setDetailId] = useState<number | null>(null);
   const [expandedIds, setExpandedIds] = useState<Set<number>>(() => new Set());
   const [deleteTargetId, setDeleteTargetId] = useState<number | null>(null);
-  const [deleteNotice, setDeleteNotice] = useState<{ id: number; title: string } | null>(null);
+  const [deleteScope, setDeleteScope] = useState<DeleteScope>('single');
+  const [deleteNotice, setDeleteNotice] = useState<{
+    id: number;
+    title: string;
+    scope: DeleteScope;
+    count: number;
+  } | null>(null);
   const [undo, setUndo] = useState<{ id: number; title: string } | null>(null);
   const undoTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [addHintOpen, setAddHintOpen] = useState(false);
@@ -171,23 +179,55 @@ export default function TodoScreen() {
   // dialog is the only modal in the tree while the user decides.
   const requestDelete = useCallback((id: number) => {
     setDeleteTargetId(id);
+    setDeleteScope('single');
     setDetailId(null);
+  }, []);
+
+  const requestDeleteSeries = useCallback((id: number) => {
+    setDeleteTargetId(id);
+    setDeleteScope('series');
+    setDetailId(null);
+  }, []);
+
+  const resetDeleteRequest = useCallback(() => {
+    setDeleteTargetId(null);
+    setDeleteScope('single');
   }, []);
 
   const confirmDelete = useCallback(() => {
     if (deleteTargetId == null) return;
     const task = tasks.find((item) => item.id === deleteTargetId) ?? null;
     if (!task) {
-      setDeleteTargetId(null);
+      resetDeleteRequest();
       return;
     }
     clearActionError();
-    deleteTask(task.id);
+    const scope = deleteScope;
+    const seriesTargets =
+      scope === 'series' ? seriesTasks(tasks, task).filter((item) => !item.done) : [];
+    if (scope === 'series') {
+      void deleteTaskSeries(task.id);
+    } else {
+      deleteTask(task.id);
+    }
     setDetailId(null);
     setActiveId(null);
-    setDeleteTargetId(null);
-    setDeleteNotice({ id: task.id, title: task.title });
-  }, [deleteTargetId, tasks, deleteTask, clearActionError]);
+    resetDeleteRequest();
+    setDeleteNotice({
+      id: task.id,
+      title: task.title,
+      scope,
+      count: scope === 'series' ? seriesTargets.length : 1,
+    });
+  }, [
+    deleteTargetId,
+    deleteScope,
+    tasks,
+    deleteTask,
+    deleteTaskSeries,
+    resetDeleteRequest,
+    clearActionError,
+  ]);
 
   const goGoal = useCallback(() => {
     setAddHintOpen(false);
@@ -266,6 +306,10 @@ export default function TodoScreen() {
   const detailTask = detailId == null ? null : (tasks.find((task) => task.id === detailId) ?? null);
   const deleteTargetTask =
     deleteTargetId == null ? null : (tasks.find((task) => task.id === deleteTargetId) ?? null);
+  const seriesDeleteTasks =
+    deleteTargetTask && deleteScope === 'series'
+      ? seriesTasks(tasks, deleteTargetTask).filter((task) => !task.done)
+      : [];
 
   const move = useCallback(
     (delta: number) => {
@@ -433,8 +477,12 @@ export default function TodoScreen() {
         <Banner
           tone="success"
           icon="check"
-          title="已删除待办"
-          body={`「${deleteNotice.title}」已从当前计划移除，执行记录会保留。`}
+          title={deleteNotice.scope === 'series' ? '已删除重复系列' : '已删除待办'}
+          body={
+            deleteNotice.scope === 'series'
+              ? `「${deleteNotice.title}」系列的 ${deleteNotice.count} 个未完成任务已从当前计划移除，已完成任务和执行记录会保留。`
+              : `「${deleteNotice.title}」已从当前计划移除，执行记录会保留。`
+          }
           onDismiss={() => setDeleteNotice(null)}
         />
       ) : null}
@@ -658,6 +706,7 @@ export default function TodoScreen() {
             setDetailId(null);
           }}
           onRequestDelete={requestDelete}
+          onRequestDeleteSeries={requestDeleteSeries}
         />
       ) : null}
 
@@ -691,12 +740,20 @@ export default function TodoScreen() {
 
       <Dialog
         visible={deleteTargetId != null}
-        title="删除这个待办？"
-        description="删除后不会出现在当前计划里，执行记录会保留。确定删除？"
-        onRequestClose={() => setDeleteTargetId(null)}
+        title={deleteScope === 'series' ? '删除整个重复系列？' : '只删除今天这次？'}
+        description={
+          deleteScope === 'series'
+            ? `将从当前计划移除该系列所有未完成任务（${seriesDeleteTasks.length} 个）；已完成任务和执行记录会保留。`
+            : '只从当前计划移除这一次，系列和其他日期保留；执行记录会保留。'
+        }
+        onRequestClose={resetDeleteRequest}
         actions={[
-          { label: '取消', variant: 'text', onPress: () => setDeleteTargetId(null) },
-          { label: '删除', variant: 'filled', onPress: confirmDelete },
+          { label: '取消', variant: 'text', onPress: resetDeleteRequest },
+          {
+            label: deleteScope === 'series' ? '删除系列' : '删除',
+            variant: 'filled',
+            onPress: confirmDelete,
+          },
         ]}>
         {deleteTargetTask ? (
           <View

@@ -19,6 +19,7 @@ from app.domain.models.enums import (
     TaskKind,
     TimeOfDay,
 )
+from app.domain.recurrence import RecurrenceFrequency, SeriesSpec
 from app.domain.rules.base import RuleViolation
 
 
@@ -33,12 +34,68 @@ class LLMOutput(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
 
+class GoalKind(StrEnum):
+    """How a goal turns into task drafts.
+
+    ``ONE_OFF`` is a single deliverable, ``RECURRING`` is one reusable template
+    repeated on a schedule, and ``PROJECT`` is a finite curriculum/work-unit
+    sequence (never a daily copy of the same task).
+    """
+
+    ONE_OFF = "one_off"
+    RECURRING = "recurring"
+    PROJECT = "project"
+
+
+class RecurrenceSpec(LLMOutput):
+    """Machine-readable recurrence classification produced by ``goal_analysis``."""
+
+    frequency: RecurrenceFrequency = RecurrenceFrequency.DAILY
+    interval: int = Field(default=1, ge=1)
+    #: 0=Monday..6=Sunday. Empty/None means daily, or the start weekday for weekly.
+    weekdays: list[int] | None = None
+
+
+class WorkUnit(LLMOutput):
+    """One finite work unit of a project/curriculum goal."""
+
+    title: str
+    description: str = ""
+    estimated_minutes: int = Field(default=60, ge=1)
+
+
+class DecompositionStatus(StrEnum):
+    """Whether the goal has enough information for a reliable decomposition."""
+
+    READY = "ready"
+    NEEDS_CLARIFICATION = "needs_clarification"
+
+
+class MissingInformation(LLMOutput):
+    """One high-impact unknown that must be answered before decomposition."""
+
+    field: str
+    question: str
+    required: bool = True
+
+
 class AnalyzedGoal(LLMOutput):
     goal_id: int
     title: str
     objective: str = ""
+    #: Recurring goals are opaque by default: no internal checklist invented.
     subtasks: list[str] = Field(default_factory=list)
     constraints: list[str] = Field(default_factory=list)
+    # Machine-readable semantics; defaults keep the old one-off contract.
+    goal_kind: GoalKind = GoalKind.ONE_OFF
+    recurrence: RecurrenceSpec | None = None
+    work_units: list[WorkUnit] = Field(default_factory=list)
+    #: First allowed calendar day extracted from an explicit "after/from"
+    #: constraint. Deterministic scheduler/rule engine enforce it.
+    earliest_start_date: date | None = None
+    #: Deterministic graph gate: needs_clarification must stop before planning.
+    decomposition_status: DecompositionStatus = DecompositionStatus.READY
+    missing_information: list[MissingInformation] = Field(default_factory=list)
 
 
 class GoalAnalysisResult(LLMOutput):
@@ -49,10 +106,35 @@ class GoalAnalysisResult(LLMOutput):
     confidence: float = Field(default=0.5, ge=0.0, le=1.0)
 
 
+class ClarificationQuestion(BaseModel):
+    """One high-impact question returned to the user before planning."""
+
+    goal_id: int
+    field: str
+    question: str
+    required: bool = True
+
+
+class ClarificationRequest(BaseModel):
+    """Request-level atomic clarification (v1)."""
+
+    status: str = "needs_clarification"
+    questions: list[ClarificationQuestion] = Field(default_factory=list)
+
+
 class TheoreticalItem(LLMOutput):
-    """Theory-derived expected workload for one unit of work."""
+    """Theory-derived expected workload for one unit of work.
+
+    For a project/project_recurring goal this is one item *per work unit*
+    (``goal_id`` + ``work_unit_index``), not one item per goal. Recurring goals
+    estimate one occurrence, not the whole multi-month lifecycle.
+    """
 
     title: str
+    #: 1-based goal id; None keeps legacy goal-level items working.
+    goal_id: int | None = None
+    #: 0-based index into ``AnalyzedGoal.work_units`` for project goals.
+    work_unit_index: int | None = None
     learning_content: str = ""
     subtasks: list[str] = Field(default_factory=list)
     video_minutes: int = Field(default=0, ge=0)
@@ -134,6 +216,13 @@ class GeneratedTaskDraft(LLMOutput):
     target_amount: int | None = None
     target_unit: str | None = None
     is_flexible: bool = True
+    #: Cross-version semantic work-unit identity (stable across plan versions).
+    work_unit_key: str | None = None
+    #: First allowed calendar day for this execution block.
+    earliest_start_date: date | None = None
+    #: Execution-chunk identity (agent-only; persisted as ``parent_task_id``).
+    parent_key: str | None = None
+    chunk_index: int | None = None
 
 
 class PlanGenerationResult(LLMOutput):
@@ -143,6 +232,9 @@ class PlanGenerationResult(LLMOutput):
     start_date: date | None = None
     end_date: date | None = None
     tasks: list[GeneratedTaskDraft] = Field(default_factory=list)
+    #: Filled deterministically by the drafter (never by the LLM) so the rule
+    #: engine can validate duplicate / wrong-day / incomplete series.
+    series_specs: list[SeriesSpec] = Field(default_factory=list)
     confidence: float = Field(default=0.5, ge=0.0, le=1.0)
 
 
@@ -203,6 +295,13 @@ class PreviewTask(BaseModel):
     target_amount: int | None = None
     target_unit: str | None = None
     is_flexible: bool = True
+    #: Stable cross-version work-unit identity.
+    work_unit_key: str | None = None
+    #: Execution-chunk grouping and deterministic failure reason.
+    parent_key: str | None = None
+    chunk_index: int | None = None
+    scheduling_reason: str | None = None
+    scheduling_detail: str | None = None
 
 
 class PreviewPayload(BaseModel):

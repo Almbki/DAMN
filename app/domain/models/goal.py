@@ -8,12 +8,21 @@ from typing import Any
 from pydantic import Field
 
 from app.domain.models.base import DomainModel, utcnow
-from app.domain.models.enums import GoalStatus, GoalType, Priority, TaskKind
+from app.domain.models.enums import (
+    GoalStatus,
+    GoalType,
+    PlanningMode,
+    Priority,
+    TaskKind,
+)
+from app.domain.recurrence import RecurrenceFrequency
 
 
 class Goal(DomainModel):
     id: int | None = None
     user_id: int
+    #: Optional goal-set (目标集) membership. ``None`` for legacy goals.
+    goal_set_id: int | None = None
     title: str
     description: str | None = None
     goal_type: GoalType = GoalType.SHORT_TERM
@@ -24,8 +33,14 @@ class Goal(DomainModel):
     estimated_minutes: int | None = None
     # Optional first day of a long-term/routine goal (defaults to plan start).
     start_date: date | None = None
-    # ``None`` means "infer from goal_type" (LONG_TERM -> long_term, etc.).
+    # Legacy instance kind. New clients set ``planning_mode`` instead.
     task_kind: TaskKind | None = None
+    # Product-level planning mode: one_off / recurring / project /
+    # project_recurring. ``None`` means "derive from legacy fields".
+    planning_mode: PlanningMode | None = None
+    # Explicit cadence for recurring / project_recurring goals.
+    recurrence_frequency: RecurrenceFrequency | None = None
+    recurrence_interval: int | None = None
     # Daily quota for a split goal (long-term/routine). Optional.
     daily_target_minutes: int | None = None
     # 0=Mon..6=Sun. None/empty means every day.
