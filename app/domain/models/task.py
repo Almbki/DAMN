@@ -45,6 +45,13 @@ class Task(DomainModel):
     occurrence_date: date | None = None
     target_amount: int | None = None
     target_unit: str | None = None
+    #: Cross-version semantic work-unit identity (stable across plan versions).
+    work_unit_key: str | None = None
+    #: Execution chunk order inside its work unit (None for non-chunk tasks).
+    chunk_index: int | None = None
+    #: Final deterministic scheduling failure (only for PENDING/unscheduled).
+    scheduling_reason: str | None = None
+    scheduling_detail: str | None = None
     order_index: int = 0
     # Soft delete: rows stay so TaskExecution / TaskStandard (ML data) survive.
     deleted_at: datetime | None = None

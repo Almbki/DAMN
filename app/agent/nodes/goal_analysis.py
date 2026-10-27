@@ -3,7 +3,13 @@
 from __future__ import annotations
 
 from app.agent.nodes._shared import get_context
-from app.agent.schemas import AgentError, GoalAnalysisResult
+from app.agent.schemas import (
+    AgentError,
+    ClarificationQuestion,
+    ClarificationRequest,
+    DecompositionStatus,
+    GoalAnalysisResult,
+)
 from app.agent.state import PlannerState, ToolCallRecord
 from app.agent.tools.task_decomposer import TaskDecomposerInput, TaskDecomposerTool
 
@@ -41,6 +47,21 @@ def goal_analysis_node(state: PlannerState, runtime: object) -> dict:
             )
         )
 
+    questions = [
+        ClarificationQuestion(
+            goal_id=goal.goal_id,
+            field=missing.field,
+            question=missing.question,
+            required=missing.required,
+        )
+        for goal in result.goals
+        if goal.decomposition_status is DecompositionStatus.NEEDS_CLARIFICATION
+        for missing in goal.missing_information
+    ]
+    # Request-level atomic gate: one needs_clarification blocks the whole run.
+    updates["clarification"] = (
+        ClarificationRequest(questions=questions) if questions else None
+    )
     updates["goal_analysis"] = result
     updates["tool_results"] = [
         ToolCallRecord(

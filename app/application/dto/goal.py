@@ -5,13 +5,15 @@ from __future__ import annotations
 from dataclasses import dataclass
 from datetime import date, datetime
 
-from app.domain.models.enums import GoalStatus, GoalType, TaskKind
+from app.domain.models.enums import GoalStatus, GoalType, PlanningMode, TaskKind
+from app.domain.recurrence import RecurrenceFrequency
 
 
 @dataclass(frozen=True, slots=True)
 class GoalCreateData:
     title: str
     description: str | None = None
+    goal_set_id: int | None = None
     goal_type: GoalType = GoalType.OTHER
     deadline: datetime | None = None
     priority: int = 2
@@ -21,6 +23,9 @@ class GoalCreateData:
     status: GoalStatus = GoalStatus.ACTIVE
     start_date: date | None = None
     task_kind: TaskKind | None = None
+    planning_mode: PlanningMode | None = None
+    recurrence_frequency: RecurrenceFrequency | None = None
+    recurrence_interval: int | None = None
     daily_target_minutes: int | None = None
     recurrence_weekdays: list[int] | None = None
     target_amount: int | None = None

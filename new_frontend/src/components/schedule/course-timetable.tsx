@@ -17,7 +17,6 @@ import {
   monthDay,
   weekdayIndex,
 } from '@/components/schedule/format';
-import { EmptyState } from '@/components/ui/states';
 import { useInteraction } from '@/components/ui/interaction';
 import {
   Elevation,
@@ -330,6 +329,7 @@ export function CourseTimetable({
   onSelectTask: (task: Task) => void;
   onImport?: () => void;
 }) {
+  const { colors } = useTheme();
   const { width } = useWindowDimensions();
   const isMobile = width > 0 && width < Layout.breakpoint;
 
@@ -357,68 +357,36 @@ export function CourseTimetable({
   );
 
   const hasPlacedContent = dayBlocks.some((blocks) => blocks.length > 0);
-  const hasWeekContent = events.length > 0 || weekTasks.length > 0 || noDateTasks.length > 0;
-
-  if (!hasWeekContent) {
-    return (
-      <EmptyState
-        title="这一周没有固定日程"
-        body="导入 .csv / .xlsx 课程表后，这里会显示课程和固定占用；安排到这一周的任务也会一起显示。"
-        actionLabel={onImport ? '导入课程表' : undefined}
-        actionIcon="calendar"
-        onAction={onImport}
-      />
-    );
-  }
 
   return (
     <View style={styles.root}>
-      {hasPlacedContent ? (
-        isMobile ? (
-          <MobileAgenda
-            days={days}
-            dayBlocks={dayBlocks}
-            onSelectEvent={onSelect}
-            onSelectTask={onSelectTask}
-          />
-        ) : (
-          <DesktopTimetable
-            days={days}
-            dayBlocks={dayBlocks}
-            onSelectEvent={onSelect}
-            onSelectTask={onSelectTask}
-          />
-        )
+      {/* Even a week with no imported courses keeps a usable timetable shell:
+          planned tasks may still exist, and an empty grid is clearer than a
+          disappearing section. */}
+      {isMobile ? (
+        <MobileAgenda
+          days={days}
+          dayBlocks={dayBlocks}
+          onSelectEvent={onSelect}
+          onSelectTask={onSelectTask}
+        />
       ) : (
-        <NoPlacedContent hasEvents={events.length > 0} />
+        <DesktopTimetable
+          days={days}
+          dayBlocks={dayBlocks}
+          onSelectEvent={onSelect}
+          onSelectTask={onSelectTask}
+        />
       )}
+      {!hasPlacedContent && untimedTasks.length === 0 ? (
+        <Text style={[styles.emptyWeek, { color: colors.inkMuted }]}>
+          本周暂无课程或任务安排。
+        </Text>
+      ) : null}
 
       {untimedTasks.length > 0 ? (
         <UntimedTasks tasks={untimedTasks} onSelectTask={onSelectTask} />
       ) : null}
-    </View>
-  );
-}
-
-function NoPlacedContent({ hasEvents }: { hasEvents: boolean }) {
-  const { colors } = useTheme();
-  return (
-    <View
-      style={[
-        styles.notice,
-        {
-          borderColor: colors.outlineVariant,
-          backgroundColor: colors.surfaceContainerLow,
-        },
-      ]}>
-      <Text style={[styles.noticeTitle, { color: colors.ink }]}>
-        {hasEvents ? '这一周没有 06:00–24:00 的日程' : '这一周的任务还没有排具体时间'}
-      </Text>
-      <Text style={[styles.noticeBody, { color: colors.inkMuted }]}>
-        {hasEvents
-          ? '已导入的日程不在这个时间范围内；切换周或检查导入文件里的时间。'
-          : '任务仍在下面列出，点开可以补上开始时间，或等下次重排。'}
-      </Text>
     </View>
   );
 }
@@ -1316,5 +1284,10 @@ const styles = StyleSheet.create({
     fontSize: Type.labelSmall,
     paddingHorizontal: Space.md,
     paddingVertical: Space.md,
+  },
+  emptyWeek: {
+    fontSize: Type.labelSmall,
+    lineHeight: Type.labelSmall * 1.4,
+    paddingTop: Space.sm,
   },
 });

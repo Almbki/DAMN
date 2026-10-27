@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import pytest
 from fastapi.testclient import TestClient
 
 from tests.support import generate_and_wait
@@ -142,9 +143,17 @@ def test_feedback_refreshes_the_level2_state(
     assert body["state"]["metadata"]["artifact_hash"]
     assert body["update_count"] >= 1
     # Legacy fields are projections of the Level 2 snapshot, not a second model.
-    assert body["state_fatigue"] == body["state"]["fatigue"]["value"]
-    assert body["state_stress"] == body["state"]["stress"]["value"]
-    assert body["self_efficacy"] == body["state"]["self_efficacy"]["value"]
+    # The legacy values are rounded to 6 decimals; compare with a tiny tolerance
+    # instead of exact float equality (0.5 vs 0.49999999999999994).
+    assert body["state_fatigue"] == pytest.approx(
+        body["state"]["fatigue"]["value"], abs=1e-6
+    )
+    assert body["state_stress"] == pytest.approx(
+        body["state"]["stress"]["value"], abs=1e-6
+    )
+    assert body["self_efficacy"] == pytest.approx(
+        body["state"]["self_efficacy"]["value"], abs=1e-6
+    )
 
 
 def test_task_completion_records_execution_without_fabricating_a_prediction(

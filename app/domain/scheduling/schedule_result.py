@@ -40,6 +40,18 @@ class ScheduledTask(BaseModel):
     priority: Priority = Priority.MEDIUM
     completion_probability: float = Field(default=1.0, ge=0.0, le=1.0)
     is_flexible: bool = True
+    #: Recurrence identity (copied from the Task); None for one-off work.
+    series_id: str | None = None
+    occurrence_date: date | None = None
+
+
+class SchedulingFailure(BaseModel):
+    """Structured deterministic reason for an unplaced task."""
+
+    code: str = "UNKNOWN"
+    needed_minutes: int | None = None
+    available_minutes: int | None = None
+    message: str = ""
 
 
 class CandidateSchedule(BaseModel):
@@ -51,6 +63,8 @@ class CandidateSchedule(BaseModel):
     tasks: list[ScheduledTask] = Field(default_factory=list)
     # Tasks the scheduler could not place within the horizon.
     unscheduled_task_ids: list[int] = Field(default_factory=list)
+    # task_id -> deterministic reason for the final placement failure.
+    unscheduled_reasons: dict[int, SchedulingFailure] = Field(default_factory=dict)
 
     def tasks_on(self, day: date) -> list[ScheduledTask]:
         return [t for t in self.tasks if t.scheduled_date == day]
@@ -66,4 +80,10 @@ class CandidateSchedule(BaseModel):
         return [self.start_date + timedelta(days=i) for i in range(max(span + 1, 1))]
 
 
-__all__ = ["CandidateSchedule", "FixedEvent", "SCHEMA_VERSION", "ScheduledTask"]
+__all__ = [
+    "CandidateSchedule",
+    "FixedEvent",
+    "SCHEMA_VERSION",
+    "ScheduledTask",
+    "SchedulingFailure",
+]

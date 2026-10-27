@@ -9,6 +9,7 @@ from app.agent.schemas import AgentError, PlanGenerationResult
 from app.agent.state import PlannerState, PreferenceInput, ToolCallRecord
 from app.agent.tools.memory_retriever import MemoryQuery, MemoryRetrieverInput
 from app.agent.tools.plan_drafter import PlanDrafterInput, PlanDrafterMode, PlanDrafterTool
+from app.domain.models.enums import TaskStatus
 
 NODE = "plan_generation"
 TOOL = "plan_drafter"
@@ -72,6 +73,40 @@ def plan_generation_node(state: PlannerState, runtime: object) -> dict:
         )
         context_block = digest.as_prompt_block()
 
+    goals = list(state.get("goals") or [])
+    goal_id_map = state.get("goal_id_map") or {}
+    goals = [
+        goal.model_copy(
+            update={
+                "existing_goal_id": goal.existing_goal_id
+                or goal_id_map.get(index + 1)
+            }
+        )
+        for index, goal in enumerate(goals)
+    ]
+    completed_work_by_unit: dict[str, int] = {}
+    total_work_by_unit: dict[str, int] = {}
+    current = state.get("current_plan")
+    current_plan_payload = (
+        current.model_dump(mode="json") if current is not None else {}
+    )
+    if current is not None:
+        for task in current.tasks:
+            key = task.work_unit_key
+            if not key:
+                continue
+            total_work_by_unit[key] = (
+                total_work_by_unit.get(key, 0) + task.estimated_duration
+            )
+            if task.status == TaskStatus.COMPLETED:
+                completed_work_by_unit[key] = (
+                    completed_work_by_unit.get(key, 0) + task.estimated_duration
+                )
+    completed_work_unit_keys = {
+        key
+        for key, total in total_work_by_unit.items()
+        if completed_work_by_unit.get(key, 0) >= total
+    }
     payload = PlanDrafterInput(
         mode=mode,
         title=(
@@ -79,7 +114,10 @@ def plan_generation_node(state: PlannerState, runtime: object) -> dict:
             or (preview.title if preview else None)
             or "Adaptive Plan"
         ),
-        goals=list(state.get("goals") or []),
+        goals=goals,
+        completed_work_by_unit=completed_work_by_unit,
+        completed_work_unit_keys=completed_work_unit_keys,
+        goal_analysis=state.get("goal_analysis"),
         user_situation=state.get("user_situation"),
         theoretical=theoretical.model_dump(mode="json") if theoretical else {},
         start_date=state["request"].start_date,
@@ -100,6 +138,7 @@ def plan_generation_node(state: PlannerState, runtime: object) -> dict:
         planning_context=context_block,
         adjustment=state.get("adjustment"),
         progress=state.get("progress"),
+        current_plan=current_plan_payload,
         replan_reason=state.get("replan_reason"),
         completed_task_titles=_completed_titles(state),
         prediction_source=state.get("prediction_source"),
@@ -108,6 +147,10 @@ def plan_generation_node(state: PlannerState, runtime: object) -> dict:
 
     outcome = ctx.tool(TOOL).invoke(payload)
     ctx.publish("tool.completed", {"tool": TOOL, "ok": outcome.ok})
+    # Fail closed: a broken recurrence must never silently degrade into a
+    # handful of same-day one-off tasks.
+    if not outcome.ok and (outcome.error or "").startswith("RecurrenceError"):
+        raise RuntimeError(outcome.error)
 
     updates: dict = {}
     errors: list[AgentError] = []

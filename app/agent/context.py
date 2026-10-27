@@ -50,6 +50,8 @@ class UserPreferences(BaseModel):
     daily_limit_minutes: int = Field(default=300, ge=1)
     buffer_minutes: int = Field(default=15, ge=0)
     high_cognitive_max_per_day: int = Field(default=2, ge=1)
+    #: HARD cap for one goal's total scheduled minutes on a single day.
+    max_daily_minutes_per_goal: int = Field(default=120, ge=1)
     day_start: time = time(8, 0)
     day_end: time = time(22, 0)
     preferred_time_slots: dict[str, str] = Field(default_factory=dict)
@@ -70,9 +72,14 @@ class CurrentTaskSnapshot(BaseModel):
     estimated_duration: int = 60
     predicted_duration: int | None = None
     scheduled_date: date | None = None
+    start_time: time | None = None
+    end_time: time | None = None
     subject: str | None = None
     is_flexible: bool = True
     task_kind: TaskKind = TaskKind.ONE_OFF
+    #: Cross-version semantic work-unit identity (for replan dedup).
+    work_unit_key: str | None = None
+    chunk_index: int | None = None
     series_id: str | None = None
     series_index: int | None = None
     occurrence_date: date | None = None

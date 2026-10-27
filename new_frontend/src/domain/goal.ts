@@ -1,4 +1,9 @@
-import type { Task, TaskKind } from '@/domain/task';
+import type {
+  PlanningMode,
+  RecurrenceFrequency,
+  Task,
+  TaskKind,
+} from '@/domain/task';
 
 export type GoalStatus = 'active' | 'draft' | 'completed' | 'archived' | 'cancelled';
 
@@ -13,6 +18,10 @@ export interface Goal {
   createdAt: string;
   /** Repetition contract carried through to plan generation. */
   taskKind: TaskKind;
+  /** Product-level 4-way mode; absent on legacy/mock goals. */
+  planningMode?: PlanningMode;
+  recurrenceFrequency?: RecurrenceFrequency | null;
+  recurrenceInterval?: number | null;
   startDate: string | null;
   dailyTargetMinutes: number | null;
   /** 0 = Monday … 6 = Sunday. */

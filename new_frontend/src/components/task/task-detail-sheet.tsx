@@ -13,7 +13,7 @@ import { Segmented } from '@/components/ui/segmented';
 import { TextField } from '@/components/ui/text-field';
 import { Fonts, Line, Radius, Space, Type } from '@/constants/tokens';
 import { formatShort, parseISO } from '@/domain/date';
-import { TASK_KIND_LABEL, type Task } from '@/domain/task';
+import { TASK_KIND_LABEL, isRecurringSeriesTask, type Task } from '@/domain/task';
 import { usePlan } from '@/state/plan';
 import { useTheme } from '@/state/theme';
 
@@ -54,6 +54,7 @@ export function TaskDetailSheet({
   onSetSkipped,
   onMoveTomorrow,
   onRequestDelete,
+  onRequestDeleteSeries,
 }: {
   task: Task;
   goalTitle: string | null;
@@ -64,11 +65,14 @@ export function TaskDetailSheet({
   onToggleDone: (id: number) => void;
   onSetSkipped: (id: number, skipped: boolean) => void;
   onMoveTomorrow: (id: number) => void;
-  /** Ask the screen to confirm deletion; this sheet never opens its own modal. */
+  /** Ask the screen to confirm deleting only this occurrence. */
   onRequestDelete?: (id: number) => void;
+  /** Ask the screen to confirm deleting every unfinished occurrence in the series. */
+  onRequestDeleteSeries?: (id: number) => void;
 }) {
   const { colors } = useTheme();
   const { actionError, clearActionError, startTask, completeTask, partialCompleteTask } = usePlan();
+  const recurring = isRecurringSeriesTask(task);
 
   const [title, setTitle] = useState(task.title);
   const [minutes, setMinutes] = useState(
@@ -543,11 +547,26 @@ export function TaskDetailSheet({
         <>
           <View style={[styles.divider, { backgroundColor: colors.line }]} />
           <View style={styles.danger}>
-            <Text style={[styles.sectionTitle, { color: colors.error }]}>删除这个待办</Text>
-            <Text style={[styles.note, { color: colors.inkMuted }]}>
-              只从当前计划里移除，执行记录会保留。确认前会再问你一次。
+            <Text style={[styles.sectionTitle, { color: colors.error }]}>
+              {recurring ? '删除这次或整个系列' : '删除这个待办'}
             </Text>
-            <DangerButton label="删除这个待办" onPress={() => onRequestDelete(task.id)} />
+            <Text style={[styles.note, { color: colors.inkMuted }]}>
+              {recurring
+                ? '只删除今天这一次，系列和其他日期保留；也可以移除整个系列。执行记录会保留，确认前会再问你一次。'
+                : '只从当前计划里移除，执行记录会保留。确认前会再问你一次。'}
+            </Text>
+            <View style={styles.dangerActions}>
+              <DangerButton
+                label={recurring ? '只删除今天' : '删除这个待办'}
+                onPress={() => onRequestDelete(task.id)}
+              />
+              {recurring && onRequestDeleteSeries ? (
+                <DangerButton
+                  label="删除整个系列"
+                  onPress={() => onRequestDeleteSeries(task.id)}
+                />
+              ) : null}
+            </View>
           </View>
         </>
       ) : null}
@@ -703,6 +722,12 @@ const styles = StyleSheet.create({
     gap: Space.lg,
   },
   danger: {
+    gap: Space.sm,
+  },
+  dangerActions: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    alignItems: 'center',
     gap: Space.sm,
   },
   dangerButton: {

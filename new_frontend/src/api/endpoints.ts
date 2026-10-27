@@ -1,5 +1,6 @@
 import { apiPollJob, apiRequest, apiStream, apiUpload, isApiError } from '@/api/client';
 import { apiPrefix } from '@/api/config';
+import { deleteTaskQuery, type DeleteTaskOptions } from '@/api/delete-task-query';
 import type {
   ConfirmPlanResponse,
   FeedbackCreate,
@@ -7,6 +8,14 @@ import type {
   FeedbackSubmitResponse,
   GoalCreateRequest,
   GoalDetailRead,
+  GoalLifecycleImpact,
+  GoalSetArchiveImpact,
+  GoalSetAttachResponse,
+  GoalSetCreateRequest,
+  GoalSetDetailRead,
+  GoalSetRead,
+  GoalSetRestoreImpact,
+  GoalSetUpdateRequest,
   GoalStatus,
   InsightRead,
   JobAccepted,
@@ -149,8 +158,14 @@ export function resetSyntheticData() {
 }
 
 /** List goals; pass `status='draft'` for the 待拆解清单. */
-export function listGoals(status?: GoalStatus) {
-  const query = status ? `?status=${encodeURIComponent(status)}` : '';
+export function listGoals(
+  status?: GoalStatus,
+  opts: { includeArchived?: boolean } = {},
+) {
+  const params: string[] = [];
+  if (status) params.push(`status=${encodeURIComponent(status)}`);
+  if (opts.includeArchived === false) params.push('include_archived=false');
+  const query = params.length > 0 ? `?${params.join('&')}` : '';
   return apiRequest<GoalDetailRead[]>(`/goals${query}`);
 }
 
@@ -167,6 +182,57 @@ export function updateGoal(goalId: number, body: UpdateGoalRequest) {
 /** Delete a goal (204 on success). */
 export function deleteGoal(goalId: number) {
   return apiRequest<void>(`/goals/${goalId}`, { method: 'DELETE' });
+}
+
+/** Archive one goal: it stops feeding new plans, history is preserved. */
+export function archiveGoal(goalId: number) {
+  return apiRequest<GoalLifecycleImpact>(`/goals/${goalId}/archive`, { method: 'POST' });
+}
+
+/** Restore one archived goal. */
+export function restoreGoal(goalId: number) {
+  return apiRequest<GoalLifecycleImpact>(`/goals/${goalId}/restore`, { method: 'POST' });
+}
+
+// --- goal sets (目标集) ---------------------------------------------------
+
+/** Goal sets, newest first; archived ones are included only when asked for. */
+export function listGoalSets(includeArchived = true) {
+  const query = includeArchived ? '?include_archived=true' : '';
+  return apiRequest<GoalSetRead[]>(`/goal-sets${query}`);
+}
+
+export function createGoalSet(body: GoalSetCreateRequest) {
+  return apiRequest<GoalSetRead>('/goal-sets', { method: 'POST', body });
+}
+
+export function getGoalSet(goalSetId: number) {
+  return apiRequest<GoalSetDetailRead>(`/goal-sets/${goalSetId}`);
+}
+
+export function updateGoalSet(goalSetId: number, body: GoalSetUpdateRequest) {
+  return apiRequest<GoalSetRead>(`/goal-sets/${goalSetId}`, { method: 'PATCH', body });
+}
+
+/** Archive the whole set; the response reports what was removed/preserved. */
+export function archiveGoalSet(goalSetId: number) {
+  return apiRequest<GoalSetArchiveImpact>(`/goal-sets/${goalSetId}/archive`, {
+    method: 'POST',
+  });
+}
+
+export function restoreGoalSet(goalSetId: number) {
+  return apiRequest<GoalSetRestoreImpact>(`/goal-sets/${goalSetId}/restore`, {
+    method: 'POST',
+  });
+}
+
+/** Attach existing goals to a set (`POST /goal-sets/{id}/goals`). */
+export function attachGoalsToSet(goalSetId: number, goalIds: number[]) {
+  return apiRequest<GoalSetAttachResponse>(`/goal-sets/${goalSetId}/goals`, {
+    method: 'POST',
+    body: { goal_ids: goalIds },
+  });
 }
 
 export function listPlans() {
@@ -200,9 +266,19 @@ export function patchTask(planId: number, taskId: number, body: TaskUpdateReques
   return apiRequest<TaskRead>(`/plans/${planId}/tasks/${taskId}`, { method: 'PATCH', body });
 }
 
-/** Soft-delete a task (204 on success, idempotent). */
-export function deleteTask(planId: number, taskId: number) {
-  return apiRequest<void>(`/plans/${planId}/tasks/${taskId}`, { method: 'DELETE' });
+/**
+ * Soft-delete a task (204 on success, idempotent). `scope=series` removes the
+ * unfinished occurrences of a repeating series in this plan only.
+ */
+export function deleteTask(
+  planId: number,
+  taskId: number,
+  options: DeleteTaskOptions = {},
+) {
+  return apiRequest<void>(
+    `/plans/${planId}/tasks/${taskId}${deleteTaskQuery(options)}`,
+    { method: 'DELETE' },
+  );
 }
 
 /**

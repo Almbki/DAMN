@@ -31,7 +31,7 @@ import {
   longestStreak,
   monthlyBuckets,
 } from '@/domain/stats';
-import { isClosed, type Task } from '@/domain/task';
+import { isClosed, seriesTasks, type Task } from '@/domain/task';
 import * as ops from '@/domain/task-ops';
 import type { NewTaskInput } from '@/domain/task-ops';
 import { ApiPlanProvider } from '@/state/api-plan';
@@ -139,6 +139,16 @@ function MockPlanProvider({ children }: { children: React.ReactNode }) {
   const deleteTask = useCallback((id: number) => {
     setState((prev) => ops.deleteTask(prev, id));
   }, []);
+  const deleteTaskSeries = useCallback(async (taskId: number) => {
+    setState((prev) => {
+      const task = prev.tasks.find((item) => item.id === taskId);
+      if (!task) return prev;
+      const ids = seriesTasks(prev.tasks, task)
+        .filter((item) => !item.done)
+        .map((item) => item.id);
+      return ids.length > 0 ? ops.batchDelete(prev, ids) : prev;
+    });
+  }, []);
   const setDone = useCallback((id: number, done: boolean) => {
     setState((prev) => ops.setDone(prev, id, done));
   }, []);
@@ -198,6 +208,9 @@ function MockPlanProvider({ children }: { children: React.ReactNode }) {
           dueDate: input.dueDate,
           notes: input.notes,
           taskKind: input.taskKind ?? 'one_off',
+          planningMode: input.planningMode,
+          recurrenceFrequency: input.recurrenceFrequency ?? null,
+          recurrenceInterval: input.recurrenceInterval ?? null,
           startDate: input.startDate ?? null,
           dailyTargetMinutes: input.dailyTargetMinutes ?? null,
           recurrenceWeekdays: input.recurrenceWeekdays ?? null,
@@ -276,6 +289,9 @@ function MockPlanProvider({ children }: { children: React.ReactNode }) {
         priority: item.priority,
         createdAt: new Date().toISOString(),
         taskKind: item.taskKind,
+        planningMode: item.planningMode,
+        recurrenceFrequency: item.recurrenceFrequency ?? null,
+        recurrenceInterval: item.recurrenceInterval ?? null,
         startDate: item.startDate,
         dailyTargetMinutes: item.dailyTargetMinutes,
         recurrenceWeekdays: item.recurrenceWeekdays,
@@ -309,6 +325,7 @@ function MockPlanProvider({ children }: { children: React.ReactNode }) {
     setPendingTasks([]);
     setMockPreview(null);
     setLastConfirmedPlanId(mockPlanId);
+    return mockPlanId;
   }, [goals, pendingTasks, mockPreview]);
 
   const updatePreferences = useCallback(
@@ -380,6 +397,9 @@ function MockPlanProvider({ children }: { children: React.ReactNode }) {
       previewTasks: mockPreview,
       previewBusy: false,
       dismissPreview,
+      clarification: null,
+      submitClarifications: () => undefined,
+      dismissClarification: () => undefined,
       assessment,
       setAssessment,
       submitFeedback,
@@ -389,6 +409,7 @@ function MockPlanProvider({ children }: { children: React.ReactNode }) {
       updateTask,
       updateStandard,
       deleteTask,
+      deleteTaskSeries,
       setDone,
       startTask,
       completeTask,
@@ -434,6 +455,7 @@ function MockPlanProvider({ children }: { children: React.ReactNode }) {
       updateTask,
       updateStandard,
       deleteTask,
+      deleteTaskSeries,
       setDone,
       startTask,
       completeTask,

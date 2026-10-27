@@ -15,15 +15,25 @@ import { Segmented } from '@/components/ui/segmented';
 import { TextField } from '@/components/ui/text-field';
 import { Line, Space, Type } from '@/constants/tokens';
 import { todayISO } from '@/domain/date';
-import type { TaskKind } from '@/domain/task';
+import {
+  PLANNING_MODE_LABEL,
+  planningModeFromTaskKind,
+  taskKindFromPlanningMode,
+  type PlanningMode,
+} from '@/domain/task';
 import type { PendingTaskInput } from '@/state/plan-context';
 import { useTheme } from '@/state/theme';
 
 export type { PendingTaskInput };
 
 const PRIORITIES = ['低', '中', '高'];
-const KINDS: TaskKind[] = ['one_off', 'long_term', 'routine'];
-const KIND_LABELS = ['一次性', '长期', '常规'];
+const MODES: PlanningMode[] = [
+  'one_off',
+  'recurring',
+  'project',
+  'project_recurring',
+];
+const MODE_LABELS = MODES.map((mode) => PLANNING_MODE_LABEL[mode]);
 
 /** `null` when blank, `invalid` when not a positive whole number. */
 function parseTargetAmount(value: string): number | null | 'invalid' {
@@ -47,9 +57,11 @@ export function TaskAddDialog({
 }) {
   const { colors } = useTheme();
   const [title, setTitle] = useState(initial?.title ?? '');
-  const [kindIndex, setKindIndex] = useState(() =>
-    Math.max(0, KINDS.indexOf(initial?.taskKind ?? 'one_off')),
-  );
+  const [modeIndex, setModeIndex] = useState(() => {
+    const initialMode =
+      initial?.planningMode ?? planningModeFromTaskKind(initial?.taskKind);
+    return Math.max(0, MODES.indexOf(initialMode));
+  });
   const [priority, setPriority] = useState(initial?.priority ?? 2);
   const [dueDate, setDueDate] = useState<string | null>(
     initial ? initial.dueDate : todayISO(),
@@ -77,12 +89,13 @@ export function TaskAddDialog({
   const [seriesError, setSeriesError] = useState<string | null>(null);
   const [dateError, setDateError] = useState<string | null>(null);
 
-  const kind = KINDS[kindIndex];
-  const isSeries = kind !== 'one_off';
+  const mode = MODES[modeIndex];
+  const isSeries = mode === 'recurring' || mode === 'project_recurring';
+  const isProject = mode === 'project' || mode === 'project_recurring';
   const canSubmit = title.trim().length > 0;
 
-  function changeKind(index: number) {
-    setKindIndex(index);
+  function changeMode(index: number) {
+    setModeIndex(index);
     setSeriesError(null);
   }
 
@@ -111,7 +124,7 @@ export function TaskAddDialog({
       setDateError('结束日期不能早于今天。');
       return;
     }
-    if (isSeries && startDate && dueDate && dueDate < startDate) {
+    if ((isSeries || isProject) && startDate && dueDate && dueDate < startDate) {
       setDateError('结束日期不能早于开始日期。');
       return;
     }
@@ -141,8 +154,15 @@ export function TaskAddDialog({
       priority,
       dueDate,
       notes: notes.trim(),
-      taskKind: kind,
-      startDate: isSeries ? startDate : null,
+      taskKind: taskKindFromPlanningMode(mode),
+      planningMode: mode,
+      recurrenceFrequency: isSeries
+        ? weekdays.length === 7
+          ? 'daily'
+          : 'weekly'
+        : null,
+      recurrenceInterval: isSeries ? 1 : null,
+      startDate: isSeries || isProject ? startDate : null,
       dailyTargetMinutes: isSeries && minutes !== 'invalid' ? minutes : null,
       recurrenceWeekdays: isSeries ? weekdays : null,
       targetAmount: isSeries && amount !== 'invalid' ? amount : null,
@@ -179,9 +199,9 @@ export function TaskAddDialog({
       />
       <Segmented
         label="类型"
-        options={KIND_LABELS}
-        value={kindIndex}
-        onChange={changeKind}
+        options={MODE_LABELS}
+        value={modeIndex}
+        onChange={changeMode}
       />
       <Segmented
         label="优先级"
@@ -280,9 +300,47 @@ export function TaskAddDialog({
             <Text style={[styles.error, { color: colors.error }]}>{seriesError}</Text>
           ) : (
             <Text style={[styles.hint, { color: colors.inkMuted }]}>
-              后端会把长期/常规目标拆成每天的条目；结束日期留空表示不设终点。
+              {isProject
+                ? '项目/课程会按这个节奏逐个推进阶段；结束日期留空表示不设终点。'
+                : '重复习惯会按所选节奏生成条目；结束日期留空表示不设终点。'}
             </Text>
           )}
+        </>
+      ) : isProject ? (
+        <>
+          <View style={styles.dateRow}>
+            <View style={styles.dateField}>
+              <DateTimeField
+                label="开始日期"
+                date={startDate ?? ''}
+                time=""
+                withTime={false}
+                minDate={todayISO()}
+                onChangeDate={(value) => {
+                  setStartDate(value);
+                  setDateError(null);
+                }}
+                onChangeTime={() => undefined}
+              />
+            </View>
+            <View style={styles.dateField}>
+              <DateTimeField
+                label="完成日期"
+                date={dueDate ?? ''}
+                time=""
+                withTime={false}
+                minDate={startDate ?? todayISO()}
+                onChangeDate={(value) => {
+                  setDueDate(value);
+                  setDateError(null);
+                }}
+                onChangeTime={() => undefined}
+              />
+            </View>
+          </View>
+          <Text style={[styles.hint, { color: colors.inkMuted }]}>
+            项目/课程：在补充里写大纲或阶段，系统会拆成有限 work units，并按截止日期安排。
+          </Text>
         </>
       ) : (
         <DateTimeField
@@ -305,7 +363,9 @@ export function TaskAddDialog({
           background={colors.surfaceContainerLowest}
         />
         <Text style={[styles.hint, { color: colors.inkMuted }]}>
-          填写后系统会据此生成子步骤；留空则不生成子步骤。
+          {isProject
+            ? '项目/课程把大纲或阶段写在这里；系统会拆成有限工作单元。'
+            : '填写后系统会据此生成子步骤；留空则不生成子步骤。'}
         </Text>
       </View>
       {dateError ? (

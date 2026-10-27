@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from pydantic import BaseModel, Field
 
-from app.agent.schemas import PreviewPayload
+from app.agent.schemas import ClarificationRequest, PreviewPayload
 from app.application.dto.plan import PlanDetail
 from app.domain.feedback.models import AdjustmentRoute, AdjustmentSeverity
 
@@ -28,8 +28,12 @@ class PreviewResult(BaseModel):
     """
 
     thread_id: str
-    preview: PreviewPayload
+    preview: PreviewPayload | None = None
+    #: Set when the request-level atomic gate stopped before planning.
+    clarification: ClarificationRequest | None = None
     goals_persisted: int = 0
+    #: The goal set (目标集) the persisted goals were attached to.
+    goal_set_id: int | None = None
     degraded: bool = False
     warnings: list[str] = Field(default_factory=list)
 

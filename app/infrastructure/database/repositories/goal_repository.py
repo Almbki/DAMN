@@ -14,6 +14,7 @@ class GoalRepository(RepositoryBase):
     def create(self, goal: Goal) -> Goal:
         orm = GoalORM(
             user_id=goal.user_id,
+            goal_set_id=goal.goal_set_id,
             title=goal.title,
             description=goal.description,
             goal_type=goal.goal_type,
@@ -23,6 +24,9 @@ class GoalRepository(RepositoryBase):
             estimated_minutes=goal.estimated_minutes,
             start_date=goal.start_date,
             task_kind=goal.task_kind,
+            planning_mode=goal.planning_mode,
+            recurrence_frequency=goal.recurrence_frequency,
+            recurrence_interval=goal.recurrence_interval,
             daily_target_minutes=goal.daily_target_minutes,
             recurrence_weekdays=goal.recurrence_weekdays,
             target_amount=goal.target_amount,
@@ -39,6 +43,7 @@ class GoalRepository(RepositoryBase):
         orms = [
             GoalORM(
                 user_id=g.user_id,
+                goal_set_id=g.goal_set_id,
                 title=g.title,
                 description=g.description,
                 goal_type=g.goal_type,
@@ -48,6 +53,9 @@ class GoalRepository(RepositoryBase):
                 estimated_minutes=g.estimated_minutes,
                 start_date=g.start_date,
                 task_kind=g.task_kind,
+                planning_mode=g.planning_mode,
+                recurrence_frequency=g.recurrence_frequency,
+                recurrence_interval=g.recurrence_interval,
                 daily_target_minutes=g.daily_target_minutes,
                 recurrence_weekdays=g.recurrence_weekdays,
                 target_amount=g.target_amount,
@@ -79,6 +87,15 @@ class GoalRepository(RepositoryBase):
         if not goal_ids:
             return []
         stmt = select(GoalORM).where(GoalORM.id.in_(goal_ids)).order_by(GoalORM.id)
+        return [Goal.model_validate(orm) for orm in self._session.scalars(stmt).all()]
+
+    def list_by_goal_set(self, goal_set_id: int) -> list[Goal]:
+        """Every goal attached to a set, including archived ones."""
+        stmt = (
+            select(GoalORM)
+            .where(GoalORM.goal_set_id == goal_set_id)
+            .order_by(GoalORM.id)
+        )
         return [Goal.model_validate(orm) for orm in self._session.scalars(stmt).all()]
 
     def update_status(self, goal_id: int, status: GoalStatus) -> Goal | None:

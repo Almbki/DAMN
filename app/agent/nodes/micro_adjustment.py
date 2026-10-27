@@ -7,6 +7,7 @@ and let the scheduler + rule engine re-place them. No language model involved.
 
 from __future__ import annotations
 
+from app.agent.goal_identity import goal_index_for_ref
 from app.agent.nodes._shared import get_context
 from app.agent.schemas import GeneratedTaskDraft, PlanGenerationResult
 from app.agent.state import PlannerState, ToolCallRecord
@@ -24,13 +25,15 @@ def _drafts_from_plan(state: PlannerState) -> list[GeneratedTaskDraft]:
     if plan is None:
         return []
     drafts: list[GeneratedTaskDraft] = []
+    goals = list(state.get("goals") or [])
     for task in plan.pending_tasks():
         drafts.append(
             GeneratedTaskDraft(
                 title=task.title,
-                # Keep the persisted goal linkage: a later FULL_REPLAN rebuilds its
-                # goal list from the current plan's tasks.
-                goal_id=task.goal_id,
+                # The persisted task carries a real goal id; drafts use the
+                # request-local 1-based index. Convert instead of mixing the
+                # two identities in one field.
+                goal_id=goal_index_for_ref(task.goal_id, goals),
                 estimated_duration=max(task.estimated_duration, 1),
                 predicted_duration=task.predicted_duration,
                 # Carried tasks were produced by the deterministic estimator;

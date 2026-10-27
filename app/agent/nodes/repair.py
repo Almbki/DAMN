@@ -148,13 +148,22 @@ def plan_repair_node(state: PlannerState, runtime: object) -> dict:
 def _pick_drop(
     drafts: list[GeneratedTaskDraft], problem_ids: set[int]
 ) -> GeneratedTaskDraft | None:
-    """Least valuable draft.
+    """Least valuable non-series draft.
 
-    Preference order: one-off before series occurrences, flexible before fixed,
-    implicated before unrelated, then lowest priority, then latest.
-    Long-term/routine occurrences are only dropped when nothing else remains.
+    Preference order: flexible before fixed, implicated before unrelated, then
+    lowest priority, then latest.
+
+    Materialized series/project drafts (``series_id`` set) are never dropped:
+    if the scheduler cannot place one, it stays PENDING and the lifecycle is
+    preserved. Dropping it would silently truncate a long-term goal, which is
+    exactly the P0 symptom.
     """
-    if not drafts:
+    candidates = [
+        draft
+        for draft in drafts
+        if not draft.series_id and not draft.parent_key
+    ]
+    if not candidates:
         return None
 
     def key(draft: GeneratedTaskDraft) -> tuple[bool, bool, bool, int, int]:
@@ -166,7 +175,7 @@ def _pick_drop(
             -draft.order_index,
         )
 
-    return sorted(drafts, key=key)[0]
+    return sorted(candidates, key=key)[0]
 
 
 def _shift(drafts: list[GeneratedTaskDraft], problem_ids: set[int]) -> list[int]:

@@ -1,0 +1,238 @@
+{
+  "captured_at": "2026-10-26T18:44:41.268306",
+  "identity": {
+    "database": "planner",
+    "schema": "public",
+    "server_addr": "172.26.184.164",
+    "server_port": 5432,
+    "server_version": "17.11 (Debian 17.11-0+deb13u1)",
+    "user": "planner"
+  },
+  "alembic_version": "49623649564a",
+  "tables": [
+    "agent_memories",
+    "agent_runs",
+    "alembic_version",
+    "checkpoint_blobs",
+    "checkpoint_migrations",
+    "checkpoint_writes",
+    "checkpoints",
+    "daily_plans",
+    "daily_states",
+    "evidence_items",
+    "feedbacks",
+    "generation_jobs",
+    "goals",
+    "plans",
+    "prediction_logs",
+    "prediction_outcomes",
+    "prediction_snapshots",
+    "replan_events",
+    "schedule_events",
+    "shadow_predictions",
+    "task_dependencies",
+    "task_events",
+    "task_executions",
+    "task_standards",
+    "tasks",
+    "trait_assessments",
+    "unscheduled_tasks",
+    "user_states",
+    "users"
+  ],
+  "table_counts": {
+    "agent_memories": 34,
+    "agent_runs": 106,
+    "alembic_version": 1,
+    "checkpoint_blobs": 2915,
+    "checkpoint_migrations": 10,
+    "checkpoint_writes": 5014,
+    "checkpoints": 814,
+    "daily_plans": 569,
+    "daily_states": 4,
+    "evidence_items": 0,
+    "feedbacks": 8,
+    "generation_jobs": 28,
+    "goals": 120,
+    "plans": 31,
+    "prediction_logs": 1289,
+    "prediction_outcomes": 0,
+    "prediction_snapshots": 18,
+    "replan_events": 8,
+    "schedule_events": 46,
+    "shadow_predictions": 881,
+    "task_dependencies": 3,
+    "task_events": 3,
+    "task_executions": 23,
+    "task_standards": 1285,
+    "tasks": 686,
+    "trait_assessments": 7,
+    "unscheduled_tasks": 5,
+    "user_states": 16,
+    "users": 19
+  },
+  "users_total": 19,
+  "demo": {
+    "id": 3,
+    "email": "demo@damn.app"
+  },
+  "non_demo_users": [
+    {
+      "id": 1,
+      "email": "agent-smoke@example.com"
+    },
+    {
+      "id": 2,
+      "email": "1696476532@qq.com"
+    },
+    {
+      "id": 4,
+      "email": "cpfix_ce3e67191b@example.com"
+    },
+    {
+      "id": 5,
+      "email": "cpfix_1516ce3a09@example.com"
+    },
+    {
+      "id": 6,
+      "email": "cpfix_581562106c@example.com"
+    },
+    {
+      "id": 7,
+      "email": "conn_a5178e0e8b@example.com"
+    },
+    {
+      "id": 8,
+      "email": "conn_804027371c@example.com"
+    },
+    {
+      "id": 9,
+      "email": "conn_c757ad93e3@example.com"
+    },
+    {
+      "id": 10,
+      "email": "conn_36451d4d89@example.com"
+    },
+    {
+      "id": 11,
+      "email": "viol_4b384e138d@example.com"
+    },
+    {
+      "id": 12,
+      "email": "stream_5784d711fb@example.com"
+    },
+    {
+      "id": 13,
+      "email": "probe_7618111e33@example.com"
+    },
+    {
+      "id": 14,
+      "email": "cors_caf355633c@example.com"
+    },
+    {
+      "id": 16,
+      "email": "123@qq.com"
+    },
+    {
+      "id": 17,
+      "email": "12@qq.com"
+    },
+    {
+      "id": 18,
+      "email": "123@123.cc"
+    },
+    {
+      "id": 19,
+      "email": "2@qq.com"
+    },
+    {
+      "id": 20,
+      "email": "1@qq.com"
+    }
+  ],
+  "non_demo_direct_counts": {
+    "agent_memories": 22,
+    "agent_runs": 59,
+    "daily_states": 4,
+    "evidence_items": 0,
+    "feedbacks": 6,
+    "generation_jobs": 23,
+    "goals": 71,
+    "plans": 23,
+    "prediction_logs": 1157,
+    "prediction_snapshots": 18,
+    "schedule_events": 0,
+    "shadow_predictions": 556,
+    "task_events": 3,
+    "task_executions": 15,
+    "trait_assessments": 6,
+    "user_states": 15
+  },
+  "demo_direct_counts": {
+    "agent_memories": 12,
+    "agent_runs": 47,
+    "daily_states": 0,
+    "evidence_items": 0,
+    "feedbacks": 2,
+    "generation_jobs": 5,
+    "goals": 49,
+    "plans": 8,
+    "prediction_logs": 132,
+    "prediction_snapshots": 0,
+    "schedule_events": 46,
+    "shadow_predictions": 325,
+    "task_events": 0,
+    "task_executions": 8,
+    "trait_assessments": 1,
+    "user_states": 1
+  },
+  "non_demo_joined_counts": {
+    "tasks": 585,
+    "task_standards": 1234,
+    "replan_events": 6,
+    "daily_plans": 569,
+    "unscheduled_tasks": 5,
+    "task_dependencies": 3,
+    "prediction_outcomes": 0
+  },
+  "demo_joined_counts": {
+    "tasks": 101,
+    "task_standards": 51,
+    "replan_events": 2,
+    "daily_plans": 0,
+    "unscheduled_tasks": 0,
+    "task_dependencies": 0,
+    "prediction_outcomes": 0
+  },
+  "checkpoint_counts": {
+    "total_threads": 80,
+    "non_demo_threads": 82,
+    "demo_threads": 52,
+    "unknown_threads": 11,
+    "non_demo_checkpoints": 335,
+    "non_demo_blobs": 1143,
+    "non_demo_writes": 2073,
+    "demo_checkpoints": 356,
+    "demo_blobs": 1361,
+    "demo_writes": 2226
+  },
+  "unknown_thread_ids_sample": [
+    "17aa8ee1c512476883bb1169200efd6b",
+    "2ac8743f110c4b72a67982ad412aa5f7",
+    "62cfa182ad4b466695a68ad09115fac3",
+    "705532cceecd4346ac5c7a6880046d43",
+    "7474b33cc14648ed94324cb32ba484cb",
+    "8a18a47fb7e84e04b8cfb9c7c1ee4a25",
+    "8b7a1c29fb8841c99ea210a4f63a2e11",
+    "a636175bfaf14c91b96bd6bb42257cf3",
+    "b3b324b9546b4c2e9c8ef1f09d034a0b",
+    "f35c29fb01614ba69257a6412d5c8071",
+    "fce5e42b99c34f6da297213ba3a27a5d"
+  ],
+  "schema_facts": {
+    "goal_sets": null,
+    "goals_goal_set_id": 0,
+    "work_unit_key": 1,
+    "ix_tasks_work_unit_key": "ix_tasks_work_unit_key"
+  }
+}

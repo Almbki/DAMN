@@ -162,7 +162,9 @@ class RepoContextBuilder:
             execution_weight=user.execution_weight if user else 0.5,
             profile=profile,
             preferences=self._preferences(
-                profile, user.scheduling_preferences if user else None
+                profile,
+                user.scheduling_preferences if user else None,
+                state,
             ),
             semantic_memory=merge_memory(
                 build_semantic_memory(user, state),
@@ -189,17 +191,32 @@ class RepoContextBuilder:
 
     # -- internals ---------------------------------------------------------
     @staticmethod
-    def _preferences(profile: dict, stored: dict | None = None) -> UserPreferences:
-        """Scheduling prefs: dedicated column > legacy profile keys > defaults."""
+    def _preferences(
+        profile: dict,
+        stored: dict | None = None,
+        state: object | None = None,
+    ) -> UserPreferences:
+        """Scheduling prefs: dedicated column > legacy profile keys > defaults.
+
+        Time-of-day slots are a soft preference. Explicit profile slots win;
+        otherwise the Level 2 state's existing ``preferred_time_slots`` are
+        reused as-is. This reads the model state and never mutates it.
+        """
         effective = effective_scheduling_preferences(profile, stored)
+        preferred_time_slots = dict(profile.get("preferred_time_slots") or {})
+        if not preferred_time_slots and state is not None:
+            preferred_time_slots = dict(
+                getattr(state, "preferred_time_slots", {}) or {}
+            )
         return UserPreferences(
             available_minutes_per_day=effective["available_minutes_per_day"],
             daily_limit_minutes=effective["daily_limit_minutes"],
             buffer_minutes=effective["buffer_minutes"],
             high_cognitive_max_per_day=effective["high_cognitive_max_per_day"],
+            max_daily_minutes_per_goal=effective["max_daily_minutes_per_goal"],
             day_start=_parse_time(profile.get("day_start"), DEFAULT_DAY_START),
             day_end=_parse_time(profile.get("day_end"), DEFAULT_DAY_END),
-            preferred_time_slots=dict(profile.get("preferred_time_slots") or {}),
+            preferred_time_slots=preferred_time_slots,
             unavailable_weekdays=list(profile.get("unavailable_weekdays") or []),
         )
 
@@ -236,9 +253,13 @@ class RepoContextBuilder:
                     estimated_duration=task.estimated_duration,
                     predicted_duration=task.predicted_duration,
                     scheduled_date=task.scheduled_date,
+                    start_time=task.start_time,
+                    end_time=task.end_time,
                     subject=subject,
                     is_flexible=task.is_flexible,
                     task_kind=task.task_kind,
+                    work_unit_key=task.work_unit_key,
+                    chunk_index=task.chunk_index,
                     series_id=task.series_id,
                     series_index=task.series_index,
                     occurrence_date=task.occurrence_date,

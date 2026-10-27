@@ -1,0 +1,132 @@
+{
+  "seed": "showcase-v1",
+  "generated_at": "2026-10-26T15:58:41.391542+00:00",
+  "login_email": "showcase@damn.app",
+  "user_id": 26,
+  "display_name": "林嘉禾（演示）",
+  "history_start": "2026-10-12",
+  "history_end": "2026-10-25",
+  "current_date": "2026-10-26",
+  "plan_start": "2026-10-12",
+  "plan_end": "2026-11-02",
+  "course_file": "test.xlsx",
+  "course": {
+    "imported": 46,
+    "updated": 0,
+    "skipped": 0,
+    "warnings": [],
+    "conflicts": [],
+    "first_event_id": 507,
+    "last_event_id": 552,
+    "file_sha256": "300d0591f68026fb2beabfcd91f73045f26e2e95ffd633f1184dc49102f64535"
+  },
+  "level1": {
+    "assessment_id": "7e0971429e234bca8a035a73b02a81e1",
+    "items_answered": 44,
+    "trait_domains": [
+      "A",
+      "C",
+      "E",
+      "N",
+      "O"
+    ]
+  },
+  "plans": {
+    "plan_v1_id": 66,
+    "plan_v2_id": 67,
+    "v1_task_id": 1642,
+    "task_count_v2": 74,
+    "historical_task_count": 48,
+    "future_task_count": 26,
+    "execution_count": 43,
+    "feedback_count": 14
+  },
+  "level2": {
+    "state_id": 29,
+    "observed_on": "2026-10-25",
+    "update_count": 15,
+    "fatigue": 0.5,
+    "stress": 0.5703,
+    "self_efficacy": 0.5207,
+    "evidence": {
+      "extractor": "rule_based_evidence",
+      "extractor_version": "1.0",
+      "extraction_status": "ok",
+      "reflection_fields_present": [
+        "day_review"
+      ],
+      "evidence_items": [
+        {
+          "evidence_type": "stress",
+          "direction": "increase",
+          "strength": "moderate",
+          "period": "unspecified",
+          "task_id": null,
+          "cause_category": null,
+          "voluntary": null,
+          "evidence_text": "当天完成 2/4 项，压力 6/10，精力 6/10。",
+          "source_field": "day_review"
+        }
+      ],
+      "conflict_states": [],
+      "rejected_item_count": 0,
+      "error": null
+    },
+    "behavioral_indicators": {
+      "initiation": {
+        "tasks_planned": 4,
+        "tasks_with_log": 4,
+        "tasks_started": 4,
+        "on_time_tasks": 4,
+        "mean_start_delay_minutes": 0.0,
+        "start_rate": 1.0,
+        "planned_coverage": 1.0,
+        "evidence_available": true
+      },
+      "persistence": {
+        "tasks_started": 4,
+        "mean_duration_ratio": 0.8972222222222221,
+        "total_actual_duration_minutes": 180.0,
+        "total_estimated_duration_minutes": 225.0,
+        "interruption_count": 2,
+        "continuation_rate": 0.7916666666666666,
+        "evidence_available": true
+      },
+      "goal_attainment": {
+        "value": 0.75,
+        "tasks_planned": 4,
+        "tasks_logged": 4,
+        "tasks_completed": 2,
+        "evidence_available": true
+      },
+      "procrastination_evidence": {
+        "confirmed": [],
+        "candidate_task_ids": [],
+        "late_start_candidate_count": 0,
+        "evidence_available": true,
+        "note": "A late start is only a candidate. It is not procrastination unless the user explicitly reports voluntary delay/avoidance."
+      }
+    },
+    "limitations": [
+      "State scale is a 0-1 engineering scale, not a clinical or published scale.",
+      "Persistence and noise parameters are engineering initializations, not estimated coefficients.",
+      "V1 stores prediction errors but does not learn personalized transition parameters.",
+      "Passive context was received but is intentionally not used in DDSR-V1."
+    ],
+    "source": "real DDSR-V1 replay over synthetic history through the last complete day"
+  },
+  "counts": {
+    "goal_sets": 2,
+    "goals": 6,
+    "plans": 2,
+    "tasks": 75,
+    "executions": 43,
+    "feedbacks": 14,
+    "trait_assessments": 1,
+    "schedule_events": 46,
+    "user_states": 1,
+    "replan_events": 1
+  },
+  "backup": "var\\backups\\planner-20261026T145145Z.json",
+  "note": "All showcase observations are synthetic; Level 1/2 algorithms were run for real."
+}

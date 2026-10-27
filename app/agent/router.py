@@ -25,6 +25,7 @@ from app.domain.feedback.models import (
 RouteName = Literal["no_change", "micro_adjust", "full_replan"]
 RepairRoute = Literal["repair", "continue"]
 PreviewRoute = Literal["finalize", "revise"]
+ClarificationRoute = Literal["clarify", "continue"]
 
 
 @dataclass(slots=True)
@@ -100,6 +101,11 @@ def route_after_adjustment(state: PlannerState) -> RouteName:
     }[route]
 
 
+def route_after_goal_analysis(state: PlannerState) -> ClarificationRoute:
+    """Request-level atomic gate: any clarification blocks the whole run."""
+    return "clarify" if state.get("clarification") else "continue"
+
+
 def should_repair(state: PlannerState) -> RepairRoute:
     violations = state.get("rule_violations") or []
     attempts = int(state.get("repair_attempts") or 0)
@@ -117,11 +123,13 @@ def route_after_preview(state: PlannerState) -> PreviewRoute:
 
 __all__ = [
     "AdjustmentRouter",
+    "ClarificationRoute",
     "PreviewRoute",
     "RepairRoute",
     "RouteDecision",
     "RouteName",
     "route_after_adjustment",
+    "route_after_goal_analysis",
     "route_after_preview",
     "should_repair",
 ]

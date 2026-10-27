@@ -1,4 +1,4 @@
-import { useRouter } from 'expo-router';
+import { useRouter, type Href } from 'expo-router';
 import { useState } from 'react';
 import {
   ScrollView,
@@ -9,6 +9,7 @@ import {
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
+import { ClarificationDialog } from '@/components/clarification-dialog';
 import { DecomposePreviewDialog } from '@/components/decompose-preview-dialog';
 import { TaskAddDialog, type PendingTaskInput } from '@/components/task-add-dialog';
 import { weekdaysSummary } from '@/components/task/weekday-picker';
@@ -19,7 +20,7 @@ import { Surface } from '@/components/ui/surface';
 import { Fonts, Layout, Line, Radius, Space, Type } from '@/constants/tokens';
 import { formatShort, parseISO } from '@/domain/date';
 import type { PendingTask } from '@/domain/decompose';
-import { TASK_KIND_LABEL } from '@/domain/task';
+import { PLANNING_MODE_LABEL, planningModeFromTaskKind } from '@/domain/task';
 import { usePlan } from '@/state/plan';
 import { useTheme } from '@/state/theme';
 
@@ -42,6 +43,9 @@ export default function GoalScreen() {
     previewTasks,
     previewBusy,
     dismissPreview,
+    clarification,
+    submitClarifications,
+    dismissClarification,
     lastConfirmedPlanId,
     clearLastConfirmed,
     actionError,
@@ -78,7 +82,14 @@ export default function GoalScreen() {
   }
 
   async function confirm() {
-    await confirmPreview();
+    setPreviewMessage(null);
+    const planId = await confirmPreview();
+    if (planId != null) {
+      // The preview is consumed by the provider before this resolves. Navigate
+      // only on a confirmed plan so a failed request stays retryable.
+      clearLastConfirmed();
+      router.replace('/');
+    }
   }
 
   return (
@@ -89,14 +100,23 @@ export default function GoalScreen() {
         keyboardShouldPersistTaps="handled">
         <View style={styles.header}>
           <View style={styles.titleRow}>
-            <Text style={[styles.title, { color: colors.ink }]}>待拆解</Text>
-            {pendingTasks.length > 0 ? (
-              <View style={[styles.countPill, { backgroundColor: colors.secondaryContainer }]}>
-                <Text style={[styles.countText, { color: colors.onSecondaryContainer }]}>
-                  {pendingTasks.length} 条待处理
-                </Text>
-              </View>
-            ) : null}
+            <View style={styles.titleLead}>
+              <Text style={[styles.title, { color: colors.ink }]}>待拆解</Text>
+              {pendingTasks.length > 0 ? (
+                <View style={[styles.countPill, { backgroundColor: colors.secondaryContainer }]}>
+                  <Text style={[styles.countText, { color: colors.onSecondaryContainer }]}>
+                    {pendingTasks.length} 条待处理
+                  </Text>
+                </View>
+              ) : null}
+            </View>
+            <Button
+              label="目标集"
+              icon="list"
+              variant="tonal"
+              size="sm"
+              onPress={() => router.push('/goal-sets' as Href)}
+            />
           </View>
           <Text style={[styles.body, { color: colors.inkMuted }]}>
             写下想做的事，可以加多条。点「拆解」后，系统会把它们一起理解、拆成每天的任务。
@@ -192,6 +212,15 @@ export default function GoalScreen() {
         />
       ) : null}
 
+      {clarification ? (
+        <ClarificationDialog
+          clarification={clarification}
+          busy={previewBusy}
+          onSubmit={submitClarifications}
+          onClose={dismissClarification}
+        />
+      ) : null}
+
       {previewTasks ? (
         <DecomposePreviewDialog
           mode={mode}
@@ -233,7 +262,8 @@ function PendingCard({
   onRemove: () => void;
 }) {
   const { colors } = useTheme();
-  const isSeries = item.taskKind !== 'one_off';
+  const mode = item.planningMode ?? planningModeFromTaskKind(item.taskKind);
+  const isSeries = mode === 'recurring' || mode === 'project_recurring';
   const seriesBits = [
     weekdaysSummary(item.recurrenceWeekdays),
     item.dailyTargetMinutes != null ? `每天 ${item.dailyTargetMinutes} 分钟` : null,
@@ -259,7 +289,7 @@ function PendingCard({
         <View style={styles.cardFooter}>
           <View style={styles.cardMetaBlock}>
             <Text style={[styles.cardMeta, { color: colors.inkMuted }]}>
-              {isSeries ? `${TASK_KIND_LABEL[item.taskKind]} · ` : ''}
+              {`${PLANNING_MODE_LABEL[mode]} · `}
               {item.dueDate
                 ? `${isSeries ? '结束' : '截止'} ${formatShort(item.dueDate)}`
                 : isSeries
@@ -316,6 +346,13 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
+    gap: Space.md,
+    flexWrap: 'wrap',
+  },
+  titleLead: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    flexShrink: 1,
     gap: Space.md,
     flexWrap: 'wrap',
   },

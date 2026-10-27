@@ -16,6 +16,7 @@ from uuid import uuid4
 from sqlalchemy.orm import Session
 
 from app.agent.context import ContextBuilderProtocol
+from app.agent.goal_identity import goal_id_map_for
 from app.agent.graph import PlannerGraph, RunEvents
 from app.agent.schemas import RequestIntent
 from app.agent.state import (
@@ -40,15 +41,18 @@ from app.application.dto.plan import (
 )
 from app.application.exceptions import (
     ConflictError,
+    DomainValidationError,
     NotFoundError,
     PermissionDeniedError,
 )
 from app.application.services.user_model_service import UserModelService
 from app.core.config import get_settings
+from app.domain.date_constraints import DateConstraintError, resolve_earliest_start
 from app.domain.feedback.models import AdjustmentRoute, AdjustmentSeverity
 from app.domain.models import (
     AgentRun,
     Goal,
+    GoalSet,
     Plan,
     PredictionLog,
     ReplanEvent,
@@ -58,6 +62,8 @@ from app.domain.models import (
 )
 from app.domain.models.enums import (
     CognitiveLoad,
+    GoalSetStatus,
+    GoalStatus,
     PlanStatus,
     Priority,
     ReplanTriggerType,
@@ -69,6 +75,7 @@ from app.domain.scheduling.scheduler import Scheduler
 from app.infrastructure.database.repositories import (
     AgentRunRepository,
     GoalRepository,
+    GoalSetRepository,
     PlanRepository,
     PredictionLogRepository,
     ReplanEventRepository,
@@ -120,6 +127,7 @@ class PlanService:
         self._tasks = TaskRepository(session)
         self._standards = TaskStandardRepository(session)
         self._goals = GoalRepository(session)
+        self._goal_sets = GoalSetRepository(session)
         self._executions = TaskExecutionRepository(session)
         self._users = UserRepository(session)
         self._replan_events = ReplanEventRepository(session)
@@ -293,7 +301,17 @@ class PlanService:
     ) -> PreviewResult:
         """Persist goals, run graph A and return the paused preview."""
         self._require_user(user_id)
-        goal_id_map = self._persist_goals(user_id, request)
+        # Turn explicit natural-language date constraints into the structured
+        # lower bound before goals are persisted, so preview, confirm, replan
+        # and manual edits all read the same fact.
+        request = request.model_copy(
+            update={
+                "goals": _apply_date_constraints_to_goals(
+                    request.goals, reference=request.start_date
+                )
+            }
+        )
+        goal_id_map, goal_set_id = self._persist_goals(user_id, request)
         # Commit the goals before the graph runs: preview and confirm are separate
         # requests with separate sessions, so an uncommitted goal id would dangle
         # (the returned goal_id_map must point at real rows).
@@ -313,6 +331,18 @@ class PlanService:
             summary={"stage": "preview", "draft_id": draft_id},
         )
 
+        clarification = state.get("clarification")
+        if clarification is not None:
+            warnings = _warnings_from_state(state)
+            return PreviewResult(
+                thread_id=draft_id,
+                preview=None,
+                clarification=clarification,
+                goals_persisted=len(goal_id_map),
+                goal_set_id=goal_set_id,
+                degraded=bool(warnings),
+                warnings=warnings,
+            )
         if preview is None:  # pragma: no cover - graph A always pauses
             raise RuntimeError("plan generation finished without a preview")
         warnings = _warnings_from_state(state)
@@ -320,6 +350,7 @@ class PlanService:
             thread_id=preview.thread_id,
             preview=preview,
             goals_persisted=len(goal_id_map),
+            goal_set_id=goal_set_id,
             degraded=bool(warnings),
             warnings=warnings,
         )
@@ -359,7 +390,9 @@ class PlanService:
                     degraded=bool(warnings),
                     warnings=warnings,
                 )
-            detail = self._persist_final_plan(user_id, state, run_id=run_id)
+            detail = self._persist_final_plan(
+                user_id, state, run_id=run_id, append_to_active=True
+            )
             self._link_run(
                 run_id,
                 plan_id=detail.plan.id,
@@ -383,7 +416,10 @@ class PlanService:
         warnings = _warnings_from_state(state)
         run = self._find_confirm_run(user_id, thread_id)
         detail = self._persist_final_plan(
-            user_id, state, run_id=run.run_id if run is not None else None
+            user_id,
+            state,
+            run_id=run.run_id if run is not None else None,
+            append_to_active=True,
         )
         if run is not None:
             self._link_run(
@@ -665,10 +701,17 @@ class PlanService:
         changes: dict,
         standard_updates: list[dict] | None = None,
     ) -> Task:
-        self.get_plan(user_id, plan_id)  # permission check
+        detail = self.get_plan(user_id, plan_id)  # permission check
         task = self._tasks.get_by_id(task_id)
         if task is None or task.plan_id != plan_id:
             raise NotFoundError("task not found in plan")
+
+        # A manually chosen date is still a hard-constraint candidate: never
+        # let it bypass the goal's earliest date or inclusive deadline.
+        if changes.get("scheduled_date") is not None:
+            self._validate_task_schedule_date(
+                task, changes["scheduled_date"], reference=detail.plan.start_date
+            )
 
         completed = changes.pop("completed", None)
         # Execution-only fields are not Task columns. They used to be silently
@@ -724,6 +767,41 @@ class PlanService:
             raise NotFoundError("task not found in plan")
         return refreshed
 
+    def _validate_task_schedule_date(
+        self,
+        task: Task,
+        scheduled_date: date,
+        *,
+        reference: date | None,
+    ) -> None:
+        """Enforce the goal's inclusive earliest-date/deadline window."""
+        if task.goal_id is None:
+            return
+        goal = self._goals.get_by_id(task.goal_id)
+        if goal is None:
+            return
+        deadline = goal.deadline.date() if goal.deadline is not None else None
+        try:
+            earliest = resolve_earliest_start(
+                goal.start_date,
+                text=_goal_evidence_text(goal.title, goal.description),
+                deadline=deadline,
+                reference=reference,
+                source=f"goal id={goal.id} title={goal.title!r}",
+            )
+        except DateConstraintError as exc:
+            raise DomainValidationError(str(exc)) from exc
+        if earliest is not None and scheduled_date < earliest:
+            raise DomainValidationError(
+                f"task date {scheduled_date.isoformat()} is before the goal's "
+                f"earliest allowed date {earliest.isoformat()}"
+            )
+        if deadline is not None and scheduled_date > deadline:
+            raise DomainValidationError(
+                f"task date {scheduled_date.isoformat()} is after the goal's "
+                f"deadline {deadline.isoformat()}"
+            )
+
     def delete_task(
         self,
         user_id: int,
@@ -744,6 +822,29 @@ class PlanService:
         if not self._tasks.soft_delete(task_id, reason):
             raise NotFoundError("task not found in plan")
         self._session.commit()
+
+    def delete_task_series(
+        self,
+        user_id: int,
+        plan_id: int,
+        task_id: int,
+        reason: str | None = None,
+    ) -> int:
+        """Soft-delete every unfinished occurrence of a task's series.
+
+        Scoped to one plan version: completed occurrences, their executions and
+        other plan versions are never touched. Returns the number of rows
+        soft-deleted (0 when only completed occurrences remain).
+        """
+        self.get_plan(user_id, plan_id)  # permission check
+        task = self._tasks.get_by_id(task_id, include_deleted=True)
+        if task is None or task.plan_id != plan_id:
+            raise NotFoundError("task not found in plan")
+        if task.series_id is None:
+            raise DomainValidationError("task is not part of a recurring series")
+        deleted = self._tasks.soft_delete_series(plan_id, task.series_id, reason)
+        self._session.commit()
+        return deleted
 
     # ------------------------------------------------------------------
     # internals
@@ -843,12 +944,23 @@ class PlanService:
             )
         return changes
 
-    def _persist_goals(self, user_id: int, request: PlannerRequest) -> dict[int, int]:
+    def _persist_goals(
+        self, user_id: int, request: PlannerRequest
+    ) -> tuple[dict[int, int], int]:
+        """Persist the request's goals into a resolved goal set.
+
+        Returns ``(goal_id_map, goal_set_id)``. The set is resolved as:
+        explicit ``goal_set_id`` (validated), else a new set named
+        ``goal_set_name`` / ``plan_title`` / ``目标集 YYYY-MM-DD``. A new set is
+        created for every request unless the client explicitly reuses one.
+        """
+        goal_set = self._resolve_goal_set(user_id, request)
         goals: list[Goal] = []
         for goal_input in request.goals:
             goals.append(
                 Goal(
                     user_id=user_id,
+                    goal_set_id=goal_set.id,
                     title=self._clip(goal_input.title, _TITLE_MAX_LEN),
                     description=self._clip(goal_input.description, _DESCRIPTION_MAX_LEN),
                     goal_type=goal_input.goal_type,
@@ -857,6 +969,9 @@ class PlanService:
                     estimated_minutes=goal_input.estimated_minutes,
                     start_date=goal_input.start_date,
                     task_kind=goal_input.task_kind,
+                    planning_mode=goal_input.planning_mode,
+                    recurrence_frequency=goal_input.recurrence_frequency,
+                    recurrence_interval=goal_input.recurrence_interval,
                     daily_target_minutes=goal_input.daily_target_minutes,
                     recurrence_weekdays=goal_input.recurrence_weekdays,
                     target_amount=goal_input.target_amount,
@@ -865,7 +980,33 @@ class PlanService:
                 )
             )
         created = self._goals.create_many(goals)
-        return {index + 1: goal.id for index, goal in enumerate(created) if goal.id is not None}
+        goal_id_map = {
+            index + 1: goal.id for index, goal in enumerate(created) if goal.id is not None
+        }
+        return goal_id_map, goal_set.id or 0
+
+    def _resolve_goal_set(self, user_id: int, request: PlannerRequest) -> GoalSet:
+        if request.goal_set_id is not None:
+            goal_set = self._goal_sets.get_by_id(request.goal_set_id)
+            if goal_set is None:
+                raise NotFoundError("goal set not found")
+            if goal_set.user_id != user_id:
+                raise PermissionDeniedError("goal set belongs to another user")
+            if goal_set.status != GoalSetStatus.ACTIVE:
+                raise DomainValidationError("goal set is archived")
+            return goal_set
+
+        name = (
+            request.goal_set_name
+            or request.plan_title
+            or f"目标集 {date.today().isoformat()}"
+        )
+        return self._goal_sets.create(
+            GoalSet(
+                user_id=user_id,
+                name=self._clip(name, _TITLE_MAX_LEN) or name,
+            )
+        )
 
     def _planner_request_for_plan(
         self,
@@ -899,12 +1040,17 @@ class PlanService:
         parent_plan_id: int | None = None,
         replan_reason: str | None = None,
         run_id: str | None = None,
+        append_to_active: bool = False,
     ) -> PlanDetail:
         final = state.get("final_plan")
         if final is None:
             raise NotFoundError("no final plan on the agent state")
         request = state.get("request")
         goal_id_map = dict(state.get("goal_id_map") or {})
+        if not goal_id_map and request is not None:
+            # Defensive: a replan state must still map local indices back to
+            # the persisted goals, even if an older state omitted the map.
+            goal_id_map = goal_id_map_for(request.goals)
         schedule = state.get("candidate_plan")
         placed = {item.task_id: item for item in (schedule.tasks if schedule else [])}
 
@@ -914,7 +1060,18 @@ class PlanService:
             if previous is not None and previous.id is not None
             else []
         )
-        if previous is not None and previous.id is not None:
+        # Adding goals through the initial-preview flow must extend the active
+        # plan, not supersede it. Replanning still creates a new immutable version
+        # because it passes parent_plan_id.
+        should_append = (
+            append_to_active
+            and parent_plan_id is None
+            and previous is not None
+            and previous.id is not None
+            and previous.status == PlanStatus.ACTIVE
+            and bool(old_tasks)
+        )
+        if previous is not None and previous.id is not None and not should_append:
             self._plans.update_status(previous.id, PlanStatus.SUPERSEDED)
 
         parent = (
@@ -922,34 +1079,49 @@ class PlanService:
             if parent_plan_id is not None
             else None
         )
-        data_origin = parent.data_origin if parent is not None else "real"
-        plan = Plan(
-            user_id=user_id,
-            version=self._plans.next_version(user_id),
-            status=PlanStatus.ACTIVE,
-            title=self._clip(
-                final.title or (request.plan_title if request else None), _TITLE_MAX_LEN
+        if should_append:
+            plan = previous
+            order_base = max((task.order_index for task in old_tasks), default=-1) + 1
+        else:
+            data_origin = parent.data_origin if parent is not None else "real"
+            plan = Plan(
+                user_id=user_id,
+                version=self._plans.next_version(user_id),
+                status=PlanStatus.ACTIVE,
+                title=self._clip(
+                    final.title or (request.plan_title if request else None), _TITLE_MAX_LEN
+                )
+                or (request.plan_title if request else None),
+                start_date=final.start_date or (request.start_date if request else date.today()),
+                end_date=final.end_date
+                or (
+                    request.end_date
+                    if request
+                    else date.today() + timedelta(days=DEFAULT_HORIZON_DAYS)
+                ),
+                parent_plan_id=parent_plan_id or (previous.id if previous else None),
+                confidence=final.confidence,
+                data_origin=data_origin,
             )
-            or (request.plan_title if request else None),
-            start_date=final.start_date or (request.start_date if request else date.today()),
-            end_date=final.end_date
-            or (
-                request.end_date
-                if request
-                else date.today() + timedelta(days=DEFAULT_HORIZON_DAYS)
-            ),
-            parent_plan_id=parent_plan_id or (previous.id if previous else None),
-            confidence=final.confidence,
-            data_origin=data_origin,
-        )
-        plan = self._plans.create(plan)
+            plan = self._plans.create(plan)
+            order_base = 0
 
+        # Never drop a materialized occurrence. An occurrence the scheduler
+        # could not place stays PENDING (no slot) so the series lifecycle is
+        # visible and can be rescheduled; silently dropping it was the P0
+        # symptom that made a 249-day goal look like a one-week plan.
+        drafts = list(final.tasks)
         tasks: list[Task] = []
         standards: list[TaskStandard] = []
-        for order, draft in enumerate(final.tasks):
+        for order, draft in enumerate(drafts):
             # PROVISIONAL TASK ID CONTRACT: the scheduler keys placements by the
             # draft's own order_index, which may have gaps after a repair drop.
             slot = placed.get(draft.order_index + 1)
+            failure = (
+                schedule.unscheduled_reasons.get(draft.order_index + 1)
+                if schedule is not None and slot is None
+                else None
+            )
             tasks.append(
                 Task(
                     plan_id=plan.id,
@@ -969,7 +1141,7 @@ class PlanService:
                     scheduled_date=slot.scheduled_date if slot else None,
                     start_time=slot.start_time if slot else None,
                     end_time=slot.end_time if slot else None,
-                    status=TaskStatus.SCHEDULED,
+                    status=TaskStatus.SCHEDULED if slot else TaskStatus.PENDING,
                     completion_probability=draft.completion_probability,
                     prediction_source=draft.prediction_source or "deterministic:workload_estimate",
                     prediction_mode="production",
@@ -981,10 +1153,44 @@ class PlanService:
                     occurrence_date=draft.occurrence_date,
                     target_amount=draft.target_amount,
                     target_unit=draft.target_unit,
-                    order_index=order,
+                    work_unit_key=draft.work_unit_key,
+                    chunk_index=draft.chunk_index,
+                    scheduling_reason=(
+                        failure.code if failure is not None else None
+                    ),
+                    scheduling_detail=(
+                        failure.message[:255] if failure is not None else None
+                    ),
+                    order_index=order_base + order,
                 )
             )
         created_tasks = self._tasks.create_many(tasks)
+        # Execution chunks reference their first chunk as the parent. The
+        # parent identity is stored in the existing tasks.parent_task_id column
+        # (no new DB column / migration).
+        parent_ids = {
+            draft.parent_key: task.id
+            for draft, task in zip(drafts, created_tasks, strict=False)
+            if draft.parent_key
+            and (draft.chunk_index or 0) == 0
+            and task.id is not None
+        }
+        for draft, task in zip(drafts, created_tasks, strict=False):
+            if (
+                draft.parent_key
+                and (draft.chunk_index or 0) > 0
+                and task.id is not None
+            ):
+                parent_id = parent_ids.get(draft.parent_key)
+                if parent_id is not None:
+                    self._tasks.update_fields(task.id, parent_task_id=parent_id)
+        if should_append and plan.id is not None:
+            latest_day = max(
+                (task.scheduled_date for task in created_tasks if task.scheduled_date),
+                default=plan.end_date,
+            )
+            if latest_day > plan.end_date:
+                self._plans.update_fields(plan.id, end_date=latest_day)
         prediction_origin = (
             "synthetic"
             if self._user_models.has_synthetic_observations(user_id)
@@ -993,11 +1199,11 @@ class PlanService:
         self._log_predictions(
             user_id,
             plan.id or 0,
-            list(zip(created_tasks, final.tasks, strict=False)),
+            list(zip(created_tasks, drafts, strict=False)),
             data_origin=prediction_origin,
         )
 
-        for task, draft in zip(created_tasks, final.tasks, strict=False):
+        for task, draft in zip(created_tasks, drafts, strict=False):
             per_standard = max(len(draft.standards), 1)
             for std_order, description in enumerate(draft.standards):
                 standards.append(
@@ -1295,17 +1501,56 @@ def _no_severity():
     return AdjustmentSeverity.NONE
 
 
+def _goal_evidence_text(title: str | None, description: str | None) -> str:
+    """Original goal text used as date-constraint evidence (never rewritten)."""
+    return "\n".join(part for part in (title, description) if part)
+
+
+def _apply_date_constraints_to_goals(goals: list, *, reference: date | None) -> list:
+    """Fold explicit natural-language date constraints into ``start_date``.
+
+    ``Goal.start_date`` is the persisted inclusive scheduling lower bound, so
+    preview, confirm, replan and manual edits all read the same structured
+    fact. Ambiguous/contradictory constraints fail closed.
+    """
+    normalised: list = []
+    for index, goal in enumerate(goals, start=1):
+        deadline = goal.deadline.date() if goal.deadline is not None else None
+        goal_label = goal.existing_goal_id or f"request-index-{index}"
+        try:
+            earliest = resolve_earliest_start(
+                goal.start_date,
+                text=_goal_evidence_text(goal.title, goal.description),
+                deadline=deadline,
+                reference=reference,
+                source=f"goal id={goal_label} title={goal.title!r}",
+            )
+        except DateConstraintError as exc:
+            raise DomainValidationError(str(exc)) from exc
+        normalised.append(
+            goal
+            if earliest == goal.start_date
+            else goal.model_copy(update={"start_date": earliest})
+        )
+    return normalised
+
+
 def _goal_inputs(detail: PlanDetail) -> list:
     """Rebuild graph goal inputs from the persisted goals (subject from options)."""
     from app.agent.state import GoalInput
 
     inputs = []
     for goal in detail.goals:
+        # Archived / cancelled goals must not take part in a replan; their
+        # existing tasks stay readable in the old plan versions.
+        if goal.status in {GoalStatus.ARCHIVED, GoalStatus.CANCELLED}:
+            continue
         options = goal.options or {}
         inputs.append(
             GoalInput(
                 title=goal.title,
                 description=goal.description,
+                existing_goal_id=goal.id,
                 goal_type=goal.goal_type,
                 deadline=goal.deadline,
                 priority=goal.priority,
@@ -1314,13 +1559,21 @@ def _goal_inputs(detail: PlanDetail) -> list:
                 task_type=options.get("task_type"),
                 start_date=goal.start_date,
                 task_kind=goal.task_kind,
+                planning_mode=goal.planning_mode,
+                recurrence_frequency=goal.recurrence_frequency,
+                recurrence_interval=goal.recurrence_interval,
                 daily_target_minutes=goal.daily_target_minutes,
                 recurrence_weekdays=goal.recurrence_weekdays,
                 target_amount=goal.target_amount,
                 target_unit=goal.target_unit,
             )
         )
-    return inputs
+    # Older goals may have the explicit constraint only in their description;
+    # re-derive it deterministically for every replan instead of trusting an
+    # earlier LLM run or requiring a data migration.
+    return _apply_date_constraints_to_goals(
+        inputs, reference=detail.plan.start_date
+    )
 
 
 __all__ = ["DEFAULT_HORIZON_DAYS", "PlanService"]

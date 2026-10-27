@@ -194,8 +194,11 @@ class UserModelService:
             day = None
             if task is not None:
                 day = task.scheduled_date or task.occurrence_date
-            if day is None and execution.created_at is not None:
-                day = execution.created_at.date()
+            # A task can be scheduled for tomorrow but completed early today.
+            # Prefer the observed execution date over dropping the observation.
+            if day is None or day > today:
+                if execution.created_at is not None:
+                    day = execution.created_at.date()
             if day is None or day > today:
                 continue
             entry = bucket(day)
@@ -237,7 +240,7 @@ class UserModelService:
                     passive = PassiveContext(
                         sleep_duration_minutes=float(feedback.sleep_hours) * 60.0
                     )
-            if not plans and not day_executions and reflection is None:
+            if not plans and not day_executions and reflection is None and feedback is None:
                 continue
             days.append(
                 DayInput(
@@ -331,9 +334,15 @@ class UserModelService:
 
     @staticmethod
     def _level2_execution(execution) -> Level2TaskExecution:
+        # TaskPlan.planned_start is local-naive; PostgreSQL returns TIMESTAMPTZ
+        # values with the session timezone. Normalise to local-naive so the
+        # DDSR delay comparison uses the same clock as the plan.
+        actual_start = execution.started_at
+        if actual_start is not None and actual_start.tzinfo is not None:
+            actual_start = actual_start.astimezone().replace(tzinfo=None)
         return Level2TaskExecution(
             task_id=str(execution.task_id),
-            actual_start=execution.started_at,
+            actual_start=actual_start,
             actual_duration_minutes=execution.actual_duration,
             completion_ratio=execution.completion_rate,
             completed=bool(execution.completed),

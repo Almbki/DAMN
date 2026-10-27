@@ -9,10 +9,18 @@ from sqlalchemy import JSON, Date, DateTime, Enum, ForeignKey, Integer, String
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.domain.models.base import utcnow
-from app.domain.models.enums import GoalStatus, GoalType, Priority, TaskKind
+from app.domain.models.enums import (
+    GoalStatus,
+    GoalType,
+    PlanningMode,
+    Priority,
+    TaskKind,
+)
+from app.domain.recurrence import RecurrenceFrequency
 from app.infrastructure.database.base import Base, enum_values
 
 if TYPE_CHECKING:
+    from app.infrastructure.database.models.goal_set import GoalSet
     from app.infrastructure.database.models.task import Task
     from app.infrastructure.database.models.user import User
 
@@ -22,6 +30,9 @@ class Goal(Base):
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
     user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), nullable=False, index=True)
+    goal_set_id: Mapped[int | None] = mapped_column(
+        ForeignKey("goal_sets.id", ondelete="SET NULL"), nullable=True, index=True
+    )
     title: Mapped[str] = mapped_column(String(255), nullable=False)
     description: Mapped[str | None] = mapped_column(String(1000), nullable=True)
     goal_type: Mapped[GoalType] = mapped_column(
@@ -42,6 +53,20 @@ class Goal(Base):
         Enum(TaskKind, values_callable=enum_values, native_enum=False, length=32),
         nullable=True,
     )
+    planning_mode: Mapped[PlanningMode | None] = mapped_column(
+        Enum(PlanningMode, values_callable=enum_values, native_enum=False, length=32),
+        nullable=True,
+    )
+    recurrence_frequency: Mapped[RecurrenceFrequency | None] = mapped_column(
+        Enum(
+            RecurrenceFrequency,
+            values_callable=enum_values,
+            native_enum=False,
+            length=16,
+        ),
+        nullable=True,
+    )
+    recurrence_interval: Mapped[int | None] = mapped_column(Integer, nullable=True)
     daily_target_minutes: Mapped[int | None] = mapped_column(Integer, nullable=True)
     recurrence_weekdays: Mapped[list[int] | None] = mapped_column(JSON, nullable=True)
     target_amount: Mapped[int | None] = mapped_column(Integer, nullable=True)
@@ -52,6 +77,7 @@ class Goal(Base):
     )
 
     user: Mapped[User] = relationship("User", back_populates="goals")
+    goal_set: Mapped[GoalSet | None] = relationship("GoalSet", back_populates="goals")
     tasks: Mapped[list[Task]] = relationship("Task", back_populates="goal")
 
     def __repr__(self) -> str:

@@ -23,6 +23,7 @@ type ApiPreferences = {
   daily_limit_minutes: number;
   buffer_minutes: number;
   high_cognitive_max_per_day: number;
+  max_daily_minutes_per_goal?: number;
   sleep_start?: string | null;
   sleep_end?: string | null;
   feedback_time?: string | null;
@@ -35,6 +36,8 @@ function fromApi(raw: ApiPreferences): SchedulingPreferences {
     dailyLimitMinutes: raw.daily_limit_minutes,
     bufferMinutes: raw.buffer_minutes,
     highCognitiveMaxPerDay: raw.high_cognitive_max_per_day,
+    maxDailyMinutesPerGoal:
+      raw.max_daily_minutes_per_goal ?? DEFAULT_PREFERENCES.maxDailyMinutesPerGoal,
     sleepStart: raw.sleep_start ?? DEFAULT_PREFERENCES.sleepStart,
     sleepEnd: raw.sleep_end ?? DEFAULT_PREFERENCES.sleepEnd,
     feedbackTime: raw.feedback_time ?? null,
@@ -48,6 +51,7 @@ function toApi(preferences: SchedulingPreferences): ApiPreferences {
     daily_limit_minutes: preferences.dailyLimitMinutes,
     buffer_minutes: preferences.bufferMinutes,
     high_cognitive_max_per_day: preferences.highCognitiveMaxPerDay,
+    max_daily_minutes_per_goal: preferences.maxDailyMinutesPerGoal,
     sleep_start: preferences.sleepStart,
     sleep_end: preferences.sleepEnd,
     feedback_time: preferences.feedbackTime,

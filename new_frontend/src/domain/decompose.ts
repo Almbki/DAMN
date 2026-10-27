@@ -1,5 +1,9 @@
 import { addDays, parseISO, todayISO } from '@/domain/date';
-import type { TaskKind } from '@/domain/task';
+import type {
+  PlanningMode,
+  RecurrenceFrequency,
+  TaskKind,
+} from '@/domain/task';
 
 /**
  * Local stand-in for the backend decomposition agent. The real 拆解 (multiple
@@ -17,6 +21,12 @@ export interface PendingTask {
   dueDate: string | null;
   notes: string;
   taskKind: TaskKind;
+  /** Product-level 4-way mode; absent on legacy/mock items. */
+  planningMode?: PlanningMode;
+  recurrenceFrequency?: RecurrenceFrequency | null;
+  recurrenceInterval?: number | null;
+  /** User answers to a previous clarification request (separate provenance). */
+  clarifications?: Record<string, string>;
   startDate: string | null;
   dailyTargetMinutes: number | null;
   /** 0 = Monday … 6 = Sunday. */
@@ -36,6 +46,7 @@ export interface DraftTask {
   estimatedMinutes: number;
   priority: number;
   taskKind: TaskKind;
+  planningMode?: PlanningMode;
   seriesId: string | null;
   seriesIndex: number | null;
   occurrenceDate: string | null;
@@ -112,9 +123,15 @@ export function decomposePending(pending: PendingTask[], feedback = ''): DraftTa
         estimatedMinutes: minutes,
         priority: item.priority,
         taskKind: item.taskKind,
+        planningMode: item.planningMode,
         seriesId: null,
         seriesIndex: null,
-        occurrenceDate: item.taskKind === 'one_off' ? null : date,
+        occurrenceDate:
+          item.planningMode === 'one_off' || item.planningMode === 'project'
+            ? null
+            : item.taskKind === 'one_off'
+              ? null
+              : date,
         targetAmount: item.targetAmount,
         targetUnit: item.targetUnit,
       });

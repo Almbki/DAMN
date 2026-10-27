@@ -9,10 +9,13 @@ from __future__ import annotations
 
 from datetime import date, datetime, time, timedelta
 
+import pytest
+
 from app.agent.nodes._shared import drafts_to_tasks
 from app.agent.state import GoalInput
 from app.agent.tools.plan_drafter import PlanDrafterInput, PlanDrafterMode, PlanDrafterTool
 from app.domain.models.enums import CognitiveLoad, GoalType, Priority, TaskKind
+from app.domain.recurrence import RecurrenceError
 from app.domain.rules.base import RuleContext, RuleEngine
 from app.domain.rules.earliest_start import EarliestStartRule
 from app.domain.scheduling.schedule_result import CandidateSchedule, ScheduledTask
@@ -80,7 +83,13 @@ def test_long_term_goal_splits_into_one_occurrence_per_day() -> None:
     assert {draft.order_index for draft in drafts} == set(range(7))
 
 
-def test_long_term_goal_with_supplement_keeps_substeps() -> None:
+def test_long_term_goal_with_supplement_stays_opaque() -> None:
+    """Recurring habits are opaque execution blocks by default.
+
+    The external domain app owns the internal checklist (new words, review,
+    forgetting curve). The planner must not invent standards from the goal
+    description.
+    """
     goal = GoalInput(
         title="with supplement",
         description="watch\npractice\nreview",
@@ -94,7 +103,7 @@ def test_long_term_goal_with_supplement_keeps_substeps() -> None:
 
     drafts = _drafts(_payload(goal))
 
-    assert all(draft.standards for draft in drafts)
+    assert all(draft.standards == [] for draft in drafts)
 
 
 def test_one_off_goal_stays_a_single_task() -> None:
@@ -110,8 +119,8 @@ def test_one_off_goal_stays_a_single_task() -> None:
     assert drafts[0].task_kind is TaskKind.ONE_OFF
     assert drafts[0].series_id is None
     assert drafts[0].occurrence_date is None
-    # Legacy total (sum of video/reading/practice), not a daily quota.
-    assert drafts[0].estimated_duration == 420
+    # One-off totals are conservatively bounded (no multi-hour default).
+    assert drafts[0].estimated_duration == 120
 
 
 def test_recurrence_weekdays_filters_occurrence_days() -> None:
@@ -134,7 +143,7 @@ def test_recurrence_weekdays_filters_occurrence_days() -> None:
     assert {draft.task_kind for draft in drafts} == {TaskKind.ROUTINE}
 
 
-def test_invalid_range_falls_back_to_one_off() -> None:
+def test_invalid_recurrence_range_fails_closed() -> None:
     goal = GoalInput(
         title="倒序日期",
         goal_type=GoalType.LONG_TERM,
@@ -142,11 +151,8 @@ def test_invalid_range_falls_back_to_one_off() -> None:
         deadline=datetime.combine(MONDAY, time.max),
     )
 
-    drafts = _drafts(_payload(goal))
-
-    assert len(drafts) == 1
-    assert drafts[0].task_kind is TaskKind.LONG_TERM
-    assert drafts[0].series_id is None
+    with pytest.raises(RecurrenceError):
+        _drafts(_payload(goal))
 
 
 def test_explicit_task_kind_overrides_goal_type() -> None:

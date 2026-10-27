@@ -15,6 +15,7 @@ from app.infrastructure.database.repositories.generation_job_repository import (
     GenerationJobRepository,
 )
 from app.infrastructure.database.repositories.goal_repository import GoalRepository
+from app.infrastructure.database.repositories.goal_set_repository import GoalSetRepository
 from app.infrastructure.database.repositories.plan_repository import PlanRepository
 from app.infrastructure.database.repositories.prediction_log_repository import (
     PredictionLogRepository,
@@ -43,6 +44,7 @@ __all__ = [
     "FeedbackRepository",
     "GenerationJobRepository",
     "GoalRepository",
+    "GoalSetRepository",
     "PlanRepository",
     "PredictionLogRepository",
     "ReplanEventRepository",

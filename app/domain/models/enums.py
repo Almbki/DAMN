@@ -14,15 +14,30 @@ class GoalType(StrEnum):
 
 
 class TaskKind(StrEnum):
-    """How a goal/task repeats over time.
+    """How a task *instance* behaves (legacy storage name).
 
-    ``ONE_OFF`` is the existing default (one task per goal); ``LONG_TERM`` and
-    ``ROUTINE`` split a goal into daily occurrences.
+    ``ONE_OFF`` is a single task row; ``LONG_TERM`` and ``ROUTINE`` are series
+    occurrence rows. Goal-level planning uses :class:`PlanningMode` instead.
     """
 
     ONE_OFF = "one_off"
     LONG_TERM = "long_term"
     ROUTINE = "routine"
+
+
+class PlanningMode(StrEnum):
+    """Goal-level planning mode shown in the UI and stored on ``goals``.
+
+    ``PROJECT_RECURRING`` means "project content advances on a recurrence
+    cadence": the finite work-unit sequence is paired with occurrence dates.
+    It is the product-level 4th type; the LLM still classifies it as
+    ``goal_kind=project`` + a non-null ``recurrence``.
+    """
+
+    ONE_OFF = "one_off"
+    RECURRING = "recurring"
+    PROJECT = "project"
+    PROJECT_RECURRING = "project_recurring"
 
 
 class GoalStatus(StrEnum):
@@ -33,6 +48,11 @@ class GoalStatus(StrEnum):
     COMPLETED = "completed"
     ARCHIVED = "archived"
     CANCELLED = "cancelled"
+
+
+class GoalSetStatus(StrEnum):
+    ACTIVE = "active"
+    ARCHIVED = "archived"
 
 
 class PlanStatus(StrEnum):

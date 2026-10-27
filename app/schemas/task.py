@@ -54,7 +54,18 @@ class TaskRead(BaseModel):
     occurrence_date: date | None = None
     target_amount: int | None = None
     target_unit: str | None = None
+    #: Cross-version semantic work-unit identity.
+    work_unit_key: str | None = None
+    #: Execution chunk order inside its work unit (None for non-chunk tasks).
+    chunk_index: int | None = None
+    #: Final deterministic scheduling failure (only for unscheduled tasks).
+    scheduling_reason: str | None = None
+    scheduling_detail: str | None = None
     order_index: int = 0
+    #: Read-time aggregation across this task's chunk group.
+    chunk_count: int = 1
+    completed_chunks: int = 0
+    work_unit_completed: bool = False
     standards: list[TaskStandardRead] = Field(default_factory=list)
 
 

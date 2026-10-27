@@ -39,10 +39,33 @@ def plan_finalization_node(state: PlannerState, runtime: object) -> dict:
     # Derived here (not read from the state) so it can never be stale/absent.
     confidence = compute_confidence(state)
 
+    # The plan metadata must describe the real lifecycle, not the short default
+    # request window (today + 13 days).
+    start_date = request.start_date if request is not None else None
+    end_date = request.end_date if request is not None else None
+    for goal in state.get("goals") or []:
+        if goal.start_date is not None and (
+            start_date is None or goal.start_date < start_date
+        ):
+            start_date = goal.start_date
+        if goal.deadline is not None:
+            deadline_day = goal.deadline.date()
+            if end_date is None or deadline_day > end_date:
+                end_date = deadline_day
+    for draft in drafts:
+        if draft.occurrence_date is not None and (
+            end_date is None or draft.occurrence_date > end_date
+        ):
+            end_date = draft.occurrence_date
+        if draft.deadline is not None:
+            deadline_day = draft.deadline.date()
+            if end_date is None or deadline_day > end_date:
+                end_date = deadline_day
+
     payload = FinalPlanPayload(
         title=(plan_draft.title if plan_draft else "") or "Adaptive Plan",
-        start_date=request.start_date if request else None,
-        end_date=request.end_date if request else None,
+        start_date=start_date,
+        end_date=end_date,
         tasks=drafts,
         confidence=confidence,
         trigger_source=_trigger_source(state),
