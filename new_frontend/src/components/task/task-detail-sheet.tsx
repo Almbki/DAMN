@@ -13,7 +13,12 @@ import { Segmented } from '@/components/ui/segmented';
 import { TextField } from '@/components/ui/text-field';
 import { Fonts, Line, Radius, Space, Type } from '@/constants/tokens';
 import { formatShort, parseISO } from '@/domain/date';
-import { TASK_KIND_LABEL, isRecurringSeriesTask, type Task } from '@/domain/task';
+import {
+  TASK_KIND_LABEL,
+  isClosed,
+  isRecurringSeriesTask,
+  type Task,
+} from '@/domain/task';
 import { usePlan } from '@/state/plan';
 import { useTheme } from '@/state/theme';
 
@@ -71,8 +76,23 @@ export function TaskDetailSheet({
   onRequestDeleteSeries?: (id: number) => void;
 }) {
   const { colors } = useTheme();
-  const { actionError, clearActionError, startTask, completeTask, partialCompleteTask } = usePlan();
+  const {
+    actionError,
+    clearActionError,
+    startTask,
+    completeTask,
+    partialCompleteTask,
+    moveTaskToBacklog,
+    localReschedule,
+  } = usePlan();
   const recurring = isRecurringSeriesTask(task);
+  // Scheduling exclusion is about recurrence-materialized day cells only.
+  // Plain project units also carry a series_id but are valid sequence nodes.
+  const recurringOccurrence = task.occurrenceDate != null;
+  const terminal = isClosed(task);
+  const canBacklog =
+    canEdit && !recurringOccurrence && !terminal && task.backlog !== true;
+  const canReschedule = canEdit && !recurringOccurrence && !terminal;
 
   const [title, setTitle] = useState(task.title);
   const [minutes, setMinutes] = useState(
@@ -101,6 +121,7 @@ export function TaskDetailSheet({
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
   const [standardBusy, setStandardBusy] = useState<number | null>(null);
+  const [scheduleBusy, setScheduleBusy] = useState<'backlog' | 'reschedule' | null>(null);
 
   const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const savedTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -249,6 +270,28 @@ export function TaskDetailSheet({
     setExecutionNote('已记录完成');
   }
 
+  async function handleBacklog() {
+    if (scheduleBusy != null) return;
+    setScheduleBusy('backlog');
+    try {
+      const result = await moveTaskToBacklog(task.id);
+      if (result.ok) onClose();
+    } finally {
+      setScheduleBusy(null);
+    }
+  }
+
+  async function handleLocalReschedule() {
+    if (scheduleBusy != null) return;
+    setScheduleBusy('reschedule');
+    try {
+      const result = await localReschedule(task.id);
+      if (result.ok) onClose();
+    } finally {
+      setScheduleBusy(null);
+    }
+  }
+
   return (
     <BottomSheet
       visible
@@ -285,7 +328,10 @@ export function TaskDetailSheet({
           style={[
             styles.title,
             {
-              color: task.done || task.skipped ? colors.inkMuted : colors.ink,
+              color:
+                task.done || task.skipped || task.missed === true
+                  ? colors.inkMuted
+                  : colors.ink,
               textDecorationLine: task.done ? 'line-through' : 'none',
             },
           ]}>
@@ -294,6 +340,9 @@ export function TaskDetailSheet({
         <View style={styles.tags}>
           {task.done ? <StatusTag label="已完成" tone={colors.primary} /> : null}
           {task.skipped ? <StatusTag label="已跳过" tone={colors.warning} /> : null}
+          {task.missed === true ? <StatusTag label="已错过" tone={colors.inkFaint} /> : null}
+          {task.overdue === true ? <StatusTag label="已逾期" tone={colors.warning} /> : null}
+          {task.backlog === true ? <StatusTag label="任务池" tone={colors.secondary} /> : null}
         </View>
         {task.description ? (
           <Text style={[styles.description, { color: colors.inkMuted }]}>{task.description}</Text>
@@ -325,6 +374,41 @@ export function TaskDetailSheet({
           <MetaItem label="预测时长" value={`${task.predictedDuration} 分钟`} mono />
         ) : null}
       </View>
+
+      {canBacklog || canReschedule ? (
+        <View style={[styles.scheduleActions, { borderTopColor: colors.outlineVariant }]}>
+          <Text style={[styles.sectionTitle, { color: colors.ink }]}>重新安排</Text>
+          <View style={styles.executionRow}>
+            {canBacklog ? (
+              <Button
+                label={scheduleBusy === 'backlog' ? '放入中…' : '放入任务池'}
+                variant="tonal"
+                disabled={scheduleBusy != null}
+                onPress={() => {
+                  void handleBacklog();
+                }}
+              />
+            ) : null}
+            {canReschedule ? (
+              <Button
+                label={scheduleBusy === 'reschedule' ? '顺延中…' : '从这里顺延'}
+                variant="outlined"
+                disabled={scheduleBusy != null}
+                onPress={() => {
+                  void handleLocalReschedule();
+                }}
+              />
+            ) : null}
+          </View>
+          <Text style={[styles.note, { color: colors.inkMuted }]}>
+            {canBacklog && canReschedule
+              ? '放入任务池会清空日期和时间；从这里顺延会重新安排这个任务和后面的未完成任务，不会触发整份计划重排。'
+              : canBacklog
+                ? '放入任务池会清空日期和时间，任务本身和执行记录会保留。'
+                : '从这里顺延会重新安排这个任务和后面的未完成任务，不会触发整份计划重排。'}
+          </Text>
+        </View>
+      ) : null}
 
       {canEdit && !task.done && !task.skipped ? (
         <View style={styles.execution}>
@@ -670,6 +754,11 @@ const styles = StyleSheet.create({
   },
   execution: {
     gap: Space.md,
+  },
+  scheduleActions: {
+    gap: Space.md,
+    borderTopWidth: 1,
+    paddingTop: Space.md,
   },
   executionRow: {
     flexDirection: 'row',

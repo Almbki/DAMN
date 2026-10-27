@@ -2,16 +2,27 @@
 
 from __future__ import annotations
 
+import logging
+
 from fastapi import APIRouter, Depends, status
 
-from app.api.deps import get_auth_service, get_profile_service
-from app.application.services import AuthService, ProfileService
+from app.api.deps import (
+    get_auth_service,
+    get_execution_reconciliation_service,
+    get_profile_service,
+)
+from app.application.services import (
+    AuthService,
+    ExecutionReconciliationService,
+    ProfileService,
+)
 from app.core.config import get_settings
 from app.schemas.auth import LoginRequest, RegisterRequest, TokenResponse
 from app.schemas.common import ErrorResponse
 from app.schemas.user import UserRead
 
 router = APIRouter()
+logger = logging.getLogger(__name__)
 
 #: Portrait fields handled by ProfileService on registration.
 PORTRAIT_FIELDS = frozenset({"identity"})
@@ -59,8 +70,24 @@ def register(
 def login(
     payload: LoginRequest,
     service: AuthService = Depends(get_auth_service),
+    reconciliation: ExecutionReconciliationService = Depends(
+        get_execution_reconciliation_service
+    ),
 ) -> TokenResponse:
     user = service.authenticate(str(payload.email), payload.password)
+    # Day-boundary settlement happens on login too, so a user who has not opened
+    # the app for several days still sees OVERDUE / MISSED / PENDING_FEEDBACK.
+    # Best-effort: a lifecycle failure must never block authentication.
+    if user.id is not None:
+        try:
+            reconciliation.reconcile_user_execution_state(user.id)
+        except Exception as exc:  # noqa: BLE001 - auth must stay available
+            logger.warning(
+                "execution reconciliation failed on login for user=%s: %s: %s",
+                user.id,
+                type(exc).__name__,
+                exc,
+            )
     token = service.create_token(user)
     settings = get_settings()
     return TokenResponse(

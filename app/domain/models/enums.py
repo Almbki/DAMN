@@ -70,6 +70,22 @@ class TaskStatus(StrEnum):
     COMPLETED = "completed"
     SKIPPED = "skipped"
     FAILED = "failed"
+    #: Deterministic execution lifecycle: a past, unfinished, non-recurring
+    #: task. It is *not* rescheduled by reconciliation.
+    OVERDUE = "overdue"
+    #: Deterministic execution lifecycle: a past, unfinished recurring
+    #: occurrence. Kept distinct from OVERDUE because product behaviour differs.
+    MISSED = "missed"
+    #: Still needs completion, but deliberately has no schedule placement.
+    #: Semantic identity (goal/work unit/chunk/duration) is preserved.
+    BACKLOG = "backlog"
+
+
+class FeedbackObligationStatus(StrEnum):
+    """Deterministic daily-feedback debt for one user + execution date."""
+
+    PENDING = "pending_feedback"
+    SUBMITTED = "submitted"
 
 
 class CognitiveLoad(StrEnum):

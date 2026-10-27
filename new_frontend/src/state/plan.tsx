@@ -42,6 +42,7 @@ import {
   type FeedbackResult,
   type PendingTaskInput,
   type PlanContextValue,
+  type SchedulingActionResult,
 } from '@/state/plan-context';
 import { loadPreferences, savePreferences } from '@/state/preferences-store';
 
@@ -354,6 +355,12 @@ function MockPlanProvider({ children }: { children: React.ReactNode }) {
     [],
   );
 
+  const scheduleUnavailable = useCallback(async (): Promise<SchedulingActionResult> => {
+    const message = '演示模式：任务池和顺延需要连接后端。';
+    setActionError(message);
+    return { ok: false, message };
+  }, []);
+
   const value = useMemo<PlanContextValue>(
     () => ({
       mode: 'mock',
@@ -385,6 +392,12 @@ function MockPlanProvider({ children }: { children: React.ReactNode }) {
       replanNow: async () => '演示模式：重排需要连接后端。',
       feedbackHistory: [],
       refreshFeedbackHistory: async () => undefined,
+      feedbackObligations: [],
+      refreshFeedbackObligations: async () => undefined,
+      backlogTasks: [],
+      moveTask: scheduleUnavailable,
+      moveTaskToBacklog: scheduleUnavailable,
+      localReschedule: scheduleUnavailable,
       goals,
       pendingTasks,
       addPendingTask,
@@ -450,6 +463,7 @@ function MockPlanProvider({ children }: { children: React.ReactNode }) {
       dismissPreview,
       assessment,
       submitFeedback,
+      scheduleUnavailable,
       addTask,
       createTask,
       updateTask,

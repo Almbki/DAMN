@@ -69,6 +69,13 @@ class TaskRead(BaseModel):
     standards: list[TaskStandardRead] = Field(default_factory=list)
 
 
+class TaskMoveRequest(BaseModel):
+    """Coarse drag placement. The service snaps the start to a 30-minute grid."""
+
+    target_date: date
+    target_start: time
+
+
 class TaskUpdateRequest(BaseModel):
     """Patch payload for a single task (all fields optional)."""
 

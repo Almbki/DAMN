@@ -16,6 +16,7 @@ import { Surface } from '@/components/ui/surface';
 import { Fonts, Line, Radius, Space, Type } from '@/constants/tokens';
 import { startOfWeek, todayISO } from '@/domain/date';
 import type { Task } from '@/domain/task';
+import { usePlan } from '@/state/plan';
 import { useSchedule } from '@/state/schedule';
 import { useTheme } from '@/state/theme';
 
@@ -79,6 +80,7 @@ export function ScheduleSection({
   onOverlayChange?: (open: boolean) => void;
 }) {
   const { colors } = useTheme();
+  const { backlogTasks, goals, canEditTasks, moveTask, moveTaskToBacklog } = usePlan();
   const {
     events,
     loading,
@@ -286,12 +288,14 @@ export function ScheduleSection({
             <CourseTimetable
               events={events}
               tasks={tasks}
+              backlogTasks={backlogTasks}
+              goals={goals}
               weekStart={weekStart}
+              canEdit={canEditTasks}
               onSelect={openDetail}
               onSelectTask={onSelectTask}
-              onImport={() => {
-                void pickAndImport();
-              }}
+              onMoveTask={moveTask}
+              onMoveToBacklog={moveTaskToBacklog}
             />
           )
         ) : null}

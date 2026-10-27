@@ -13,8 +13,12 @@ import {
   getSituationTrends,
   jobHandleFromId,
   listFeedback,
+  listFeedbackObligations,
   listGoals,
   listPlans,
+  localReschedule as localRescheduleApi,
+  moveTask as moveTaskApi,
+  moveTaskToBacklog as moveTaskToBacklogApi,
   patchTask,
   replan as replanApi,
   replanEligibility,
@@ -42,6 +46,7 @@ import {
 import type {
   AdjustResponse,
   ClarificationRead,
+  FeedbackObligationRead,
   FeedbackRead,
   FeedbackReplanJobResult,
   FeedbackSubmitResponse,
@@ -60,11 +65,13 @@ import type { DraftTask, PendingTask } from '@/domain/decompose';
 import type { Goal } from '@/domain/goal';
 import type { PlanChange } from '@/domain/plan-change';
 import type { SchedulingPreferences } from '@/domain/preferences';
+import { schedulingErrorMessage } from '@/domain/schedule-error';
 import { buildLists, buildRuler, countLists, pickCurrentTask } from '@/domain/selectors';
 import { buildSituation } from '@/domain/situation';
 import { completedToday } from '@/domain/stats';
 import {
   goalTypeFromTaskKind,
+  isBacklog,
   isClosed,
   planningModeFromTaskKind,
   seriesTasks,
@@ -80,6 +87,7 @@ import {
   type FeedbackRoute,
   type PendingTaskInput,
   type PlanContextValue,
+  type SchedulingActionResult,
 } from '@/state/plan-context';
 import {
   loadPreferences,
@@ -338,6 +346,7 @@ export function ApiPlanProvider({ children }: { children: React.ReactNode }) {
   const [pendingTasks, setPendingTasks] = useState<PendingTask[]>([]);
   const [preferences, setPreferences] = useState<SchedulingPreferences>(() => loadPreferences());
   const [feedbackHistory, setFeedbackHistory] = useState<FeedbackRead[]>([]);
+  const [feedbackObligations, setFeedbackObligations] = useState<FeedbackObligationRead[]>([]);
   const [planChanges, setPlanChanges] = useState<PlanChange[]>([]);
   const [situationTrend, setSituationTrend] = useState<SituationTrendRead | null>(null);
   const [lastConfirmedPlanId, setLastConfirmedPlanId] = useState<number | null>(null);
@@ -415,6 +424,24 @@ export function ApiPlanProvider({ children }: { children: React.ReactNode }) {
     }
   }, [planId]);
 
+  /** Best-effort debt read; a failure or no active plan clears the list. */
+  const loadFeedbackObligations = useCallback(async () => {
+    try {
+      const obligations = await listFeedbackObligations();
+      if (mountedRef.current) setFeedbackObligations(obligations);
+    } catch {
+      if (mountedRef.current) setFeedbackObligations([]);
+    }
+  }, []);
+
+  const refreshFeedbackObligations = useCallback(async () => {
+    if (planId == null) {
+      if (mountedRef.current) setFeedbackObligations([]);
+      return;
+    }
+    await loadFeedbackObligations();
+  }, [planId, loadFeedbackObligations]);
+
   const refreshInsights = useCallback(async () => {
     if (planId == null) return;
     try {
@@ -458,17 +485,19 @@ export function ApiPlanProvider({ children }: { children: React.ReactNode }) {
    */
   const adoptPlan = useCallback(
     async (id: number) => {
-      const [plan, report, history, changes] = await Promise.all([
+      const [plan, report, history, changes, obligations] = await Promise.all([
         getPlan(id),
         getInsights(id),
         listFeedback(id).catch(() => [] as FeedbackRead[]),
         getPlanChanges(id).catch(() => []),
+        listFeedbackObligations().catch(() => [] as FeedbackObligationRead[]),
       ]);
       if (!mountedRef.current) return;
       applyPlan(plan);
       setInsight(report);
       setFeedbackHistory(history);
       setPlanChanges(changes.map(planChangeFromApi));
+      setFeedbackObligations(obligations);
     },
     [applyPlan],
   );
@@ -485,20 +514,23 @@ export function ApiPlanProvider({ children }: { children: React.ReactNode }) {
         updateStore((prev) => ({ ...prev, tasks: [] }));
         setInsight(emptyInsight(0));
         setFeedbackHistory([]);
+        setFeedbackObligations([]);
         setPlanChanges([]);
         setError(null);
         return;
       }
-      const [plan, report, history, changes] = await Promise.all([
+      const [plan, report, history, changes, obligations] = await Promise.all([
         getPlan(active.id),
         getInsights(active.id),
         listFeedback(active.id).catch(() => [] as FeedbackRead[]),
         getPlanChanges(active.id).catch(() => []),
+        listFeedbackObligations().catch(() => [] as FeedbackObligationRead[]),
       ]);
       if (seq !== requestSeqRef.current || !mountedRef.current) return;
       applyPlan(plan);
       setInsight(report);
       setFeedbackHistory(history);
+      setFeedbackObligations(obligations);
       setPlanChanges(changes.map(planChangeFromApi));
       setError(null);
     } catch (caught) {
@@ -547,12 +579,61 @@ export function ApiPlanProvider({ children }: { children: React.ReactNode }) {
     void load();
   }, [retrySession, load]);
 
+  /**
+   * Deterministic scheduling actions share one safety net: rejections never
+   * touch local state, and success reloads the full plan so the timetable,
+   * selectors, goals and detail sheet all agree.
+   */
+  const runScheduleAction = useCallback(
+    async (
+      action: (targetPlanId: number) => Promise<unknown>,
+    ): Promise<SchedulingActionResult> => {
+      if (planId == null) {
+        const message = '还没有计划，先生成一个。';
+        setActionError(message);
+        return { ok: false, message };
+      }
+      setActionError(null);
+      try {
+        await action(planId);
+        await load();
+        return { ok: true, message: null };
+      } catch (caught) {
+        const message = schedulingErrorMessage(caught);
+        setActionError(message);
+        return { ok: false, message };
+      }
+    },
+    [planId, load],
+  );
+
+  const moveTask = useCallback(
+    (taskId: number, targetDate: string, targetStart: string) =>
+      runScheduleAction((targetPlanId) =>
+        moveTaskApi(targetPlanId, taskId, targetDate, targetStart),
+      ),
+    [runScheduleAction],
+  );
+
+  const moveTaskToBacklog = useCallback(
+    (taskId: number) =>
+      runScheduleAction((targetPlanId) => moveTaskToBacklogApi(targetPlanId, taskId)),
+    [runScheduleAction],
+  );
+
+  const localReschedule = useCallback(
+    (taskId: number) =>
+      runScheduleAction((targetPlanId) => localRescheduleApi(targetPlanId, taskId)),
+    [runScheduleAction],
+  );
+
   const clearLastConfirmed = useCallback(() => setLastConfirmedPlanId(null), []);
 
   const ordered = useMemo(
     () => [...store.tasks].sort((a, b) => a.order - b.order),
     [store.tasks],
   );
+  const backlogTasks = useMemo(() => ordered.filter(isBacklog), [ordered]);
 
   const today = todayISO();
   const lists = useMemo(() => buildLists(ordered, today), [ordered, today]);
@@ -1331,7 +1412,8 @@ export function ApiPlanProvider({ children }: { children: React.ReactNode }) {
 
   const submitFeedback = useCallback(
     async (input: FeedbackInput): Promise<FeedbackResult> => {
-      if (planId == null) {
+      const targetPlanId = input.planId ?? planId;
+      if (targetPlanId == null) {
         return {
           replanTriggered: false,
           replanPlanId: null,
@@ -1345,14 +1427,19 @@ export function ApiPlanProvider({ children }: { children: React.ReactNode }) {
       }
       setActionError(null);
 
+      const today = todayISO();
+      const submittedDate = input.date ?? today;
+      // A retrospective check-in records the day, but never triggers a replan.
+      const retrospective = submittedDate < today;
+
       let response: FeedbackSubmitResponse;
       try {
-        // `completionRate` is today's rate supplied by the UI (todayDone /
-        // (todayDone + todayOpen)), not the lifetime insight rate.
+        // `completionRate` is the selected day's rate supplied by the UI
+        // (done / (done + open)), not the lifetime insight rate.
         response = await submitFeedbackApi(
-          planId,
+          targetPlanId,
           {
-            date: todayISO(),
+            date: submittedDate,
             completion_rate: Math.max(0, Math.min(1, input.completionRate)),
             stress_level: assessmentScore(assessment.stress),
             energy_level: assessmentScore(assessment.energy),
@@ -1364,7 +1451,7 @@ export function ApiPlanProvider({ children }: { children: React.ReactNode }) {
               note: reason.note ?? null,
             })),
           },
-          { streamReplan: true },
+          { streamReplan: !retrospective },
         );
       } catch (caught) {
         const message = errorMessage(caught, '反馈提交失败');
@@ -1380,6 +1467,10 @@ export function ApiPlanProvider({ children }: { children: React.ReactNode }) {
           replanError: message,
         };
       }
+
+      // The row exists: this day is no longer an outstanding debt, even if the
+      // replan job below fails.
+      await loadFeedbackObligations();
 
       // The feedback row is persisted from here on. A replan failure must NEVER
       // be reported as a failed submission.
@@ -1439,7 +1530,7 @@ export function ApiPlanProvider({ children }: { children: React.ReactNode }) {
         replanError,
       };
     },
-    [planId, assessment, adoptPlan, refreshFeedbackHistory],
+    [planId, assessment, adoptPlan, refreshFeedbackHistory, loadFeedbackObligations],
   );
 
   const value = useMemo<PlanContextValue>(() => {
@@ -1475,6 +1566,12 @@ export function ApiPlanProvider({ children }: { children: React.ReactNode }) {
       replanNow,
       feedbackHistory,
       refreshFeedbackHistory,
+      feedbackObligations,
+      refreshFeedbackObligations,
+      backlogTasks,
+      moveTask,
+      moveTaskToBacklog,
+      localReschedule,
       goals,
       pendingTasks,
       addPendingTask,
@@ -1539,6 +1636,12 @@ export function ApiPlanProvider({ children }: { children: React.ReactNode }) {
     replanNow,
     feedbackHistory,
     refreshFeedbackHistory,
+    feedbackObligations,
+    refreshFeedbackObligations,
+    backlogTasks,
+    moveTask,
+    moveTaskToBacklog,
+    localReschedule,
     goals,
     pendingTasks,
     addPendingTask,

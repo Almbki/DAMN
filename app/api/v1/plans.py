@@ -10,6 +10,7 @@ from fastapi.responses import StreamingResponse
 from app.agent.state import GenerationRequest, GoalInput, PreferenceInput
 from app.api.deps import (
     get_current_user,
+    get_execution_reconciliation_service,
     get_generation_service,
     get_plan_service,
     get_replan_service,
@@ -26,7 +27,12 @@ from app.application.exceptions import (
     NotFoundError,
     ReplanNotEligibleError,
 )
-from app.application.services import GenerationService, PlanService, ReplanService
+from app.application.services import (
+    ExecutionReconciliationService,
+    GenerationService,
+    PlanService,
+    ReplanService,
+)
 from app.core.config import get_settings
 from app.domain.models import User
 from app.domain.models.enums import GoalType, Priority
@@ -554,15 +560,21 @@ def generation_events(
 def list_plans(
     current_user: User = Depends(get_current_user),
     plan_service: PlanService = Depends(get_plan_service),
+    reconciliation: ExecutionReconciliationService = Depends(
+        get_execution_reconciliation_service
+    ),
 ) -> list[PlanListItem]:
-    plans = plan_service.list_plans(current_user.id or 0)
+    user_id = current_user.id or 0
+    # Read-time settlement: no cron/daemon is required to roll past work over.
+    reconciliation.reconcile_user_execution_state(user_id)
+    plans = plan_service.list_plans(user_id)
     items: list[PlanListItem] = []
     for plan in plans:
         task_count = 0
         completed_count = 0
         if plan.id is not None:
             try:
-                detail = plan_service.get_plan(current_user.id or 0, plan.id)
+                detail = plan_service.get_plan(user_id, plan.id)
             except Exception:  # pragma: no cover - defensive
                 detail = None
             if detail is not None:
@@ -584,8 +596,13 @@ def get_plan(
     plan_id: int,
     current_user: User = Depends(get_current_user),
     plan_service: PlanService = Depends(get_plan_service),
+    reconciliation: ExecutionReconciliationService = Depends(
+        get_execution_reconciliation_service
+    ),
 ) -> PlanRead:
-    detail = plan_service.get_plan(current_user.id or 0, plan_id)
+    user_id = current_user.id or 0
+    reconciliation.reconcile_user_execution_state(user_id)
+    detail = plan_service.get_plan(user_id, plan_id)
     return plan_read(detail)
 
 

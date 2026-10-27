@@ -95,7 +95,7 @@ def _run(payload: PlanDrafterInput):
     return PlanDrafterTool(None).run(payload)
 
 
-def _context_for(tasks: list[Task]) -> RuleContext:
+def _context_for(tasks: list[Task], *, today: date | None = None) -> RuleContext:
     return RuleContext(
         daily_limit_minutes=300,
         buffer_minutes=15,
@@ -103,6 +103,9 @@ def _context_for(tasks: list[Task]) -> RuleContext:
         available_minutes_per_day=480,
         day_start=time(8, 0),
         day_end=time(22, 0),
+        # Fixed-date tests must not depend on the wall clock: an occurrence whose
+        # own day is "yesterday" is legitimately unschedulable in production.
+        today=today,
         task_earliest_dates={
             task.id: task.occurrence_date
             for task in tasks
@@ -148,7 +151,7 @@ def test_cross_month_daily_goal_gets_one_occurrence_per_day() -> None:
     ]
 
     tasks = drafts_to_tasks(drafts)
-    schedule = Scheduler().schedule(tasks, _context_for(tasks))
+    schedule = Scheduler().schedule(tasks, _context_for(tasks, today=start))
     assert schedule.unscheduled_task_ids == []
     assert [task.scheduled_date for task in schedule.tasks] == expected
     assert {task.scheduled_date for task in schedule.tasks} != {start}

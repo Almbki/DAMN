@@ -1,6 +1,6 @@
 import { addDays, parseISO, todayISO } from '@/domain/date';
 import type { Goal } from '@/domain/goal';
-import { isClosed, type Task } from '@/domain/task';
+import { isBacklog, isClosed, isOverdue, type Task } from '@/domain/task';
 
 export type SmartListKey = 'all' | 'today' | 'tomorrow' | 'upcoming' | 'overdue' | 'noDate';
 
@@ -20,13 +20,17 @@ export function buildLists(
   today: string = todayISO(),
 ): Record<SmartListKey, Task[]> {
   const tomorrow = addDays(today, 1);
-  const open = (task: Task) => !isClosed(task);
+  // The backlog tray owns `backlog` tasks, so keep them out of every dated list
+  // and out of the "no date" list as well.
+  const open = (task: Task) => !isClosed(task) && !isBacklog(task);
   return {
     all: tasks,
-    today: tasks.filter((task) => task.dueDate === today),
+    today: tasks.filter((task) => task.dueDate === today && !isBacklog(task)),
     tomorrow: tasks.filter((task) => task.dueDate === tomorrow && open(task)),
     upcoming: tasks.filter((task) => task.dueDate && task.dueDate > tomorrow && open(task)),
-    overdue: tasks.filter((task) => task.dueDate && task.dueDate < today && open(task)),
+    // Trust the backend's `overdue` flag, and keep the local date check for
+    // mock/legacy rows that predate it. Missed occurrences are closed here.
+    overdue: tasks.filter((task) => isOverdue(task, today)),
     noDate: tasks.filter((task) => !task.dueDate && open(task)),
   };
 }
@@ -70,8 +74,14 @@ export function groupByGoal(tasks: Task[], goals: Goal[]): GoalGroup[] {
 }
 
 export function pickCurrentTask(tasks: Task[], today: string = todayISO()): Task | null {
-  const todayOpen = tasks.filter((task) => task.dueDate === today && !isClosed(task));
-  return todayOpen[0] ?? tasks.find((task) => !isClosed(task)) ?? null;
+  const todayOpen = tasks.filter(
+    (task) => task.dueDate === today && !isClosed(task) && !isBacklog(task),
+  );
+  return (
+    todayOpen[0] ??
+    tasks.find((task) => !isClosed(task) && !isBacklog(task)) ??
+    null
+  );
 }
 
 export function buildRuler(
@@ -79,8 +89,11 @@ export function buildRuler(
   currentId: number | null | undefined,
   today: string = todayISO(),
 ): { key: string; state: RulerSegmentState }[] {
-  const todays = tasks.filter((task) => task.dueDate === today);
-  const base = todays.length > 0 ? todays : tasks.filter((task) => !isClosed(task));
+  const todays = tasks.filter((task) => task.dueDate === today && !isBacklog(task));
+  const base =
+    todays.length > 0
+      ? todays
+      : tasks.filter((task) => !isClosed(task) && !isBacklog(task));
   return base.map((task) => ({
     key: String(task.id),
     state: isClosed(task) ? 'done' : task.id === currentId ? 'now' : 'todo',

@@ -40,6 +40,7 @@ function toItem(task: Task): TimelineItem {
     title: task.title,
     done: task.done,
     skipped: task.skipped,
+    backlog: task.backlog === true,
     startTime: task.startTime,
     endTime: task.endTime,
     estimatedMinutes: task.estimatedMinutes,

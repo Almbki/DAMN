@@ -15,7 +15,7 @@ import { Checkbox } from '@/components/ui/checkbox';
 import { Icon } from '@/components/ui/icon';
 import { useInteraction } from '@/components/ui/interaction';
 import { Fonts, Line, Radius, Space, Type } from '@/constants/tokens';
-import { isClosed, type Task, type TaskStandard } from '@/domain/task';
+import { isClosed, isOverdue, type Task, type TaskStandard } from '@/domain/task';
 import { useTheme } from '@/state/theme';
 
 type Props = {
@@ -54,6 +54,9 @@ export function TaskRow({
   const { focused, onFocus, onBlur } = useInteraction();
   const done = task.done;
   const skipped = task.skipped;
+  const missed = task.missed === true;
+  const overdue = isOverdue(task);
+  const backlog = task.backlog === true;
   const closed = isClosed(task);
   const hasStandards = task.standards.length > 0;
   const started = task.startedAt != null;
@@ -91,7 +94,7 @@ export function TaskRow({
             style={[
               styles.title,
               {
-                color: done || skipped ? colors.inkMuted : colors.ink,
+                color: done || skipped || missed ? colors.inkMuted : colors.ink,
                 textDecorationLine: done ? 'line-through' : 'none',
               },
             ]}>
@@ -99,10 +102,16 @@ export function TaskRow({
           </Text>
           <View style={styles.metaRow}>
             <TaskMeta task={task} />
-            {isClosed(task) ? (
-              <Text style={[styles.tag, { color: task.done ? colors.primary : colors.warning }]}>
-                {task.done ? '已完成' : '已跳过'}
-              </Text>
+            {task.done ? (
+              <Text style={[styles.tag, { color: colors.primary }]}>已完成</Text>
+            ) : task.skipped ? (
+              <Text style={[styles.tag, { color: colors.warning }]}>已跳过</Text>
+            ) : missed ? (
+              <Text style={[styles.tag, { color: colors.inkFaint }]}>已错过</Text>
+            ) : overdue ? (
+              <Text style={[styles.tag, { color: colors.warning }]}>已逾期</Text>
+            ) : backlog ? (
+              <Text style={[styles.tag, { color: colors.inkFaint }]}>任务池</Text>
             ) : null}
           </View>
         </Pressable>

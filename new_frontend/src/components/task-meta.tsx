@@ -2,14 +2,14 @@ import { StyleSheet, Text, View } from 'react-native';
 
 import { TaskKindBadge } from '@/components/task/task-kind-badge';
 import { Space, Type } from '@/constants/tokens';
-import { formatShort, todayISO } from '@/domain/date';
-import { isClosed, repeatLabel, type Task } from '@/domain/task';
+import { formatShort } from '@/domain/date';
+import { isOverdue, repeatLabel, type Task } from '@/domain/task';
 import { useTheme } from '@/state/theme';
 
 /** Meta line: kind badge, due date/time and repeat rule. */
 export function TaskMeta({ task }: { task: Task }) {
   const { colors } = useTheme();
-  const overdue = task.dueDate && task.dueDate < todayISO() && !isClosed(task);
+  const overdue = isOverdue(task);
   const repeat = repeatLabel(task.repeat);
   const hasKind = task.taskKind !== 'one_off';
 
